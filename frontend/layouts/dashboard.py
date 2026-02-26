@@ -14,11 +14,11 @@ def layout():
 
             html.Div([
                 # ── Note d'information
-                html.Div([
-                    html.Span("💡", style={"marginRight": "8px"}),
-                    html.Span("Cliquez sur un composant", style={"color": "var(--blue-bright)"}),
-                    html.Span(" du schéma pour afficher ses paramètres détaillés.", style={"color": "var(--text3)"})
-                ], style={"padding": "12px 0", "borderBottom": "1px solid var(--border)", "fontSize": "12px", "display": "flex", "alignItems": "center"}),
+                # html.Div([
+                #     html.Span("💡", style={"marginRight": "8px"}),
+                #     html.Span("Cliquez sur un composant", style={"color": "var(--blue-bright)"}),
+                #     html.Span(" du schéma pour afficher ses paramètres détaillés.", style={"color": "var(--text3)"})
+                # ], style={"padding": "12px 0", "borderBottom": "1px solid var(--border)", "fontSize": "12px", "display": "flex", "alignItems": "center"}),
 
                 # ── KPIs principaux (Bandeau horizontal) ─────────────────────────
                 html.Div(id="kpi-row", className="kpi-row", style={"marginTop": "16px", "marginBottom": "24px"}),
