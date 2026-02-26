@@ -1,0 +1,33 @@
+version: "3.9"
+
+services:
+
+  redis:
+    image: redis:7-alpine
+    restart: always
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: DockerFile
+    restart: always
+    ports:
+      - "8000:8000"
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - SQLITE_PATH=/app/data/gta_history.db
+    volumes:
+      - ./data:/app/data
+      - ./backend/ai/saved_models:/app/ai/saved_models
+    depends_on:
+      - redis
+    env_file:
+      - .env
+
+volumes:
+  redis_data:

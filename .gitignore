@@ -1,0 +1,36 @@
+# Python Caches
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.coverage
+.venv/
+venv/
+ENV/
+env/
+
+# Databases
+*.db
+*.sqlite
+
+# Environment secrets
+.env
+
+# OS Files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+
+# Frontend build tools / node
+node_modules/
+.next/
+out/
+build/
+
+# Project Specific
+frontend.zip
+ai/saved_models/*.h5
+ai/saved_models/*.pkl
+data/*.db

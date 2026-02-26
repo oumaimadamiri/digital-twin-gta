@@ -1,0 +1,6 @@
+dash==2.17.1
+plotly==5.22.0
+requests==2.32.3
+pandas==2.2.3
+dash-dangerously-set-inner-html==0.0.2
+flask-compress==1.15

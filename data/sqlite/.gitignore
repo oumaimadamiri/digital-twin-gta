@@ -1,0 +1,29 @@
+# Base de données
+data/sqlite/*.db
+data/sqlite/*.db-shm
+data/sqlite/*.db-wal
+
+# Exports utilisateurs
+data/exports/*.csv
+data/exports/*.xlsx
+
+# Modèles IA entraînés
+backend/ai/saved_models/*.h5
+backend/ai/saved_models/*.pkl
+backend/ai/saved_models/*.npz
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Environnement
+.env
+venv/
+.venv/
+
+# Docker
+*.log
