@@ -70,6 +70,14 @@ def layout():
                     html.Div([
                         html.Div("État Système", className="card-title"),
                         html.Div(id="sim-state-panel"),
+                        html.Button("🛑 ARRÊTER SCÉNARIO", id="btn-stop-scenario",
+                                    className="btn btn-danger", style={"marginTop": "16px", "width": "100%", "display": "none"})
+                    ], className="card", style={"marginTop": "16px"}),
+
+                    # ── HISTORIQUE ───────────────────────────
+                    html.Div([
+                        html.Div("Historique des Scénarios", className="card-title", style={"marginTop": "20px"}),
+                        html.Div(id="scenario-history-list", className="history-container")
                     ], className="card", style={"marginTop": "16px"}),
 
                 ], style={"flex": "1"}),
@@ -80,7 +88,7 @@ def layout():
                     html.Div([scenario_card(s) for s in SCENARIOS],
                              style={"display": "flex", "flexDirection": "column", "gap": "10px"}),
                     html.Div(id="scenario-feedback", style={"marginTop": "12px", "fontFamily": "Share Tech Mono",
-                                                              "fontSize": "11px", "color": "#ff7043"}),
+                                                               "fontSize": "11px", "color": "#ff7043"}),
                 ], className="card", style={"flex": "1"}),
 
             ], style={"display": "flex", "gap": "16px"}),

@@ -30,6 +30,19 @@ def trigger_scenario(body: ScenarioTrigger):
     }
 
 
+@router.post("/stop")
+def stop_scenario():
+    """Arrête le scénario en cours."""
+    fake_api.stop_scenario()
+    return {"status": "stopped", "message": "Scénario arrêté"}
+
+
+@router.get("/history")
+def get_scenario_history():
+    """Retourne l'historique des scénarios déclenchés."""
+    return fake_api._scenario_history
+
+
 @router.post("/reset")
 def reset_simulation(_: ResetCommand = None):
     """Réinitialise le GTA à l'état nominal et efface les alertes actives."""

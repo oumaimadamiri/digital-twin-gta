@@ -81,17 +81,32 @@ def register(app):
             except Exception as e:
                 return f"Erreur scenario : {e}"
 
+    # ── Arrêter le scénario ──────────────────────────────────────────
+    @app.callback(
+        Output("scenario-feedback", "children", allow_duplicate=True),
+        Input("btn-stop-scenario", "n_clicks"),
+        prevent_initial_call=True,
+    )
+    def stop_scenario(_):
+        try:
+            _session.post(f"{BACKEND}/simulation/stop", timeout=2)
+            ts = datetime.now().strftime("%H:%M:%S")
+            return f"[{ts}] Scénario arrêté manuellment"
+        except Exception as e:
+            return f"Erreur arrêt : {e}"
+
     # ── Synoptique + panneau état de simulation ───────────────────────
     @app.callback(
         Output("sim-state-panel", "children"),
         Output("gta-synoptic-sim", "children"),
+        Output("btn-stop-scenario", "style"),
         Input("store-simulation-data", "data"),
         State("url", "pathname"),
         prevent_initial_call=True,
     )
     def update_sim_ui(d, pathname):
         if pathname != "/simulation":
-            return no_update, no_update
+            return no_update, no_update, no_update
         d = d or {}
 
         synoptic_view = create_gta_synoptic(d)
@@ -130,4 +145,35 @@ def register(app):
             html.Div(valve_items),
         ])
 
-        return state_panel, synoptic_view
+        # Affichage du bouton STOP si un scénario est en cours
+        has_scenario = d.get("scenario") is not None
+        stop_btn_style = {"marginTop": "16px", "width": "100%", "display": "block"} if has_scenario else {"display": "none"}
+
+        return state_panel, synoptic_view, stop_btn_style
+
+    # ── Historique des scénarios — Séparé pour la performance ─────────
+    @app.callback(
+        Output("scenario-history-list", "children"),
+        Input("interval-slow", "n_intervals"),
+        Input("url", "pathname"),
+    )
+    def update_history(_, pathname):
+        if pathname != "/simulation":
+            return no_update
+
+        history_items = []
+        try:
+            r = _session.get(f"{BACKEND}/simulation/history", timeout=1)
+            if r.status_code == 200:
+                history = r.json()
+                for item in reversed(history):
+                    history_items.append(html.Div([
+                        html.Span(f"[{item['timestamp']}] ", className="history-ts"),
+                        html.Span(item['name'], className="history-name"),
+                    ], className="history-item"))
+            if not history_items:
+                history_items = html.Div("Aucun scénario effectué", style={"color": "var(--text3)", "fontSize": "11px"})
+        except:
+            history_items = html.Div("Erreur historique", style={"color": "var(--red)"})
+
+        return history_items

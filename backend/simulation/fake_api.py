@@ -41,6 +41,9 @@ class FakeAPI:
         self._scenario_start_time: float | None = None
         self._oscillation_t: float = 0.0
 
+        # Historique des scénarios déclenchés
+        self._scenario_history: list[dict] = []
+
         # Offset cos φ (scénario 7)
         self._power_factor_offset: float = 0.0
 
@@ -74,6 +77,22 @@ class FakeAPI:
             self._active_scenario    = scenario
             self._scenario_start_time = time.time()
             self._oscillation_t       = 0.0
+            
+            # Ajouter à l'historique
+            self._scenario_history.append({
+                "id": scenario.id,
+                "name": scenario.name,
+                "timestamp": datetime.now().strftime("%H:%M:%S")
+            })
+            # Limiter l'historique aux 10 derniers
+            if len(self._scenario_history) > 10:
+                self._scenario_history.pop(0)
+
+    def stop_scenario(self):
+        """Arrête immédiatement le scénario en cours."""
+        self._active_scenario = None
+        self._scenario_start_time = None
+        self._power_factor_offset = 0.0
 
     def reset(self):
         """Réinitialise l'état nominal complet."""
