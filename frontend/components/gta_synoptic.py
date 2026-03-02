@@ -47,7 +47,47 @@ def create_gta_synoptic(data: dict) -> html.Div:
     v1         = data.get("valve_v1",     75.0)
     v2         = data.get("valve_v2",     45.0)
     v3         = data.get("valve_v3",     62.0)
-    scenario   = data.get("scenario")
+    
+    # ── LOGIQUE DYNAMIQUE ───────────────────────────────────────────
+    # 1. HP Boiler color & glow
+    hp_color = "#f97316" # nominal
+    hp_class = ""
+    hp_filter = "glow-orange"
+    if t_hp > 500:
+        hp_color = "#ef4444"
+        hp_class = "pulse-crit"
+        hp_filter = "glow-red"
+    elif t_hp > 490:
+        hp_color = "#f59e0b"
+
+    # 2. BP Boiler / Condenser
+    bp_color = "#3b82f6"
+    if p_bp > 6.0:
+        bp_color = "#ef4444"
+    
+    # 3. Alternator Power color
+    alt_color = "#10b981"
+    alt_filter = "glow-green"
+    if power > 30.0:
+        alt_color = "#ef4444"
+        alt_filter = "glow-red"
+    elif power > 24.0:
+        alt_color = "#f59e0b"
+        alt_filter = "glow-orange"
+
+    # 4. Flow animations speed
+    # Débit nominal 120 T/h -> 1s. Si débit = 0 -> stop.
+    flow_dur = f"{max(0.1, 120.0 / max(1, q_hp)):.2f}s" if q_hp > 5 else "0s"
+    
+    # 5. Vibration Turbine
+    turb_class = "vibrate" if speed > 6500 else ""
+
+    # 6. Indices Critiques
+    show_temp_crit = t_hp > 500
+    show_pres_crit = p_bp > 6.0
+    show_eff_crit  = eff < 85.0
+    show_speed_crit = speed > 6500
+    active_scenario = data.get("scenario")
 
     sc = _status_stroke(status) 
     vc1, vc2, vc3 = _valve_color(v1, "HP"), _valve_color(v2, "MP"), _valve_color(v3, "BP")
@@ -71,6 +111,12 @@ def create_gta_synoptic(data: dict) -> html.Div:
       <feGaussianBlur stdDeviation="6" result="blur"/>
       <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
     </filter>
+    <filter id="glow-red" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur stdDeviation="10" result="blur"/>
+      <feFlood flood-color="#ef4444" flood-opacity="0.5" result="glowColor"/>
+      <feComposite in="glowColor" in2="blur" operator="in" result="softGlow"/>
+      <feMerge><feMergeNode in="softGlow"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
     
     <!-- Gradients Tuyaux -->
     <linearGradient id="pipe-hp" x1="0" y1="0" x2="1" y2="0">
@@ -83,8 +129,31 @@ def create_gta_synoptic(data: dict) -> html.Div:
       .spin {{ transform-origin: center; animation: spin {spin_dur} linear infinite; }}
       @keyframes spin {{ from {{ transform: rotate(0deg); }} to {{ transform: rotate(360deg); }} }}
       
+      .pulse-crit {{ animation: pulse-crit 1.5s ease-in-out infinite; }}
+      @keyframes pulse-crit {{ 
+        0% {{ opacity: 1; stroke-width: 2; }} 
+        50% {{ opacity: 0.7; stroke-width: 4; }} 
+        100% {{ opacity: 1; stroke-width: 2; }} 
+      }}
+
+      .vibrate {{ animation: vibrate 0.1s linear infinite; }}
+      @keyframes vibrate {{ 
+        0% {{ transform: translate(0); }} 
+        25% {{ transform: translate(1px, 1px); }} 
+        50% {{ transform: translate(-1px, -1px); }} 
+        75% {{ transform: translate(1px, -1px); }} 
+        100% {{ transform: translate(0); }} 
+      }}
+
+      .pulse-index {{ animation: pulse-index 2s ease-in-out infinite; }}
+      @keyframes pulse-index {{
+        0% {{ transform: scale(1); opacity: 1; }}
+        50% {{ transform: scale(1.1); opacity: 0.8; }}
+        100% {{ transform: scale(1); opacity: 1; }}
+      }}
+
       /* Lignes animées pour arbres et tuyaux avec flow */
-      .dash-flow {{ animation: dash-flow 1s linear infinite; }}
+      .dash-flow {{ animation: dash-flow {flow_dur} linear infinite; }}
       @keyframes dash-flow {{ to {{ stroke-dashoffset: -20; }} }}
       
       .st-mono {{ font-family: 'Share Tech Mono', monospace; }}
@@ -99,22 +168,39 @@ def create_gta_synoptic(data: dict) -> html.Div:
   <text x="400" y="16" fill="#94a3b8" font-size="11" alignment-baseline="middle">Vapeur BP</text>
 
   <rect x="470" y="10" width="40" height="6" rx="3" fill="#10b981"/>
-  <text x="520" y="16" fill="#10b981" font-size="11" alignment-baseline="middle">Énergie électrique</text>
+  <text x="520" y="10" fill="#10b981" font-size="11" alignment-baseline="middle">Énergie électrique</text>
+
+  <!-- Badge Scénario Actif -->
+  {f'''
+  <g transform="translate(950, 15)">
+    <rect x="0" y="0" width="280" height="30" rx="15" fill="rgba(239, 68, 68, 0.1)" stroke="#ef4444" stroke-width="1"/>
+    <circle cx="15" cy="15" r="6" fill="#ef4444" class="pulse-crit"/>
+    <text x="30" y="20" fill="#ef4444" font-size="12" font-weight="600">SCÉNARIO : {active_scenario.upper()}</text>
+  </g>
+  ''' if active_scenario else ''}
 
   <!-- ── 2. BLOC VAPEUR HP (CHAUDIÈRE) ─────────────────────── -->
-  <g transform="translate(230, 200)">
+  <g transform="translate(230, 200)" class="{hp_class}">
     <!-- Main Box -->
-    <rect x="0" y="0" width="120" height="100" rx="12" fill="#0f172a" stroke="#f97316" stroke-width="2" filter="url(#glow-orange)"/>
+    <rect x="0" y="0" width="120" height="100" rx="12" fill="#0f172a" stroke="{hp_color}" stroke-width="2" filter="url(#{hp_filter})"/>
     
     <!-- Icone Flamme -->
     <circle cx="60" cy="30" r="14" fill="rgba(249,115,22,0.15)"/>
-    <text x="60" y="35" fill="#f97316" font-size="16" text-anchor="middle">🔥</text>
+    <text x="60" y="35" fill="{hp_color}" font-size="16" text-anchor="middle">{'⚠' if t_hp > 500 else '🔥'}</text>
     
+    <!-- Index Température Critique -->
+    {'''
+    <g transform="translate(105, -5)" class="pulse-index">
+        <circle cx="0" cy="0" r="12" fill="#ef4444" filter="url(#glow-red)"/>
+        <text x="0" y="4" fill="white" font-size="14" font-weight="bold" text-anchor="middle">🌡</text>
+    </g>
+    ''' if show_temp_crit else ''}
+
     <!-- Label -->
     <text x="60" y="55" fill="#f8fafc" font-size="12" font-weight="600" text-anchor="middle" letter-spacing="1">VAPEUR HP</text>
     
     <!-- Values -->
-    <text x="60" y="75" fill="#fdba74" font-size="11" class="st-mono" font-weight="700" text-anchor="middle">{p_hp:.0f} bar · {t_hp:.0f}°C</text>
+    <text x="60" y="75" fill="{hp_color}" font-size="11" class="st-mono" font-weight="700" text-anchor="middle">{p_hp:.0f} bar · {t_hp:.0f}°C</text>
     <text x="60" y="90" fill="#f8fafc" font-size="10" class="st-mono" text-anchor="middle">{q_hp:.0f} T/h</text>
   </g>
 
@@ -133,43 +219,61 @@ def create_gta_synoptic(data: dict) -> html.Div:
 
   <!-- ── 3. BLOC TURBINES (HP, MP, BP) ──────────────────────── -->
   <!-- Main Blue Box -->
-  <rect x="430" y="150" width="300" height="210" rx="12" fill="#0f172a" stroke="#3b82f6" stroke-width="2" filter="url(#glow-blue)"/>
-  <text x="580" y="180" fill="#60a5fa" font-size="14" font-weight="600" letter-spacing="2" text-anchor="middle">TURBINES HP · MP · BP</text>
+  <g class="{turb_class}">
+    <rect x="430" y="150" width="300" height="210" rx="12" fill="#0f172a" stroke="#3b82f6" stroke-width="2" filter="url(#glow-blue)"/>
+    <text x="580" y="180" fill="#60a5fa" font-size="14" font-weight="600" letter-spacing="2" text-anchor="middle">{'⚠ INSTABLE' if speed > 6500 else 'TURBINES HP · MP · BP'}</text>
 
-  <!-- Sub-box HP -->
-  <g transform="translate(450, 200)">
-    <rect x="0" y="0" width="70" height="90" rx="4" fill="transparent" stroke="#3b82f6" stroke-width="1" stroke-dasharray="4,2"/>
-    <text x="35" y="20" fill="#cbd5e1" font-size="12" font-weight="600" text-anchor="middle">HP</text>
-    <!-- Diagonales Turbine -->
-    <line x1="10" y1="30" x2="60" y2="60" stroke="#3b82f6" stroke-width="1"/>
-    <line x1="10" y1="60" x2="60" y2="30" stroke="#3b82f6" stroke-width="1"/>
-    
-    <text x="35" y="75" fill="#60a5fa" font-size="9" class="st-mono" text-anchor="middle">{speed:.0f} RPM</text>
-    <text x="35" y="85" fill="#f8fafc" font-size="9" class="st-mono" text-anchor="middle">η = 88%</text>
-  </g>
+    <!-- Index Instabilité (Eclair) -->
+    {'''
+    <g transform="translate(715, 165)" class="pulse-index">
+        <circle cx="0" cy="0" r="12" fill="#f59e0b" filter="url(#glow-orange)"/>
+        <text x="0" y="4" fill="white" font-size="14" font-weight="bold" text-anchor="middle">⚡</text>
+    </g>
+    ''' if show_speed_crit else ''}
 
-  <!-- Sub-box MP -->
-  <g transform="translate(540, 200)">
-    <rect x="0" y="0" width="70" height="90" rx="4" fill="transparent" stroke="#3b82f6" stroke-width="1" stroke-dasharray="4,2"/>
-    <text x="35" y="20" fill="#cbd5e1" font-size="12" font-weight="600" text-anchor="middle">MP</text>
-    <!-- Diagonales Turbine -->
-    <line x1="10" y1="30" x2="60" y2="60" stroke="#3b82f6" stroke-width="1"/>
-    <line x1="10" y1="60" x2="60" y2="30" stroke="#3b82f6" stroke-width="1"/>
-    
-    <text x="35" y="75" fill="#60a5fa" font-size="9" class="st-mono" text-anchor="middle">Étage 2</text>
-    <text x="35" y="85" fill="#f8fafc" font-size="9" class="st-mono" text-anchor="middle">η = 91%</text>
-  </g>
+    <!-- Index Rendement Faible -->
+    {'''
+    <g transform="translate(445, 165)" class="pulse-index">
+        <circle cx="0" cy="0" r="12" fill="#6366f1" filter="url(#glow-blue)"/>
+        <text x="0" y="4" fill="white" font-size="14" font-weight="bold" text-anchor="middle">📉</text>
+    </g>
+    ''' if show_eff_crit else ''}
 
-  <!-- Sub-box BP -->
-  <g transform="translate(630, 200)">
-    <rect x="0" y="0" width="70" height="90" rx="4" fill="transparent" stroke="#3b82f6" stroke-width="1" stroke-dasharray="4,2"/>
-    <text x="35" y="20" fill="#cbd5e1" font-size="12" font-weight="600" text-anchor="middle">BP</text>
-    <!-- Diagonales Turbine -->
-    <line x1="10" y1="30" x2="60" y2="60" stroke="#3b82f6" stroke-width="1"/>
-    <line x1="10" y1="60" x2="60" y2="30" stroke="#3b82f6" stroke-width="1"/>
-    
-    <text x="35" y="75" fill="#60a5fa" font-size="9" class="st-mono" text-anchor="middle">Étage 3</text>
-    <text x="35" y="85" fill="#f8fafc" font-size="9" class="st-mono" text-anchor="middle">η = 87%</text>
+    <!-- Sub-box HP -->
+    <g transform="translate(450, 200)">
+        <rect x="0" y="0" width="70" height="90" rx="4" fill="transparent" stroke="#3b82f6" stroke-width="1" stroke-dasharray="4,2"/>
+        <text x="35" y="20" fill="#cbd5e1" font-size="12" font-weight="600" text-anchor="middle">HP</text>
+        <!-- Diagonales Turbine -->
+        <line x1="10" y1="30" x2="60" y2="60" stroke="#3b82f6" stroke-width="1"/>
+        <line x1="10" y1="60" x2="60" y2="30" stroke="#3b82f6" stroke-width="1"/>
+        
+        <text x="35" y="75" fill="#60a5fa" font-size="9" class="st-mono" text-anchor="middle">{speed:.0f} RPM</text>
+        <text x="35" y="85" fill="#f8fafc" font-size="9" class="st-mono" text-anchor="middle">η = {eff:.0f}%</text>
+    </g>
+
+    <!-- Sub-box MP -->
+    <g transform="translate(540, 200)">
+        <rect x="0" y="0" width="70" height="90" rx="4" fill="transparent" stroke="#3b82f6" stroke-width="1" stroke-dasharray="4,2"/>
+        <text x="35" y="20" fill="#cbd5e1" font-size="12" font-weight="600" text-anchor="middle">MP</text>
+        <!-- Diagonales Turbine -->
+        <line x1="10" y1="30" x2="60" y2="60" stroke="#3b82f6" stroke-width="1"/>
+        <line x1="10" y1="60" x2="60" y2="30" stroke="#3b82f6" stroke-width="1"/>
+        
+        <text x="35" y="75" fill="#60a5fa" font-size="9" class="st-mono" text-anchor="middle">Étage 2</text>
+        <text x="35" y="85" fill="#f8fafc" font-size="9" class="st-mono" text-anchor="middle">η = 91%</text>
+    </g>
+
+    <!-- Sub-box BP -->
+    <g transform="translate(630, 200)">
+        <rect x="0" y="0" width="70" height="90" rx="4" fill="transparent" stroke="#3b82f6" stroke-width="1" stroke-dasharray="4,2"/>
+        <text x="35" y="20" fill="#cbd5e1" font-size="12" font-weight="600" text-anchor="middle">BP</text>
+        <!-- Diagonales Turbine -->
+        <line x1="10" y1="30" x2="60" y2="60" stroke="#3b82f6" stroke-width="1"/>
+        <line x1="10" y1="60" x2="60" y2="30" stroke="#3b82f6" stroke-width="1"/>
+        
+        <text x="35" y="75" fill="#60a5fa" font-size="9" class="st-mono" text-anchor="middle">Étage 3</text>
+        <text x="35" y="85" fill="#f8fafc" font-size="9" class="st-mono" text-anchor="middle">η = 87%</text>
+    </g>
   </g>
 
   <!-- Arbre de transmission Turbine commun -->
@@ -204,9 +308,18 @@ def create_gta_synoptic(data: dict) -> html.Div:
 
   <!-- Condenseur Box -->
   <g transform="translate(540, 470)">
-    <rect x="0" y="0" width="160" height="50" rx="8" fill="#0f172a" stroke="#3b82f6" stroke-width="2"/>
+    <rect x="0" y="0" width="160" height="50" rx="8" fill="#0f172a" stroke="{bp_color}" stroke-width="2"/>
+    
+    <!-- Index Surpression Condenseur -->
+    {'''
+    <g transform="translate(150, -5)" class="pulse-index">
+        <circle cx="0" cy="0" r="12" fill="#ef4444" filter="url(#glow-red)"/>
+        <text x="0" y="4" fill="white" font-size="14" font-weight="bold" text-anchor="middle">⚠</text>
+    </g>
+    ''' if show_pres_crit else ''}
+
     <text x="80" y="16" fill="#f8fafc" font-size="11" font-weight="600" letter-spacing="1" text-anchor="middle">CONDENSEUR</text>
-    <text x="80" y="30" fill="#60a5fa" font-size="10" class="st-mono" text-anchor="middle">{p_bp:.1f} bar · {t_bp:.0f}°C</text>
+    <text x="80" y="30" fill="{bp_color if p_bp <= 6 else '#ef4444'}" font-size="10" class="st-mono" text-anchor="middle">{p_bp:.1f} bar · {t_bp:.0f}°C</text>
     <text x="80" y="42" fill="#94a3b8" font-size="9" text-anchor="middle">64 T/h cogénération</text>
   </g>
 
@@ -236,17 +349,17 @@ def create_gta_synoptic(data: dict) -> html.Div:
 
   <!-- ── 6. ALTERNATEUR ─────────────────────────────────────── -->
   <g transform="translate(920, 175)">
-    <rect x="0" y="0" width="120" height="140" rx="12" fill="#0f172a" stroke="#10b981" stroke-width="2" filter="url(#glow-green)"/>
+    <rect x="0" y="0" width="120" height="140" rx="12" fill="#0f172a" stroke="{alt_color}" stroke-width="2" filter="url(#{alt_filter})"/>
     <text x="60" y="24" fill="#f8fafc" font-size="12" font-weight="600" text-anchor="middle" letter-spacing="1">ALTERNATEUR</text>
     
     <!-- Sine wave symbol (big green circle) -->
-    <circle cx="60" cy="64" r="28" fill="rgba(16,185,129,0.1)" stroke="#10b981" stroke-width="2"/>
-    <text x="60" y="72" fill="#10b981" font-size="24" text-anchor="middle">~</text>
+    <circle cx="60" cy="64" r="28" fill="rgba(16,185,129,0.1)" stroke="{alt_color}" stroke-width="2"/>
+    <text x="60" y="72" fill="{alt_color}" font-size="24" text-anchor="middle">~</text>
     
     <!-- Specs -->
     <text x="60" y="106" fill="#34d399" font-size="10" class="st-mono" font-weight="700" text-anchor="middle">41 MVA · 10.5 kV</text>
     <text x="60" y="120" fill="#f8fafc" font-size="10" class="st-mono" text-anchor="middle">cos φ = {pf:.3f}</text>
-    <text x="60" y="132" fill="#10b981" font-size="10" font-weight="600" text-anchor="middle">{power:.1f} MW actifs</text>
+    <text x="60" y="132" fill="{alt_color}" font-size="10" font-weight="600" text-anchor="middle">{power:.1f} MW actifs</text>
   </g>
 
   <!-- Ligne A -> Réseau -->
