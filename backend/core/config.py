@@ -75,9 +75,9 @@ THRESHOLDS = {
     "temperature_hp": {"min": 440.0,  "max": 500.0},
     "steam_flow_hp":  {"min": 100.0,  "max": 130.0},
     "turbine_speed":  {"min": 6300.0, "max": 6500.0},
-    "active_power":   {"min": 0.0,    "max": 32.0},
+    "active_power":   {"min": 10.0,   "max": 32.0},
     "power_factor":   {"min": 0.80,   "max": 0.90},
-    "efficiency":     {"min": 85.0,   "max": 100.0},
+    "efficiency":     {"min": 88.0,   "max": 100.0},
     "pressure_bp":    {"min": 3.5,    "max": 6.0},
     "temperature_bp": {"min": 180.0,  "max": 270.0},
 }

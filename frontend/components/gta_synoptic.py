@@ -83,10 +83,12 @@ def create_gta_synoptic(data: dict) -> html.Div:
     turb_class = "vibrate" if speed > 6500 else ""
 
     # 6. Indices Critiques
-    show_temp_crit = t_hp > 500
-    show_pres_crit = p_bp > 6.0
-    show_eff_crit  = eff < 85.0
-    show_speed_crit = speed > 6500
+    show_temp_crit  = t_hp > 500
+    show_pres_crit  = p_bp > 6.0
+    show_pres_low   = p_hp < 55.0
+    show_eff_crit   = eff < 88.0
+    show_speed_crit = speed > 6500 or speed < 6300
+    show_power_low  = power < 15.0
     active_scenario = data.get("scenario")
 
     sc = _status_stroke(status) 
@@ -172,8 +174,8 @@ def create_gta_synoptic(data: dict) -> html.Div:
 
   <!-- Badge Scénario Actif -->
   {f'''
-  <g transform="translate(950, 15)">
-    <rect x="0" y="0" width="280" height="30" rx="15" fill="rgba(239, 68, 68, 0.1)" stroke="#ef4444" stroke-width="1"/>
+  <g transform="translate({1245 - (110 + len(active_scenario)*8)}, 15)">
+    <rect x="0" y="0" width="{110 + len(active_scenario)*8}" height="30" rx="15" fill="rgba(239, 68, 68, 0.1)" stroke="#ef4444" stroke-width="1"/>
     <circle cx="15" cy="15" r="6" fill="#ef4444" class="pulse-crit"/>
     <text x="30" y="20" fill="#ef4444" font-size="12" font-weight="600">SCÉNARIO : {active_scenario.upper()}</text>
   </g>
@@ -195,6 +197,14 @@ def create_gta_synoptic(data: dict) -> html.Div:
         <text x="0" y="4" fill="white" font-size="14" font-weight="bold" text-anchor="middle">🌡</text>
     </g>
     ''' if show_temp_crit else ''}
+
+    <!-- Index Pression Faible -->
+    {'''
+    <g transform="translate(105, 25)" class="pulse-index">
+        <circle cx="0" cy="0" r="12" fill="#f59e0b" filter="url(#glow-orange)"/>
+        <text x="0" y="4" fill="white" font-size="14" font-weight="bold" text-anchor="middle">📉</text>
+    </g>
+    ''' if show_pres_low else ''}
 
     <!-- Label -->
     <text x="60" y="55" fill="#f8fafc" font-size="12" font-weight="600" text-anchor="middle" letter-spacing="1">VAPEUR HP</text>
@@ -352,6 +362,13 @@ def create_gta_synoptic(data: dict) -> html.Div:
     <rect x="0" y="0" width="120" height="140" rx="12" fill="#0f172a" stroke="{alt_color}" stroke-width="2" filter="url(#{alt_filter})"/>
     <text x="60" y="24" fill="#f8fafc" font-size="12" font-weight="600" text-anchor="middle" letter-spacing="1">ALTERNATEUR</text>
     
+    <!-- Index Puissance Faible -->
+    {'''
+    <g transform="translate(105, -5)" class="pulse-index">
+        <circle cx="0" cy="0" r="12" fill="#ef4444" filter="url(#glow-red)"/>
+        <text x="0" y="4" fill="white" font-size="14" font-weight="bold" text-anchor="middle">⚠</text>
+    </g>
+    ''' if show_power_low else ''}
     <!-- Sine wave symbol (big green circle) -->
     <circle cx="60" cy="64" r="28" fill="rgba(16,185,129,0.1)" stroke="{alt_color}" stroke-width="2"/>
     <text x="60" y="72" fill="{alt_color}" font-size="24" text-anchor="middle">~</text>

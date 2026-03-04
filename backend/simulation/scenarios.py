@@ -18,8 +18,8 @@ SCENARIOS: dict[int, Scenario] = {
                     "Entraîne une chute de puissance et de vitesse turbine.",
         perturbation_type="ramp",
         target_deltas={
-            "pressure_hp":    -8.0,    # bar  → descend à ~52 bar
-            "steam_flow_hp":  -15.0,   # T/h  → débit réduit
+            "pressure_hp":    -15.0,   # bar  → descend à ~45 bar (seuil 55)
+            "steam_flow_hp":  -30.0,   # T/h  → débit réduit
         },
         duration_s=120,
     ),
@@ -31,7 +31,7 @@ SCENARIOS: dict[int, Scenario] = {
                     "Risque de fatigue thermique des ailettes.",
         perturbation_type="ramp",
         target_deltas={
-            "temperature_hp": +20.0,   # °C  → monte à ~506°C (seuil critique)
+            "temperature_hp": +40.0,   # °C  → monte à ~510°C (seuil critique 500)
         },
         duration_s=90,
     ),
@@ -55,8 +55,8 @@ SCENARIOS: dict[int, Scenario] = {
                     "emballement transitoire possible de la turbine.",
         perturbation_type="step",
         target_deltas={
-            "steam_flow_hp":  -80.0,   # T/h  → débit très réduit
-            "pressure_hp":    -5.0,
+            "steam_flow_hp":  -100.0,  # T/h  → débit très réduit (~20 T/h)
+            "pressure_hp":    -10.0,
         },
         duration_s=45,
     ),
