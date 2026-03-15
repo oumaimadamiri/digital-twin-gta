@@ -1,11 +1,17 @@
 """
-simulation/valve_controller.py — Logique de contrôle des vannes V1, V2, V3
-Gère les règles de sécurité, les rampes d'ouverture/fermeture et les
-interdépendances entre les vannes du GTA.
+simulation/valve_controller.py — Contrôleur des 5 vannes du GTA (régime permanent)
 
-  V1 — Vanne d'admission vapeur HP  (amont turbine)
-  V2 — Vanne d'extraction intermédiaire MP (entre étages HP et BP)
-  V3 — Vanne de sortie vapeur BP   (vers condenseur / cogénération)
+Architecture :
+  V1  — Admission vapeur HP principale (80% du débit)
+  V2  — Équilibrage mécanique turbine (~7%) — pas dans le bilan thermo
+  V3  — Équilibrage mécanique turbine (~7%) — pas dans le bilan thermo
+  MP  — Extraction vapeur MP vers barillet
+  BP  — Sortie vapeur BP vers condenseur (min 5% sécurité)
+
+Règles de sécurité intégrées :
+  - valve_bp ≥ 5% si V1 > 10% (pression condenseur)
+  - valve_mp < 80% si active_power > 22 MW (risque surpression barillet)
+  - Fermeture rapide V1 → alerte choc thermique
 """
 
 import time
@@ -16,81 +22,77 @@ from typing import Optional
 logger = logging.getLogger("gta.valves")
 
 
-# ─────────────────────────────────────────────
-# CONFIGURATION DES VANNES
-# ─────────────────────────────────────────────
-
 @dataclass
 class ValveConfig:
-    """Paramètres physiques et limites d'une vanne."""
-    name:           str
-    min_opening:    float = 0.0          # % ouverture minimale autorisée
-    max_opening:    float = 100.0        # % ouverture maximale autorisée
-    ramp_rate:      float = 10.0         # %/s — vitesse max de variation
-    default:        float = 100.0        # % — position nominale
-    # Seuils d'alarme
-    warning_low:    float = 20.0         # % — alerte si en dessous
-    warning_high:   float = 95.0         # % — alerte si au-dessus (pour V2/V3)
+    name:         str
+    min_opening:  float = 0.0
+    max_opening:  float = 100.0
+    ramp_rate:    float = 10.0    # %/s
+    default:      float = 100.0
+    warning_low:  float = 20.0
 
 
 VALVE_CONFIGS: dict[str, ValveConfig] = {
     "v1": ValveConfig(
-        name         = "V1 — Admission HP",
-        min_opening  = 0.0,
-        max_opening  = 100.0,
-        ramp_rate    = 5.0,      # ouverture lente pour éviter les chocs thermiques
-        default      = 100.0,
-        warning_low  = 30.0,
+        name        = "V1 — Admission HP (80% débit)",
+        min_opening = 0.0,
+        max_opening = 100.0,
+        ramp_rate   = 5.0,     # ouverture lente (chocs thermiques)
+        default     = 100.0,
+        warning_low = 30.0,
     ),
     "v2": ValveConfig(
-        name         = "V2 — Extraction MP",
-        min_opening  = 0.0,
-        max_opening  = 100.0,
-        ramp_rate    = 15.0,
-        default      = 100.0,
-        warning_low  = 10.0,
+        name        = "V2 — Équilibrage mécanique",
+        min_opening = 0.0,
+        max_opening = 100.0,
+        ramp_rate   = 15.0,
+        default     = 100.0,
+        warning_low = 10.0,
     ),
     "v3": ValveConfig(
-        name         = "V3 — Sortie BP",
-        min_opening  = 5.0,      # ne doit jamais être totalement fermée (sécurité)
-        max_opening  = 100.0,
-        ramp_rate    = 15.0,
-        default      = 100.0,
-        warning_low  = 10.0,
+        name        = "V3 — Équilibrage mécanique",
+        min_opening = 0.0,
+        max_opening = 100.0,
+        ramp_rate   = 15.0,
+        default     = 100.0,
+        warning_low = 10.0,
+    ),
+    "mp": ValveConfig(
+        name        = "Vanne MP — Extraction vers barillet",
+        min_opening = 0.0,
+        max_opening = 100.0,
+        ramp_rate   = 10.0,
+        default     = 50.0,    # nominale ~50%
+        warning_low = 5.0,
+    ),
+    "bp": ValveConfig(
+        name        = "Vanne BP — Sortie vers condenseur",
+        min_opening = 5.0,     # ne doit jamais être totalement fermée
+        max_opening = 100.0,
+        ramp_rate   = 15.0,
+        default     = 80.0,    # nominale ~80%
+        warning_low = 10.0,
     ),
 }
 
 
-# ─────────────────────────────────────────────
-# ÉTAT D'UNE VANNE
-# ─────────────────────────────────────────────
-
 @dataclass
 class ValveState:
-    """État courant d'une vanne (position + rampe en cours)."""
-    current:    float        # % position actuelle
-    target:     float        # % position cible (pour rampe)
-    config:     ValveConfig
+    current:  float
+    target:   float
+    config:   ValveConfig
     _last_update: float = field(default_factory=time.time, repr=False)
 
     def step(self, dt: float) -> bool:
-        """
-        Avance la rampe d'ouverture/fermeture sur un pas de temps dt (secondes).
-        Retourne True si la position cible est atteinte.
-        """
         if abs(self.current - self.target) < 0.05:
             self.current = self.target
             return True
-
         max_delta = self.config.ramp_rate * dt
         delta     = self.target - self.current
-
         if abs(delta) <= max_delta:
             self.current = self.target
         else:
             self.current += max_delta * (1 if delta > 0 else -1)
-
-        # Contraindre dans les limites physiques
         self.current = max(self.config.min_opening,
                            min(self.config.max_opening, self.current))
         self._last_update = time.time()
@@ -102,7 +104,6 @@ class ValveState:
 
     @property
     def status(self) -> str:
-        """Retourne le statut de la vanne : OPEN / PARTIAL / CLOSED / MOVING."""
         if self.is_moving:
             return "MOVING"
         if self.current >= 95.0:
@@ -112,69 +113,53 @@ class ValveState:
         return "PARTIAL"
 
 
-# ─────────────────────────────────────────────
-# CONTRÔLEUR PRINCIPAL
-# ─────────────────────────────────────────────
-
 class ValveController:
-    """
-    Gestionnaire des 3 vannes du GTA.
-
-    Responsabilités :
-      - Appliquer les commandes opérateur avec contraintes physiques
-      - Gérer les rampes d'ouverture/fermeture
-      - Vérifier les interdépendances (ex : V3 ne peut pas être fermée si V1 ouverte)
-      - Fournir les positions courantes au FakeAPI
-    """
+    """Gestionnaire des 5 vannes du GTA en régime permanent."""
 
     def __init__(self):
         self._valves: dict[str, ValveState] = {
-            key: ValveState(
-                current = cfg.default,
-                target  = cfg.default,
-                config  = cfg,
-            )
+            key: ValveState(current=cfg.default, target=cfg.default, config=cfg)
             for key, cfg in VALVE_CONFIGS.items()
         }
+        self._current_power_mw: float = 0.0   # mise à jour par FakeAPI
 
-    # ──────────────────────────────────────────
-    # COMMANDES
-    # ──────────────────────────────────────────
+    def update_power(self, active_power_mw: float):
+        """Informe le contrôleur de la puissance actuelle (pour les règles de sécurité)."""
+        self._current_power_mw = active_power_mw
 
     def set_valve(self, valve_id: str, target_pct: float) -> dict:
-        """
-        Commande une vanne vers une position cible (0–100%).
-        Applique les règles de sécurité avant d'accepter la commande.
-        Retourne un dict {accepted, message, target}.
-        """
+        """Commande une vanne avec vérification des règles de sécurité."""
         valve_id = valve_id.lower()
         if valve_id not in self._valves:
-            return {"accepted": False, "message": f"Vanne {valve_id} inconnue"}
+            return {"accepted": False, "message": f"Vanne '{valve_id}' inconnue"}
 
         valve  = self._valves[valve_id]
         config = valve.config
 
-        # 1) Contrainte de plage
         clamped = max(config.min_opening, min(config.max_opening, target_pct))
-        if clamped != target_pct:
-            logger.warning(
-                f"[ValveCtrl] {valve_id} : consigne {target_pct:.1f}% "
-                f"ramenée à {clamped:.1f}% (limites [{config.min_opening}, {config.max_opening}])"
-            )
 
-        # 2) Règle de sécurité : V3 ne peut pas descendre sous 5% si V1 > 10%
-        if valve_id == "v3" and clamped < 5.0:
-            v1_pos = self._valves["v1"].current
-            if v1_pos > 10.0:
+        # ── Règle 1 : valve_bp ≥ 5% si V1 > 10% ──
+        if valve_id == "bp" and clamped < 5.0:
+            if self._valves["v1"].current > 10.0:
                 return {
                     "accepted": False,
-                    "message":  "Sécurité : V3 ne peut pas fermer si V1 est ouverte (>10%). "
-                                "Fermez d'abord V1.",
+                    "message":  "Sécurité : valve BP ne peut pas fermer si V1 > 10%. Fermez d'abord V1.",
                 }
 
-        # 3) Alerte si V1 fermée brusquement
+        # ── Règle 2 : valve_mp < 80% si puissance > 22 MW ──
+        if valve_id == "mp" and clamped > 80.0 and self._current_power_mw > 22.0:
+            return {
+                "accepted": False,
+                "message":  (
+                    f"Sécurité : valve MP limitée à 80% si puissance > 22 MW "
+                    f"(actuelle {self._current_power_mw:.1f} MW). "
+                    "Risque surpression barillet BP."
+                ),
+            }
+
+        # ── Alerte : fermeture rapide V1 ──
         if valve_id == "v1" and clamped < 20.0 and valve.current > 60.0:
-            logger.warning("[ValveCtrl] Fermeture rapide de V1 détectée — choc thermique possible")
+            logger.warning("[ValveCtrl] Fermeture rapide V1 — risque choc thermique")
 
         valve.target = clamped
         logger.info(f"[ValveCtrl] {config.name} → cible {clamped:.1f}%")
@@ -184,50 +169,35 @@ class ValveController:
             "target":   clamped,
         }
 
-    def set_all(self, v1: Optional[float] = None,
-                v2: Optional[float] = None,
-                v3: Optional[float] = None) -> dict:
-        """Commande simultanée des 3 vannes."""
+    def set_all(self, v1: Optional[float] = None, v2: Optional[float] = None,
+                v3: Optional[float] = None, valve_mp: Optional[float] = None,
+                valve_bp: Optional[float] = None) -> dict:
         results = {}
-        if v1 is not None:
-            results["v1"] = self.set_valve("v1", v1)
-        if v2 is not None:
-            results["v2"] = self.set_valve("v2", v2)
-        if v3 is not None:
-            results["v3"] = self.set_valve("v3", v3)
+        for key, val in [("v1", v1), ("v2", v2), ("v3", v3),
+                         ("mp", valve_mp), ("bp", valve_bp)]:
+            if val is not None:
+                results[key] = self.set_valve(key, val)
         return results
 
     def reset_to_nominal(self):
-        """Ramène toutes les vannes à leur position nominale."""
         for key, valve in self._valves.items():
             valve.target = valve.config.default
-        logger.info("[ValveCtrl] Réinitialisation nominale demandée")
+        logger.info("[ValveCtrl] Réinitialisation nominale")
 
     def emergency_close(self):
-        """Fermeture d'urgence de V1 uniquement (coupe l'admission vapeur)."""
+        """Fermeture d'urgence V1 (coupe admission vapeur HP)."""
         self._valves["v1"].current = 0.0
         self._valves["v1"].target  = 0.0
-        logger.critical("[ValveCtrl] FERMETURE D'URGENCE V1 déclenchée !")
-
-    # ──────────────────────────────────────────
-    # MISE À JOUR (appelée par FakeAPI à chaque tick)
-    # ──────────────────────────────────────────
+        logger.critical("[ValveCtrl] FERMETURE D'URGENCE V1 !")
 
     def update(self, dt: float = 0.5):
-        """Avance les rampes de toutes les vannes sur un pas dt (secondes)."""
         for valve in self._valves.values():
             valve.step(dt)
 
-    # ──────────────────────────────────────────
-    # LECTURE
-    # ──────────────────────────────────────────
-
     def get_positions(self) -> dict[str, float]:
-        """Retourne les positions courantes (utilisé par FakeAPI)."""
         return {key: round(v.current, 2) for key, v in self._valves.items()}
 
     def get_state(self) -> dict:
-        """Retourne l'état détaillé de toutes les vannes."""
         return {
             key: {
                 "name":     v.config.name,
@@ -240,31 +210,22 @@ class ValveController:
         }
 
     def get_warnings(self) -> list[str]:
-        """Retourne les avertissements de position anormale."""
         warnings = []
         for key, valve in self._valves.items():
             if valve.current < valve.config.warning_low and valve.status != "CLOSED":
-                warnings.append(
-                    f"{valve.config.name} : position faible ({valve.current:.1f}%)"
-                )
+                warnings.append(f"{valve.config.name} : position faible ({valve.current:.1f}%)")
         return warnings
 
-    # ──────────────────────────────────────────
-    # PROPRIÉTÉS RAPIDES
-    # ──────────────────────────────────────────
-
     @property
-    def v1(self) -> float:
-        return self._valves["v1"].current
-
+    def v1(self) -> float: return self._valves["v1"].current
     @property
-    def v2(self) -> float:
-        return self._valves["v2"].current
-
+    def v2(self) -> float: return self._valves["v2"].current
     @property
-    def v3(self) -> float:
-        return self._valves["v3"].current
+    def v3(self) -> float: return self._valves["v3"].current
+    @property
+    def valve_mp(self) -> float: return self._valves["mp"].current
+    @property
+    def valve_bp(self) -> float: return self._valves["bp"].current
 
 
-# Instance globale partagée avec FakeAPI
 valve_controller = ValveController()

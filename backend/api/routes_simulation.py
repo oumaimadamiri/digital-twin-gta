@@ -13,7 +13,7 @@ router = APIRouter(prefix="/simulation", tags=["Simulation"])
 
 @router.get("/scenarios")
 def list_scenarios():
-    """Retourne la liste des 7 scénarios disponibles."""
+    """Retourne la liste des 10 scénarios disponibles."""
     return get_all_scenarios()
 
 
@@ -54,14 +54,16 @@ def reset_simulation(_: ResetCommand = None):
 
 @router.post("/valves")
 def set_valves(cmd: ValveCommand):
-    """Modifie l'ouverture des vannes V1, V2, V3 (0-100%)."""
-    fake_api.set_valves(v1=cmd.valve_v1, v2=cmd.valve_v2, v3=cmd.valve_v3)
+    """Modifie l'ouverture des 5 vannes V1, V2, V3, MP, BP (0-100%)."""
+    fake_api.set_valves(
+        v1=cmd.valve_v1, v2=cmd.valve_v2, v3=cmd.valve_v3,
+        v_mp=cmd.valve_mp, v_bp=cmd.valve_bp,
+    )
     return {
         "status": "updated",
         "valves": {
-            "v1": cmd.valve_v1,
-            "v2": cmd.valve_v2,
-            "v3": cmd.valve_v3,
+            "v1": cmd.valve_v1, "v2": cmd.valve_v2, "v3": cmd.valve_v3,
+            "mp": cmd.valve_mp, "bp": cmd.valve_bp,
         },
     }
 
@@ -79,5 +81,7 @@ def get_simulation_state():
             "v1": params.valve_v1,
             "v2": params.valve_v2,
             "v3": params.valve_v3,
+            "mp": params.valve_mp,
+            "bp": params.valve_bp,
         },
     }

@@ -99,5 +99,5 @@ def layout():
             dcc.Interval(id="interval-ai", interval=5000, n_intervals=0),
 
         ], className="page-content"),
-    ], className="main-content")
+    ], className="main-content-wrap")
 

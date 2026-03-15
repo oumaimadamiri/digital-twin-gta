@@ -34,6 +34,8 @@ class FakeAPI:
             "valve_v1":       NOMINAL["valve_v1"],
             "valve_v2":       NOMINAL["valve_v2"],
             "valve_v3":       NOMINAL["valve_v3"],
+            "valve_mp":       NOMINAL["valve_mp"],
+            "valve_bp":       NOMINAL["valve_bp"],
         }
 
         # Scénario actif
@@ -103,6 +105,8 @@ class FakeAPI:
             "valve_v1":       NOMINAL["valve_v1"],
             "valve_v2":       NOMINAL["valve_v2"],
             "valve_v3":       NOMINAL["valve_v3"],
+            "valve_mp":       NOMINAL["valve_mp"],
+            "valve_bp":       NOMINAL["valve_bp"],
         }
         self._active_scenario      = None
         self._scenario_start_time  = None
@@ -145,6 +149,8 @@ class FakeAPI:
             "valve_v1":       NOMINAL["valve_v1"],
             "valve_v2":       NOMINAL["valve_v2"],
             "valve_v3":       NOMINAL["valve_v3"],
+            "valve_mp":       NOMINAL["valve_mp"],
+            "valve_bp":       NOMINAL["valve_bp"],
         }
         # On n'ajoute pas de bruit sur les vannes si elles sont à 100% nominal
         # pour éviter le biais vers le bas (car 100% est le maximum physique).
@@ -175,6 +181,8 @@ class FakeAPI:
             valve_v1       = state_sim["valve_v1"],
             valve_v2       = state_sim["valve_v2"],
             valve_v3       = state_sim["valve_v3"],
+            valve_mp       = state_sim["valve_mp"],
+            valve_bp       = state_sim["valve_bp"],
         )
         if self._power_factor_offset != 0:
             computed_sim["power_factor"] = round(

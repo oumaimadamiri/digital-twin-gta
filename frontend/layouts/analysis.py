@@ -60,7 +60,7 @@ def layout():
                 html.Div([
                     html.Div("Évolution Temporelle Multi-Paramètres", className="card-title"),
                     dcc.Graph(id="history-chart", config={"displayModeBar": True},
-                              style={"height": "300px"}),
+                               style={"height": "300px"}),
                 ], className="card", style={"marginBottom": "16px"}),
 
                 # ── STATS + DISTRIBUTION ─────────────────────
@@ -88,4 +88,4 @@ def layout():
 
             dcc.Interval(id="interval-analysis", interval=10000, n_intervals=0),
         ], className="main-content"),
-    ])
+    ], className="main-content-wrap")

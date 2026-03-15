@@ -17,10 +17,24 @@ router = APIRouter(prefix="/data", tags=["Données"])
 
 @router.get("/current")
 def get_current():
-    """Retourne le dernier snapshot NOMINAL (réel) depuis Redis."""
-    data = data_manager.get_from_cache()  # Utilise REDIS_KEY_CURRENT par défaut
+    """Retourne le dernier snapshot NOMINAL (réel) depuis Redis.
+    Fallback sur fake_api en mémoire si Redis est indisponible ou vide.
+    """
+    data = None
+    try:
+        data = data_manager.get_from_cache()
+    except Exception:
+        pass
+
     if data is None:
-        raise HTTPException(status_code=503, detail="Données non disponibles")
+        # Redis down ou clé absente (FakeAPI pas encore écrit) → mémoire directe
+        params = fake_api.get_current()
+        if params is not None:
+            data = params.model_dump(mode="json")
+
+    if data is None:
+        raise HTTPException(status_code=503, detail="FakeAPI pas encore démarrée")
+
     return JSONResponse(
         content=data,
         headers={"Cache-Control": "no-store", "X-Content-Type-Options": "nosniff"},
@@ -29,14 +43,23 @@ def get_current():
 
 @router.get("/simulated")
 def get_simulated():
-    """Retourne le dernier snapshot SIMULÉ (sandbox) depuis Redis."""
-    data = data_manager.get_from_cache(key=REDIS_KEY_SIMULATION)
+    """Retourne le dernier snapshot SIMULÉ (sandbox) depuis Redis.
+    Fallback sur fake_api en mémoire si Redis est indisponible ou vide.
+    """
+    data = None
+    try:
+        data = data_manager.get_from_cache(key=REDIS_KEY_SIMULATION)
+    except Exception:
+        pass
+
     if data is None:
         params = fake_api.get_current()
-        if params:
+        if params is not None:
             data = params.model_dump(mode="json")
-        else:
-            raise HTTPException(status_code=503, detail="Données simulation non disponibles")
+
+    if data is None:
+        raise HTTPException(status_code=503, detail="FakeAPI pas encore démarrée")
+
     return JSONResponse(
         content=data,
         headers={"Cache-Control": "no-store"},

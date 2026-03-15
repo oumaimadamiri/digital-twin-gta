@@ -111,4 +111,4 @@ def layout():
             ], style={"display": "flex", "gap": "16px"}),
 
         ], className="page-content"),
-    ], className="main-content")
+    ], className="main-content-wrap")
