@@ -21,9 +21,6 @@ Thumbs.db
 *.swp
 
 # Project Specific
-ai/saved_models/*.h5
-ai/saved_models/*.pkl
-ai/saved_models/*.npz
 backend/ai/saved_models/*.h5
 backend/ai/saved_models/*.pkl
 backend/ai/saved_models/*.npz

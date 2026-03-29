@@ -40,14 +40,26 @@ def init_db():
     import os
     os.makedirs(os.path.dirname(SQLITE_PATH), exist_ok=True)
 
+    # Liste des colonnes critiques nécessaires au bilan complet actuel
+    required_columns = [
+        "voltage", "charge_site", "excedent_reseau",
+        "flow_v1_th", "flow_v2_th", "flow_v3_th",
+        "flow_barillet", "flow_chauffage_as", "flow_surchauffeur"
+    ]
+
     with sqlite3.connect(SQLITE_PATH) as conn:
         cursor = conn.cursor()
-        cursor.execute("PRAGMA table_info(gta_history)")
-        columns = [row[1] for row in cursor.fetchall()]
         
-        # Si la table existe mais n'a pas les nouvelles colonnes (comme voltage), on la recrée
-        if columns and ("voltage" not in columns or "charge_site" not in columns):
-            conn.execute("DROP TABLE gta_history")
+        # Vérification du schéma existant
+        cursor.execute("PRAGMA table_info(gta_history)")
+        existing_columns = [row[1] for row in cursor.fetchall()]
+        
+        # Si la table existe mais manque d'au moins une colonne requise, on la recrée
+        if existing_columns:
+            missing = [col for col in required_columns if col not in existing_columns]
+            if missing:
+                print(f"Migration: Colonnes manquantes détectées ({missing}). Recréation de gta_history...")
+                conn.execute("DROP TABLE gta_history")
 
         conn.execute("""
             CREATE TABLE IF NOT EXISTS gta_history (
