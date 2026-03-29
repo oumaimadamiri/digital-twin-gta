@@ -1,12 +1,16 @@
 """
-callbacks/cb_data.py — Gestion globale des données (Master Fetch)
-Optimisé : session requests réutilisable, prevent_initial_call, skip si data inchangée.
+callbacks/cb_data.py — Master Data Fetcher (WebSocket + Polling)
+Version corrigée pour garantir l'affichage des graphiques :
+- Les données NOMINALES (Dashboard) arrivent par WebSocket.
+- Les données SIMULÉES (Sandbox) arrivent par Polling.
+- L'HISTORIQUE est maintenu et TOUJOURS renvoyé pour éviter les graphiques vides.
 """
+import json
 import requests
-from dash import Input, Output, State, no_update
+from dash import Input, Output, State, no_update, callback_context
 from config import BACKEND
 
-# Session HTTP réutilisable (connexion persistante, ~3x plus rapide)
+# Session HTTP réutilisable
 _session = requests.Session()
 _session.headers.update({"Connection": "keep-alive"})
 _last_timestamp = None
@@ -14,37 +18,58 @@ _last_timestamp = None
 def register(app):
 
     @app.callback(
-        Output("store-current-data", "data"),
+        Output("store-current-data",    "data"),
         Output("store-simulation-data", "data"),
-        Output("store-history", "data"),
-        Input("interval-fast", "n_intervals"),
+        Output("store-history",         "data"),
+        Input("ws-data", "message"),             # Source Nominal (WS)
+        Input("interval-fast", "n_intervals"),   # Source Simulation (Polling)
+        State("store-current-data", "data"),
+        State("store-simulation-data", "data"),
         State("store-history", "data"),
-        prevent_initial_call=True,
+        prevent_initial_call=True
     )
-    def fetch_current_data(_, history):
+    def master_data_update(ws_msg, n_inv, current_nom, current_sim, history):
+        """
+        Callback central mettant à jour les 3 stores principaux.
+        Garanti que l'historique n'est jamais 'perdu' lors d'une mise à jour de simulation.
+        """
         global _last_timestamp
+        ctx = callback_context
+        if not ctx.triggered:
+            return no_update, no_update, no_update
 
-        # 1. Fetch Nominal Data (for Dashboard)
-        try:
-            r_nom = _session.get(f"{BACKEND}/data/current", timeout=1)
-            d_nom = r_nom.json()
-        except Exception:
-            d_nom = {}
-
-        # 2. Fetch Simulated Data (for Simulation Page) — même session
-        try:
-            r_sim = _session.get(f"{BACKEND}/data/simulated", timeout=1)
-            d_sim = r_sim.json()
-        except Exception:
-            d_sim = {}
-
-        # 3. Mise à jour historique uniquement si nouveau timestamp
+        trigger_id = ctx.triggered[0]["prop_id"].split(".")[0]
         history = history or []
-        if d_nom:
-            ts = d_nom.get("timestamp")
-            if ts != _last_timestamp:
-                _last_timestamp = ts
-                history.append(d_nom)
-                history = history[-60:]  # garder les 60 derniers points
 
-        return d_nom, d_sim, history
+        # 1) MISE À JOUR NOMINALE (WebSocket) -> Pousse vers Dashboard + Historique
+        if trigger_id == "ws-data":
+            if not ws_msg or not ws_msg.get("data"):
+                return no_update, no_update, no_update
+            
+            try:
+                d_nom = json.loads(ws_msg["data"])
+                
+                # Mise à jour historique
+                ts = d_nom.get("timestamp")
+                if ts != _last_timestamp:
+                    _last_timestamp = ts
+                    history.append(d_nom)
+                    history = history[-60:]
+
+                # On renvoie : Nouveau Nominal, Simulation inchangée, Nouvel Historique
+                return d_nom, no_update, history
+            except:
+                return no_update, no_update, no_update
+
+        # 2) MISE À JOUR SIMULATION (Polling) -> Pousse vers Sandbox
+        elif trigger_id == "interval-fast":
+            try:
+                r = _session.get(f"{BACKEND}/data/simulated", timeout=0.5)
+                if r.status_code == 200:
+                    d_sim = r.json()
+                    # On renvoie : Nominal inchangé, Nouvelle Simulation, Historique inchangé
+                    return no_update, d_sim, history 
+            except:
+                pass
+
+        return no_update, no_update, no_update

@@ -13,7 +13,7 @@ services:
   backend:
     build:
       context: ./backend
-      dockerfile: DockerFile
+      dockerfile: Dockerfile
     restart: always
     ports:
       - "8000:8000"
@@ -26,6 +26,21 @@ services:
       - ./backend/ai/saved_models:/app/ai/saved_models
     depends_on:
       - redis
+    env_file:
+      - .env
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    restart: always
+    ports:
+      - "8050:8050"
+    environment:
+      - BACKEND_URL=http://backend:8000
+      - PUBLIC_BACKEND_URL=http://localhost:8000
+    depends_on:
+      - backend
     env_file:
       - .env
 

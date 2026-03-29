@@ -55,33 +55,27 @@ body {
 }
 
 /* ───────────────────────────────────────────────────────── */
-/* LAYOUT: SIDEBAR                                           */
+/* LAYOUT: SIDEBAR (Now TOP NAVBAR)                          */
 /* ───────────────────────────────────────────────────────── */
 .sidebar {
-  width: var(--sidebar-width, 250px);
-  min-height: 100vh;
+  width: 100%;
+  height: 64px;
   background: var(--bg-panel);
-  border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
   position: fixed;
   top: 0;
   left: 0;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 24px;
   z-index: 100;
-  transition: width var(--tr);
 }
 
-.sidebar.minimized {
-  --sidebar-width: 80px;
-}
 
-.sidebar.minimized .hide-minimized {
-  display: none;
-}
 
 .sidebar-logo {
-  padding: 24px 20px;
-  border-bottom: 1px solid var(--border);
   display: flex;
   align-items: center;
   gap: 12px;
@@ -123,21 +117,14 @@ body {
   font-weight: 500;
 }
 
-.nav-label {
-  padding: 24px 20px 8px;
-  font-size: 10px;
-  font-weight: 600;
-  color: var(--text3);
-  letter-spacing: 1.5px;
-  text-transform: uppercase;
-}
+
 
 .nav-item {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 12px 20px;
-  margin: 4px 12px;
+  gap: 8px;
+  padding: 8px 16px;
+  margin: 0 4px;
   border-radius: var(--r);
   color: var(--text2);
   font-size: 14px;
@@ -165,9 +152,6 @@ body {
 }
 
 .sidebar-footer {
-  margin-top: auto;
-  padding: 20px;
-  border-top: 1px solid var(--border);
   display: flex;
   align-items: center;
   gap: 12px;
@@ -198,16 +182,10 @@ body {
 /* TOPBAR                                                    */
 /* ───────────────────────────────────────────────────────── */
 .main-content {
-  margin-left: 250px;
-  min-height: 100vh;
+  margin-top: 64px;
+  min-height: calc(100vh - 64px);
   display: flex;
   flex-direction: column;
-  transition: margin-left var(--tr);
-}
-
-/* If parent of main-content has a minimized sidebar */
-.main-content-wrap:has(.sidebar.minimized) .main-content {
-  margin-left: 80px;
 }
 
 .topbar {
@@ -219,7 +197,7 @@ body {
   justify-content: space-between;
   padding: 0 32px;
   position: sticky;
-  top: 0;
+  top: 64px;
   z-index: 50;
 }
 

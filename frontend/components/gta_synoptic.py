@@ -33,12 +33,11 @@ def _alarm(val, lo, hi):
     """Retourne True si la valeur est hors plage normale."""
     return val < lo or val > hi
 
-def _tag(x, y, label, value, unit, alarm=False, anchor="middle"):
+def _tag(x, y, label, value, unit, alarm=False, anchor="middle", w=90):
     """Génère un tag SCADA (boîte label + valeur)."""
     val_color = "#ef4444" if alarm else "#e2e8f0"
     bkg       = "rgba(239,68,68,0.12)" if alarm else "rgba(15,23,42,0.75)"
     border    = "#ef4444" if alarm else "#1e3a5f"
-    w = 90
     return f"""
     <g>
       <rect x="{x - w//2 if anchor=='middle' else x}" y="{y}" width="{w}" height="34"
@@ -135,7 +134,7 @@ def create_gta_synoptic(data: dict) -> html.Div:
     t_warn_design = t_hp < 460  # sous 460°C = on est en mode opérationnel dégradé
 
     svg = f"""
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 620"
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -30 1400 680"
      width="100%" height="100%"
      style="font-family:'Share Tech Mono',monospace;background:transparent">
   <defs>
@@ -287,12 +286,12 @@ def create_gta_synoptic(data: dict) -> html.Div:
   <text x="330" y="155" fill="#60a5fa" font-size="8" text-anchor="middle">Équilibrage ~7%</text>
 
   <!-- V3 équilibrage bas — départ AVANT turbine (x<385) -->
-  <line x1="295" y1="265" x2="295" y2="345"
+  <line x1="295" y1="265" x2="295" y2="280"
         stroke="#60a5fa" stroke-width="2.5" stroke-dasharray="5,3"/>
-  {_valve_symbol(295, 350, v3, "V3", vc3, 13)}
-  <line x1="295" y1="363" x2="390" y2="363"
+  {_valve_symbol(295, 293, v3, "V3", vc3, 13)}
+  <line x1="295" y1="306" x2="390" y2="306"
         stroke="#60a5fa" stroke-width="2.5" stroke-dasharray="5,3"/>
-  <text x="342" y="378" fill="#60a5fa" font-size="8" text-anchor="middle">Équilibrage ~7%</text>
+  <text x="342" y="293" fill="#60a5fa" font-size="8" text-anchor="middle">Équilibrage ~7%</text>
 
   <!-- ════════════════════════════════════════════════════════════════
        BLOC TURBINE — HP / MP / BP
@@ -418,13 +417,9 @@ def create_gta_synoptic(data: dict) -> html.Div:
   <!-- ════════════════════════════════════════════════════════════════
        SORTIE BP → VANNE_BP → CONDENSEUR
   ════════════════════════════════════════════════════════════════ -->
-  <!-- Ligne sortie BP depuis étage BP turbine -->
-  <line x1="656" y1="300" x2="656" y2="410"
+  <!-- Ligne sortie BP depuis étage BP turbine (démarre sous le footer de la turbine) -->
+  <line x1="656" y1="390" x2="656" y2="410"
         stroke="#38bdf8" stroke-width="8" stroke-linecap="round" class="flow-bp"/>
-
-  <!-- Instrument FT et tag Q condenseur à droite de la ligne -->
-  {_instrument_circle(680, 360, "FT", "#38bdf8")}
-  {_tag(765, 343, "Q cond.", f"{q_cond:.0f}", "T/h")}
 
   {_valve_symbol(656, 415, v_bp, "VBP", vc_bp, 18)}
   <line x1="656" y1="433" x2="656" y2="490"
@@ -461,7 +456,7 @@ def create_gta_synoptic(data: dict) -> html.Div:
   <line x1="725" y1="248" x2="785" y2="248"
         stroke="#3b82f6" stroke-width="6" stroke-dasharray="8,5" class="flow-hp"/>
   {_instrument_circle(755, 248, "ST", "#60a5fa")}
-  {_tag(755, 258, "Vitesse arbre", f"{speed:.0f}", "RPM", alm_spd)}
+  {_tag(755, 258, "Vit. arbre", f"{speed:.0f}", "RPM", alarm=alm_spd, w=70)}
 
   <!-- ════════════════════════════════════════════════════════════════
        RÉDUCTEUR
@@ -496,7 +491,7 @@ def create_gta_synoptic(data: dict) -> html.Div:
   <line x1="885" y1="248" x2="945" y2="248"
         stroke="#10b981" stroke-width="6" stroke-dasharray="8,5" class="flow-hp"/>
   {_instrument_circle(915, 248, "ST", "#10b981")}
-  {_tag(915, 258, "Sortie réd.", "1500", "RPM")}
+  {_tag(915, 258, "Vit.", "1500", "RPM", w=60)}
 
   <!-- ════════════════════════════════════════════════════════════════
        ALTERNATEUR
@@ -546,7 +541,7 @@ def create_gta_synoptic(data: dict) -> html.Div:
   <!-- Ligne de sortie alternateur -->
   <line x1="1110" y1="248" x2="1175" y2="248"
         stroke="#10b981" stroke-width="10" class="flow-el"/>
-  {_tag(1142, 215, f"{power:.1f} MW", f"{voltage:.1f}", "kV")}
+  {_tag(1142, 215, "U out", f"{voltage:.1f}", "kV", w=60)}
 
   <!-- Bus barres (3 lignes parallèles) -->
   <rect x="1175" y="180" width="20" height="160" rx="3"

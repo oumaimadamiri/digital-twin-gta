@@ -1,12 +1,9 @@
-# Python Caches
+# Python & Environments
 __pycache__/
 *.py[cod]
-*$py.class
 .pytest_cache/
-.coverage
 .venv/
 venv/
-ENV/
 env/
 
 # Databases
@@ -16,21 +13,16 @@ env/
 # Environment secrets
 .env
 
-# OS Files
+# OS & IDE
 .DS_Store
 Thumbs.db
-.idea/
 .vscode/
+.idea/
 *.swp
 
-# Frontend build tools / node
-node_modules/
-.next/
-out/
-build/
-
 # Project Specific
-frontend.zip
 ai/saved_models/*.h5
 ai/saved_models/*.pkl
-data/*.db
+ai/saved_models/*.npz
+*.log
+*.txt

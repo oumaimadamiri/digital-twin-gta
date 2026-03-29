@@ -8,6 +8,10 @@ from models.gta_parameters import ValveCommand
 from simulation.fake_api import fake_api
 from simulation.scenarios import get_all_scenarios, get_scenario
 
+import logging
+
+logger = logging.getLogger("gta.api.simulation")
+
 router = APIRouter(prefix="/simulation", tags=["Simulation"])
 
 
@@ -22,7 +26,10 @@ def trigger_scenario(body: ScenarioTrigger):
     """Active un scénario de perturbation par son ID."""
     scenario = get_scenario(body.scenario_id)
     if scenario is None:
+        logger.error(f"Tentative de déclenchement d'un scénario invalide : {body.scenario_id}")
         raise HTTPException(status_code=404, detail=f"Scénario {body.scenario_id} introuvable")
+    
+    logger.info(f"ACTION OPÉRATEUR : Déclenchement scénario '{scenario.name}' (ID: {body.scenario_id})")
     fake_api.trigger_scenario(body.scenario_id)
     return {
         "status":  "triggered",
@@ -33,6 +40,7 @@ def trigger_scenario(body: ScenarioTrigger):
 @router.post("/stop")
 def stop_scenario():
     """Arrête le scénario en cours."""
+    logger.info("ACTION OPÉRATEUR : Arrêt du scénario en cours")
     fake_api.stop_scenario()
     return {"status": "stopped", "message": "Scénario arrêté"}
 
@@ -47,6 +55,7 @@ def get_scenario_history():
 def reset_simulation(_: ResetCommand = None):
     """Réinitialise le GTA à l'état nominal et efface les alertes actives."""
     from services.alert_manager import alert_manager
+    logger.info("ACTION OPÉRATEUR : Réinitialisation complète du système (RESET)")
     fake_api.reset()
     alert_manager.clear_alerts()
     return {"status": "reset", "message": "Système réinitialisé à l'état nominal"}
@@ -55,6 +64,10 @@ def reset_simulation(_: ResetCommand = None):
 @router.post("/valves")
 def set_valves(cmd: ValveCommand):
     """Modifie l'ouverture des 5 vannes V1, V2, V3, MP, BP (0-100%)."""
+    logger.info(
+        f"ACTION OPÉRATEUR : Modification vannes -> "
+        f"V1:{cmd.valve_v1}%, V2:{cmd.valve_v2}%, V3:{cmd.valve_v3}%, MP:{cmd.valve_mp}%, BP:{cmd.valve_bp}%"
+    )
     fake_api.set_valves(
         v1=cmd.valve_v1, v2=cmd.valve_v2, v3=cmd.valve_v3,
         v_mp=cmd.valve_mp, v_bp=cmd.valve_bp,

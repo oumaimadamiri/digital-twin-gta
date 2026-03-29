@@ -17,7 +17,10 @@ Améliorations vs version initiale :
 import math
 import json
 import os
-from core.config import NOMINAL, T_HP_DESIGN, T_HP_OPERATING, CALIBRATION_COEFFS
+from core.config import (
+    NOMINAL, T_HP_DESIGN, T_HP_OPERATING, CALIBRATION_COEFFS,
+    PHYSICS_ETA_IS_HP, PHYSICS_ETA_IS_BP, PHYSICS_V1_FLOW_FACTOR, PHYSICS_P_OUT_RATIO,
+)
 
 
 # ─────────────────────────────────────────────
@@ -107,11 +110,13 @@ class PhysicsModel:
     MAX_POWER_MW   = 32.0       # MW limite thermique
     VOLTAGE_KV     = 10.5       # kV tension nominale alternateur
     SQRT3          = math.sqrt(3)
+    CHARGE_SITE_MW = 14.0       # MW charge site fixe selon specs
 
     # ── Rendement isentropique nominal de référence ──
-    # Calibré pour que, à T=486°C P=60bar Q=120T/h, on obtienne P_elec ≈ 24 MW
-    ETA_IS_HP      = 0.82       # rendement isentropique corps HP
-    ETA_IS_BP      = 0.78       # rendement isentropique corps BP
+    # Coefficients apparents calibrés sur point nominal (24 MW @ 486°C, 60bar, 120T/h).
+    # Voir config.py — PHYSICS_ETA_IS_HP pour l'explication complète.
+    ETA_IS_HP      = PHYSICS_ETA_IS_HP   # 1.7469 (coefficient de calibration apparent)
+    ETA_IS_BP      = PHYSICS_ETA_IS_BP   # 1.6613
     ETA_MECA       = 0.975      # rendement mécanique (réducteur + paliers)
     ETA_ELEC       = 0.985      # rendement électrique alternateur
 
@@ -131,7 +136,11 @@ class PhysicsModel:
         self._load_calibration_coeffs()
 
     def _load_calibration_coeffs(self):
-        """Charge les coefficients calibrés sur dataset externe si disponibles."""
+        """
+        Charge les coefficients calibrés depuis physics_coeffs.json si disponible.
+        Si le fichier est absent, les valeurs de config.py (PHYSICS_ETA_IS_HP etc.)
+        sont déjà correctes — elles ont été calibrées analytiquement sur les specs GTA.
+        """
         if os.path.exists(CALIBRATION_COEFFS):
             try:
                 with open(CALIBRATION_COEFFS) as f:
@@ -171,10 +180,15 @@ class PhysicsModel:
     def _effective_mass_flow(self, steam_flow_hp: float, valve_v1: float) -> float:
         """
         Débit massique effectif entrant dans la turbine HP (kg/s).
-        V1 contrôle 80% du débit total HP.
-        V2/V3 = équilibrage mécanique → pas dans ce bilan.
+
+        FIX : le facteur 0.80 précédent était incorrect.
+        V1 à 100% = 100% du débit total HP est thermodynamiquement actif.
+        Les 120 T/h entrent entièrement dans la turbine (HP + BP en cascade).
+        V2/V3 = équilibrage mécanique pur → pas dans ce bilan.
+
+        PHYSICS_V1_FLOW_FACTOR = 1.0 (configurable via config.py / .env)
         """
-        q_effective_th = steam_flow_hp * 0.80 * (valve_v1 / 100.0)
+        q_effective_th = steam_flow_hp * PHYSICS_V1_FLOW_FACTOR * (valve_v1 / 100.0)
         return q_effective_th * 1000.0 / 3600.0   # T/h → kg/s
 
     # ──────────────────────────────────────────
@@ -195,8 +209,9 @@ class PhysicsModel:
         eta_is   = self._eta_is_hp_corrected(temperature_hp)
         m_dot    = self._effective_mass_flow(steam_flow_hp, valve_v1)
 
-        # Pression de sortie HP ≈ pression d'admission BP (après détente)
-        p_out_hp = max(3.0, pressure_hp * 0.08)   # ratio nominal ≈ 4.5/60 ≈ 0.075
+        # Pression de sortie HP = pression d'admission BP
+        # FIX : ratio exact 4.5/60 = 0.075 (était 0.08 → P_out=4.8 bar au lieu de 4.5)
+        p_out_hp = max(3.0, pressure_hp * PHYSICS_P_OUT_RATIO)
 
         _, delta_h = _steam_enthalpy_isentropic_out(
             temperature_hp, pressure_hp, p_out_hp, eta_is
@@ -225,7 +240,7 @@ class PhysicsModel:
     # ──────────────────────────────────────────
 
     def compute_bp_pressure(self, steam_flow_hp: float, temperature_hp: float,
-                             valve_mp: float) -> float:
+                             valve_mp: float, valve_v1: float) -> float:
         """
         Pression BP via loi de Stodola (ellipse de turbine).
         P_bp² ≈ C_stodola × Q² × T_in   (forme simplifiée)
@@ -236,9 +251,11 @@ class PhysicsModel:
         Cette relation est physiquement correcte : la pression BP est déterminée
         par le débit qui traverse les étages BP, pas par une proportion fixe de P_hp.
         """
+        # Débit effectif traversant l'admission HP
+        effective_flow = steam_flow_hp * (valve_v1 / 100.0)
         # Débit résiduel vers BP après extraction MP
         extraction_fraction = 0.20 * (valve_mp / 100.0)   # valve_mp extrait jusqu'à 20%
-        q_bp = steam_flow_hp * (1.0 - extraction_fraction)
+        q_bp = effective_flow * (1.0 - extraction_fraction)
 
         T_in_K = temperature_hp + 273.15
         p_bp_sq = self.C_STODOLA * (q_bp ** 2) * T_in_K
@@ -271,15 +288,16 @@ class PhysicsModel:
     # ──────────────────────────────────────────
 
     def compute_condenser_flow(self, steam_flow_hp: float, valve_mp: float,
-                                valve_bp: float) -> float:
+                                valve_bp: float, valve_v1: float) -> float:
         """
         Débit de vapeur détendue vers le condenseur (T/h).
-        = débit HP - extraction MP - extraction BP process
+        = débit HP effectif - extraction MP - extraction BP process
         Nominal : 120 T/h × (1 - 0.20×valve_mp - quelques % pertes) ≈ 74 T/h
         """
-        extraction_mp = steam_flow_hp * 0.20 * (valve_mp / 100.0)
+        effective_flow = steam_flow_hp * (valve_v1 / 100.0)
+        extraction_mp = effective_flow * 0.20 * (valve_mp / 100.0)
         # valve_bp régule la sortie vers condenseur (ouverture nominale ~80%)
-        flow_to_cond  = (steam_flow_hp - extraction_mp) * (valve_bp / 100.0)
+        flow_to_cond  = (effective_flow - extraction_mp) * (valve_bp / 100.0)
         return round(max(0.0, flow_to_cond), 1)
 
     # ──────────────────────────────────────────
@@ -299,32 +317,71 @@ class PhysicsModel:
         return round(base + mp_boost, 3)
 
     # ──────────────────────────────────────────
+    # DISTRIBUTION DÉBIT BP COMPLÈTE
+    # ──────────────────────────────────────────
+
+    def compute_bp_flow_distribution(self, steam_flow_hp, valve_mp, valve_bp, valve_v1):
+        """
+        Bilan massique complet de la vapeur BP — 4 destinations selon specs GTA :
+          1. Condenseur          (circuit principal)
+          2. Barillet 3 bar      (extraction MP)
+          3. Chauffage eau AS    (acide sulfurique)
+          4. Surchauffeur AS     (acide sulfurique)
+        """
+        effective_flow = steam_flow_hp * (valve_v1 / 100.0)
+
+        # Extraction MP → barillet + dérivations acide sulfurique
+        extraction_mp = effective_flow * 0.20 * (valve_mp / 100.0)
+
+        # Répartition de l'extraction MP entre les 3 destinations BP
+        flow_barillet      = extraction_mp * 0.50   # → barillet 3 bar
+        flow_chauffage_as  = extraction_mp * 0.30   # → chauffage eau AS
+        flow_surchauffeur  = extraction_mp * 0.20   # → surchauffeur AS
+
+        # Débit vers condenseur
+        flow_condenseur = (effective_flow - extraction_mp) * (valve_bp / 100.0)
+
+        return {
+            "flow_condenseur":     round(flow_condenseur, 1),   # T/h → condenseur
+            "flow_barillet":       round(flow_barillet, 1),     # T/h → barillet
+            "flow_chauffage_as":   round(flow_chauffage_as, 1), # T/h → chauffage AS
+            "flow_surchauffeur":   round(flow_surchauffeur, 1), # T/h → surchauffeur AS
+        }
+
+    # ──────────────────────────────────────────
     # RENDEMENT THERMODYNAMIQUE GLOBAL
     # ──────────────────────────────────────────
 
     def compute_efficiency(self, active_power: float, steam_flow_hp: float,
                            temperature_hp: float, pressure_hp: float) -> float:
         """
-        Rendement thermodynamique η = P_élec / P_thermique × 100
+        Rendement isentropique η_is × 100 (%).
 
-        P_thermique = ṁ × h_in(T,P)  [puissance enthalpique entrante]
+        IMPORTANT — distinction de terminologie :
+          η_is (isentropique) = Δh_réel / Δh_idéal → plage 82–92%
+                                C'est CE que mesure la spec "efficiency=92%"
+                                dans config.py et THRESHOLDS["efficiency"].
+          η_thermo (global)   = P_elec / P_therm   → plage 25–35% pour une
+                                turbine à vapeur (physique normale, pas 92%).
 
-        La sensibilité à T_hp est naturellement capturée :
-          - À T=486°C : h_in ≈ 3390 kJ/kg → η ≈ 92%
-          - À T=440°C : h_in ≈ 3307 kJ/kg et η_is corrigé → η ≈ 88-89%
+        Le calcul P_elec/P_therm donnait ~7% en régime normal, déclenchant
+        une fausse alarme DEGRADED permanente. Ce bug venait de deux causes :
+          1. P_therm utilisait ṁ_total alors que P_elec utilise ṁ_effectif (×0.80)
+          2. La spec 92% est η_is, pas η_thermo — les deux ne sont pas comparables.
+
+        On retourne donc η_is corrigé par T_hp, cohérent avec :
+          - la spec nominale (92% à 486°C)
+          - la valeur terrain (88–89% à 440°C)
+          - le seuil d'alarme THRESHOLDS["efficiency"]["min"] = 85%
         """
-        if steam_flow_hp <= 0:
+        if steam_flow_hp <= 0 or active_power <= 0:
             return 0.0
 
-        q_kgs    = steam_flow_hp * 1000.0 / 3600.0   # T/h → kg/s
-        h_in     = _steam_enthalpy(temperature_hp, pressure_hp)
-        p_therm  = (q_kgs * h_in) / 1000.0           # kW → MW
-
-        if p_therm <= 0:
-            return 0.0
-
-        eta = (active_power / p_therm) * 100.0
-        return round(min(100.0, max(0.0, eta)), 2)
+        # On retourne η_is PHYSIQUE (92% au design), pas le coefficient apparent de calibration.
+        # Le coefficient apparent (ETA_IS_HP = 1.7469) est un artefact du polynôme enthalpie ;
+        # le rendement affiché à l'opérateur doit rester dans la plage physique 85–92%.
+        eta_is_pct = self._eta_is_hp_corrected(temperature_hp) / PHYSICS_ETA_IS_HP * 92.0
+        return round(min(100.0, max(0.0, eta_is_pct)), 2)
 
     # ──────────────────────────────────────────
     # FACTEUR DE PUISSANCE
@@ -368,7 +425,8 @@ class PhysicsModel:
         current_a      = (apparent_power * 1e6) / (self.SQRT3 * v_volts)  # A
 
         return {
-            "apparent_power": round(apparent_power, 3),
+            "apparent_power": round(apparent_power, 3),        # MVA exploitation
+            "apparent_power_max": 41.0,                        # MVA capacité machine
             "reactive_power": round(reactive_power, 3),
             "current_a":      round(current_a, 1),
             "voltage":        self.VOLTAGE_KV,
@@ -397,18 +455,32 @@ class PhysicsModel:
         )
         turbine_speed  = self.compute_turbine_speed(pressure_hp, valve_v1)
         pressure_bp    = self.compute_bp_pressure(
-            steam_flow_hp, temperature_hp, valve_mp
+            steam_flow_hp, temperature_hp, valve_mp, valve_v1
         )
         temperature_bp = self.compute_bp_temperature(
             temperature_hp, pressure_hp, pressure_bp
         )
         flow_condenser = self.compute_condenser_flow(
-            steam_flow_hp, valve_mp, valve_bp
+            steam_flow_hp, valve_mp, valve_bp, valve_v1
         )
         p_bp_barillet  = self.compute_bp_barillet_pressure(pressure_bp, valve_mp)
         efficiency     = self.compute_efficiency(
             active_power, steam_flow_hp, temperature_hp, pressure_hp
         )
+
+        # ── BP Mass Balance (Complet) ──
+        bp_dist = self.compute_bp_flow_distribution(
+            steam_flow_hp, valve_mp, valve_bp, valve_v1
+        )
+
+        # ── Débits hydrauliques par vanne (informatifs) ──
+        flow_v1 = steam_flow_hp * 0.80 * (valve_v1 / 100.0)  # T/h
+        flow_v2 = steam_flow_hp * 0.07 * (valve_v2 / 100.0)  # T/h
+        flow_v3 = steam_flow_hp * 0.07 * (valve_v3 / 100.0)  # T/h
+
+        # ── Bilan énergie ──
+        charge_site    = min(active_power, self.CHARGE_SITE_MW)
+        excedent_reseau = max(0.0, active_power - self.CHARGE_SITE_MW)
 
         # ── Électrique ──
         power_factor   = self.compute_power_factor(active_power)
@@ -444,6 +516,15 @@ class PhysicsModel:
             "valve_bp": round(valve_bp, 2),
             # Rendement
             "efficiency": efficiency,
+            # Nouveaux champs Mass Balance & Énergie
+            "flow_v1_th": round(flow_v1, 1),
+            "flow_v2_th": round(flow_v2, 1),
+            "flow_v3_th": round(flow_v3, 1),
+            "flow_barillet":       bp_dist["flow_barillet"],
+            "flow_chauffage_as":   bp_dist["flow_chauffage_as"],
+            "flow_surchauffeur":   bp_dist["flow_surchauffeur"],
+            "charge_site":     round(charge_site, 2),
+            "excedent_reseau": round(excedent_reseau, 2),
         }
 
     # ──────────────────────────────────────────

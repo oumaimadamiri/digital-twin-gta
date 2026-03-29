@@ -16,12 +16,15 @@ from core.config import (
 # ─────────────────────────────────────────────
 
 def get_redis_client() -> redis.Redis:
-    """Retourne un client Redis connecté."""
+    """Retourne un client Redis connecté avec stratégie de retry."""
     return redis.Redis(
         host=REDIS_HOST,
         port=REDIS_PORT,
         db=REDIS_DB,
-        decode_responses=True
+        decode_responses=True,
+        socket_timeout=5,
+        retry_on_timeout=True,
+        health_check_interval=30
     )
 
 # Instance globale
@@ -38,6 +41,14 @@ def init_db():
     os.makedirs(os.path.dirname(SQLITE_PATH), exist_ok=True)
 
     with sqlite3.connect(SQLITE_PATH) as conn:
+        cursor = conn.cursor()
+        cursor.execute("PRAGMA table_info(gta_history)")
+        columns = [row[1] for row in cursor.fetchall()]
+        
+        # Si la table existe mais n'a pas les nouvelles colonnes (comme voltage), on la recrée
+        if columns and ("voltage" not in columns or "charge_site" not in columns):
+            conn.execute("DROP TABLE gta_history")
+
         conn.execute("""
             CREATE TABLE IF NOT EXISTS gta_history (
                 id              INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -45,16 +56,33 @@ def init_db():
                 pressure_hp     REAL,
                 temperature_hp  REAL,
                 steam_flow_hp   REAL,
-                pressure_bp     REAL,
+                pressure_bp_in  REAL,
                 temperature_bp  REAL,
-                steam_flow_bp   REAL,
+                steam_flow_bp_in REAL,
+                steam_flow_condenser REAL,
+                pressure_bp_barillet REAL,
+                pressure_condenser REAL,
                 turbine_speed   REAL,
                 active_power    REAL,
+                reactive_power  REAL,
+                apparent_power  REAL,
                 power_factor    REAL,
+                voltage         REAL,
+                current_a       REAL,
                 efficiency      REAL,
                 valve_v1        REAL,
                 valve_v2        REAL,
                 valve_v3        REAL,
+                valve_mp        REAL,
+                valve_bp        REAL,
+                charge_site      REAL,
+                excedent_reseau  REAL,
+                flow_v1_th       REAL,
+                flow_v2_th       REAL,
+                flow_v3_th       REAL,
+                flow_barillet    REAL,
+                flow_chauffage_as REAL,
+                flow_surchauffeur REAL,
                 status          TEXT,
                 scenario        TEXT
             )

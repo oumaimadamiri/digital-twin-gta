@@ -9,35 +9,38 @@ def create_sidebar(active_path="/"):
         return "nav-item active" if active_path == path else "nav-item"
         
     return html.Div([
+        # SECTION GAUCHE : Logo
         html.Div([
             html.Div(html.Span("⚙", className="nav-icon"), className="logo-icon-wrap"),
-            # Text hidden via styling or removed
             html.Div([
-                html.Div("GTA Platform", className="logo-title hide-minimized"),
-                html.Div("CONTRÔLE INDUSTRIEL", className="logo-sub hide-minimized"),
+                html.Div("GTA Platform", className="logo-title"),
+                html.Div("CONTRÔLE INDUSTRIEL", className="logo-sub"),
             ], className="logo-text-wrap"),
         ], className="sidebar-logo"),
         
-        html.Div("Navigation", className="nav-label hide-minimized"),
-        dcc.Link([html.Span("⬡", className="nav-icon"), html.Span("Dashboard", className="hide-minimized")],
-                 href="/", className=get_class("/"), id="nav-dashboard"),
-        dcc.Link([html.Span("⚙", className="nav-icon"), html.Span("Simulation", className="hide-minimized")],
-                 href="/simulation", className=get_class("/simulation"), id="nav-simulation"),
-        dcc.Link([html.Span("📈", className="nav-icon"), html.Span("Analyse", className="hide-minimized")],
-                 href="/analysis", className=get_class("/analysis"), id="nav-analysis"),
-        dcc.Link([html.Span("🤖", className="nav-icon"), html.Span("Module IA", className="hide-minimized")],
-                 href="/ai", className=get_class("/ai"), id="nav-ai"),
-        dcc.Link([html.Span("⚴", className="nav-icon"), html.Span("Paramètres", className="hide-minimized")],
-                 href="/settings", className=get_class("/settings"), id="nav-settings"),
-                 
+        # SECTION CENTRE : Liens de navigation
         html.Div([
-            html.Div("IE", className="avatar"),
+            dcc.Link([html.Span("⬡", className="nav-icon"), html.Span("Dashboard")],
+                     href="/", className=get_class("/"), id="nav-dashboard"),
+            dcc.Link([html.Span("⚙", className="nav-icon"), html.Span("Simulation")],
+                     href="/simulation", className=get_class("/simulation"), id="nav-simulation"),
+            dcc.Link([html.Span("📈", className="nav-icon"), html.Span("Analyse")],
+                     href="/analysis", className=get_class("/analysis"), id="nav-analysis"),
+            dcc.Link([html.Span("🤖", className="nav-icon"), html.Span("Module IA")],
+                     href="/ai", className=get_class("/ai"), id="nav-ai"),
+            dcc.Link([html.Span("⚴", className="nav-icon"), html.Span("Paramètres")],
+                     href="/settings", className=get_class("/settings"), id="nav-settings"),
+        ], style={"display": "flex", "alignItems": "center"}),
+                 
+        # SECTION DROITE : Utilisateur
+        html.Div([
             html.Div([
-                html.Div("Ex exploitation", className="hide-minimized", style={"color": "var(--text)", "fontSize": "12px", "fontWeight": "600"}),
-                html.Div("ID: 4829", className="hide-minimized", style={"color": "var(--text3)", "fontSize": "10px"}),
+                html.Div("Ex exploitation", style={"color": "var(--text)", "fontSize": "12px", "fontWeight": "600", "textAlign": "right"}),
+                html.Div("ID: 4829", style={"color": "var(--text3)", "fontSize": "10px", "textAlign": "right"}),
             ], className="footer-text"),
+            html.Div("IE", className="avatar"),
         ], className="sidebar-footer"),
-    ], className="sidebar minimized")
+    ], className="sidebar")
 
 
 def create_topbar(page_title, subtitle=""):

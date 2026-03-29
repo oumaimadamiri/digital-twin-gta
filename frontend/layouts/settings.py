@@ -24,7 +24,35 @@ def threshold_row(label, param, default_min, default_max, unit):
     ], className="settings-row")
 
 
+def get_thresholds_from_api():
+    """Récupère les seuils depuis le backend."""
+    try:
+        r = requests.get(f"{BACKEND}/settings/thresholds", timeout=2)
+        if r.status_code == 200:
+            return r.json()
+    except Exception:
+        pass
+    return {}
+
 def layout():
+    thresholds = get_thresholds_from_api()
+    
+    # Mapping des labels et unités
+    params_meta = {
+        "pressure_hp":    ("Pression HP", "bar"),
+        "temperature_hp": ("Température HP", "°C"),
+        "steam_flow_hp":  ("Débit vapeur HP", "T/h"),
+        "turbine_speed":  ("Vitesse turbine", "RPM"),
+        "active_power":   ("Puissance active", "MW"),
+        "power_factor":   ("Facteur cosφ", "—"),
+        "efficiency":     ("Rendement", "%"),
+    }
+
+    threshold_rows = []
+    for param, (label, unit) in params_meta.items():
+        val = thresholds.get(param, {"min": 0, "max": 100})
+        threshold_rows.append(threshold_row(label, param, val["min"], val["max"], unit))
+
     return html.Div([
         create_sidebar(active_path="/settings"),
         html.Div([
@@ -35,13 +63,7 @@ def layout():
                     # ── SEUILS D'ALARME ──────────────────────
                     html.Div([
                         html.Div("Seuils d'Alarme Configurables", className="card-title"),
-                        threshold_row("Pression HP",      "pressure_hp",    55.0, 65.0,  "bar"),
-                        threshold_row("Température HP",   "temperature_hp", 440.0, 500.0, "°C"),
-                        threshold_row("Débit vapeur HP",  "steam_flow_hp",  100.0, 130.0, "T/h"),
-                        threshold_row("Vitesse turbine",  "turbine_speed",  6300.0, 6500.0, "RPM"),
-                        threshold_row("Puissance active", "active_power",   0.0, 32.0,   "MW"),
-                        threshold_row("Facteur cosφ",     "power_factor",   0.80, 0.90,  "—"),
-                        threshold_row("Rendement",        "efficiency",     80.0, 100.0, "%"),
+                        html.Div(threshold_rows),
                         html.Div([
                             html.Button("💾 Appliquer les seuils", id="btn-save-thresholds",
                                         className="btn btn-success"),

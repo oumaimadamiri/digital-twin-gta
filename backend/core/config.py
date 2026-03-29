@@ -39,6 +39,14 @@ SQLITE_PATH = os.getenv("SQLITE_PATH", "data/gta_history.db")
 FAKE_API_INTERVAL_MS = int(os.getenv("FAKE_API_INTERVAL_MS", 500))
 NOISE_LEVEL          = float(os.getenv("NOISE_LEVEL", 0.002))
 
+# Marges pour le calcul du statut (StatusEnum)
+WARNING_MARGIN  = 0.03   # ±3 % autour du seuil = DEGRADED
+CRITICAL_MARGIN = 0.10   # ±10 % autour du seuil = CRITICAL
+
+# Paramètres dynamiques oscillations
+OSCILLATION_PERIOD_S = 10.0
+PF_MIN_CLAMP         = 0.70
+
 # ─────────────────────────────────────────────
 # TEMPÉRATURES DE RÉFÉRENCE (deux états opérationnels réels)
 # T_DESIGN : condition nominale de conception (rendement optimal)
@@ -67,13 +75,20 @@ NOMINAL = {
     "pressure_bp_barillet": 3.0,    # bar  VP BP sortie vers barillet
     "pressure_condenser":   0.0064, # bar  vide condenseur (système à vide)
 
+    # ── Bilan massique BP complet ──
+    "steam_flow_barillet":     8.0,   # T/h → barillet (estimation)
+    "steam_flow_chauffage_as": 5.0,   # T/h → chauffage eau AS (estimation)
+    "steam_flow_surchauffeur": 3.0,   # T/h → surchauffeur AS (estimation)
+
     # ── Turbine ──
     "turbine_speed":    6435.0,  # RPM  vitesse nominale exacte
 
     # ── Alternateur ──
     "active_power":     24.0,    # MW   puissance active nominale
     "power_factor":     0.85,    # cos φ nominal
-    "apparent_power":   41.0,    # MVA  puissance apparente (= active / cos φ)
+    "apparent_power":   28.2,    # MVA  puissance apparente (= active / cos φ)
+    "apparent_power_max": 41.0,  # MVA  capacité maximale machine (IEC 60034)
+    "current_nominal":  2254.0,  # A    I_min spec (correspond à S_max)
     "voltage":          10.5,    # kV   tension nominale (±5% → 9.975–11.025 kV)
     "current_nominal":  2254.0,  # A    courant nominal (I_min spéc.)
     "reactive_power":   21.4,    # MVAR Q = P × tan(arccos(0.85)) ≈ 21.4
@@ -100,14 +115,17 @@ NOMINAL = {
 # Le débit thermodynamiquement actif est contrôlé par V1 + valve_mp/valve_bp
 # ─────────────────────────────────────────────
 VALVE_FLOW_WEIGHTS = {
-    "v1": 0.80,   # 80% du débit HP total passe par V1
-    # V2 et V3 ne contribuent PAS au bilan de puissance — équilibrage mécanique pur
+    "v1": 0.80,   # répartition hydraulique réelle (80% du débit passe par V1)
+    "v2": 0.07,   # équilibrage mécanique
+    "v3": 0.07,   # équilibrage mécanique
+    # les 6% restants = pertes / joints
 }
 
 # ─────────────────────────────────────────────
 # SEUILS D'ALARME (min, max) — régime permanent
 # ─────────────────────────────────────────────
 THRESHOLDS = {
+    "apparent_power": {"min": 0.0, "max": 41.0},  # max = capacité machine
     "pressure_hp":      {"min": 55.0,    "max": 65.0},
     "temperature_hp":   {"min": 420.0,   "max": 500.0},   # min abaissé à 420 (terrain 440)
     "steam_flow_hp":    {"min": 100.0,   "max": 130.0},
@@ -141,3 +159,32 @@ AI_TRAIN_ON_STARTUP = os.getenv("AI_TRAIN_ON_STARTUP", "true").lower() == "true"
 # ─────────────────────────────────────────────
 CALIBRATION_DATASET = os.getenv("CALIBRATION_DATASET", "data/ccpp_dataset.csv")
 CALIBRATION_COEFFS  = os.path.join(AI_MODELS_DIR, "physics_coeffs.json")
+
+# ─────────────────────────────────────────────
+# COEFFICIENTS PHYSIQUES — CALIBRÉS SUR POINT NOMINAL
+# Source : résolution numérique sur spécifications industrielles
+#   P_nominal = 24 MW @ T=486°C, P=60bar, Q=120T/h, V1=100%
+#
+# PHYSICS_ETA_IS_HP / BP :
+#   Rendements isentropiques "apparents" du modèle polynomial.
+#   Valeur > 1 car le polynôme IAPWS approximatif sous-estime le Δh réel
+#   de la détente complète HP→BP. Ce sont des coefficients de calibration,
+#   pas des rendements physiques absolus. Le comportement RELATIF
+#   (dégradation avec T, variation avec débit) reste physiquement correct.
+#   Recalibrer via calibrate_physics.py si les specs changent.
+#
+# PHYSICS_V1_FLOW_FACTOR :
+#   Facteur de débit thermodynamiquement actif.
+#   = 1.0 car 120 T/h est le débit total entrant dans la turbine (HP+BP en cascade).
+#   Le rôle de V2/V3 (équilibrage mécanique) ne réduit PAS le débit thermo.
+#   ANCIEN bug : facteur 0.80 issu d'une confusion avec la répartition hydraulique.
+#
+# PHYSICS_P_OUT_RATIO :
+#   Ratio pression sortie HP / pression entrée HP.
+#   Calibré sur point nominal : 4.5 bar / 60 bar = 0.075 (exact).
+#   ANCIEN bug : 0.08 (ratio trop élevé → P_out=4.8 bar → Δh sous-estimé).
+# ─────────────────────────────────────────────
+PHYSICS_ETA_IS_HP     = float(os.getenv("PHYSICS_ETA_IS_HP",     1.7469))
+PHYSICS_ETA_IS_BP     = float(os.getenv("PHYSICS_ETA_IS_BP",     1.6613))
+PHYSICS_V1_FLOW_FACTOR = float(os.getenv("PHYSICS_V1_FLOW_FACTOR", 1.0))
+PHYSICS_P_OUT_RATIO   = float(os.getenv("PHYSICS_P_OUT_RATIO",   0.075))

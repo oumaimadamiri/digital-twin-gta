@@ -66,6 +66,11 @@ class GTAParameters(BaseModel):
     # Vanne sortie BP → condenseur
     valve_bp: float = Field(..., ge=0, le=100, description="Vanne sortie BP condenseur (%)")
 
+    # ── Débits hydrauliques par vanne (informatifs) ──
+    flow_v1_th:  float = Field(96.0,  description="Débit hydraulique V1 (T/h) = 80% de 120")
+    flow_v2_th:  float = Field(8.4,   description="Débit hydraulique V2 (T/h) = ~7%")
+    flow_v3_th:  float = Field(8.4,   description="Débit hydraulique V3 (T/h) = ~7%")
+
     # ── Rendement et état ──
     efficiency: float = Field(..., description="Rendement thermodynamique (%)")
     status:     StatusEnum = StatusEnum.NORMAL

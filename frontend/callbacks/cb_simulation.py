@@ -2,6 +2,7 @@
 callbacks/cb_simulation.py — Callbacks contrôle simulation
 Mise à jour : 5 vannes (V1/V2/V3/MP/BP), 10 scénarios, affichage nouveaux paramètres.
 """
+import dash
 import requests
 from dash import Input, Output, State, html, no_update
 from datetime import datetime
@@ -69,26 +70,46 @@ def register(app):
         except Exception as e:
             return f"Erreur reset : {e}"
 
-    # ── 10 Scénarios ──────────────────────────────────────────────────
-    for sid in range(1, 11):
-        @app.callback(
-            Output("scenario-feedback", "children", allow_duplicate=True),
-            Input(f"btn-scenario-{sid}", "n_clicks"),
-            prevent_initial_call=True,
-        )
-        def trigger_scenario(_, scenario_id=sid):
-            try:
-                r = _session.post(
-                    f"{BACKEND}/simulation/scenario",
-                    json={"scenario_id": scenario_id},
-                    timeout=2,
-                )
-                data = r.json()
-                name = data.get("scenario", {}).get("name", f"#{scenario_id}")
-                ts   = datetime.now().strftime("%H:%M:%S")
-                return f"[{ts}] Scénario déclenché : {name}"
-            except Exception as e:
-                return f"Erreur scénario : {e}"
+    # ── Scénarios Dynamiques (Pattern Matching) ───────────────────────
+    @app.callback(
+        Output("scenario-feedback", "children", allow_duplicate=True),
+        Input({"type": "btn-scenario", "index": dash.ALL}, "n_clicks"),
+        prevent_initial_call=True,
+    )
+    def trigger_dynamic_scenario(n_clicks_list):
+        ctx = dash.callback_context
+        if not ctx.triggered:
+            return no_update
+        
+        # Identifier quel bouton a été cliqué
+        prop_id = ctx.triggered[0]['prop_id']
+        if 'n_clicks' not in prop_id:
+            return no_update
+        
+        # Extraire l'ID du scénario depuis l'index
+        import json
+        button_id = json.loads(prop_id.split('.')[0])
+        scenario_id = button_id['index']
+        
+        # Vérifier si c'est bien un clic (n_clicks > 0)
+        idx = ctx.triggered_id['index']
+        # Comme on a une liste de n_clicks, on vérifie celui qui correspond
+        active_idx = [i for i, v in enumerate(ctx.inputs_list[0]) if v['id']['index'] == scenario_id][0]
+        if not n_clicks_list[active_idx]:
+            return no_update
+
+        try:
+            r = _session.post(
+                f"{BACKEND}/simulation/scenario",
+                json={"scenario_id": scenario_id},
+                timeout=2,
+            )
+            data = r.json()
+            name = data.get("scenario", {}).get("name", f"#{scenario_id}")
+            ts   = datetime.now().strftime("%H:%M:%S")
+            return f"[{ts}] Scénario déclenché : {name}"
+        except Exception as e:
+            return f"Erreur scénario : {e}"
 
     # ── Arrêter le scénario ───────────────────────────────────────────
     @app.callback(

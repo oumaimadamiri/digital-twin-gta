@@ -4,19 +4,21 @@ layouts/simulation.py — Contrôle de la simulation : 5 vannes + 10 scénarios
 from dash import html, dcc
 from components.sidebar import create_sidebar, create_topbar
 
-# ── Métadonnées des 10 scénarios ──────────────────────────────────────
-SCENARIOS = [
-    {"id": 1,  "name": "Chute de pression HP",             "icon": "📉", "color": "#00b4ff", "type": "Rampe"},
-    {"id": 2,  "name": "Surchauffe vapeur HP",             "icon": "🌡", "color": "#ff7043", "type": "Rampe"},
-    {"id": 3,  "name": "Fermeture partielle V1",           "icon": "🔧", "color": "#aa80ff", "type": "Échelon"},
-    {"id": 4,  "name": "Perte de charge brutale",          "icon": "⚡", "color": "#ffd740", "type": "Échelon"},
-    {"id": 5,  "name": "Dégradation progressive rendement","icon": "📊", "color": "#00e5ff", "type": "Rampe"},
-    {"id": 6,  "name": "Oscillations pression (DEH)",      "icon": "〜", "color": "#00e676", "type": "Oscill."},
-    {"id": 7,  "name": "Défaut alternateur (cos φ)",       "icon": "⚠",  "color": "#ff3d57", "type": "Échelon"},
-    {"id": 8,  "name": "Dépassement 24MW → surpression BP","icon": "🔺", "color": "#f97316", "type": "Rampe"},
-    {"id": 9,  "name": "Interruption source vapeur",       "icon": "🚫", "color": "#ef4444", "type": "Échelon"},
-    {"id": 10, "name": "Panne pompe refroidissement huile","icon": "💧", "color": "#38bdf8", "type": "Rampe"},
-]
+import requests
+from config import BACKEND
+
+# Session pour fetch initial
+_session = requests.Session()
+
+def get_scenarios_from_api():
+    """Récupère la liste des scénarios depuis le backend."""
+    try:
+        r = _session.get(f"{BACKEND}/simulation/scenarios", timeout=2)
+        if r.status_code == 200:
+            return r.json()
+    except Exception:
+        pass
+    return [] # Fallback vide si API down
 
 
 def _slider_row(valve_id, label, default, color, description):
@@ -43,20 +45,31 @@ def _slider_row(valve_id, label, default, color, description):
 
 
 def scenario_card(s):
+    # Mapping depuis le format API backend
+    ptype = s.get("perturbation_type", "unknown")
+    if ptype == "ramp":
+        icon, color, t_name = "📉", "#f59e0b", "RAMP"
+    elif ptype == "step":
+        icon, color, t_name = "⚡", "#ef4444", "STEP"
+    elif ptype == "oscillation":
+        icon, color, t_name = "〰", "#8b5cf6", "OSCIL"
+    else:
+        icon, color, t_name = "⚙", "#94a3b8", "OTHER"
+
     return html.Div([
         html.Div([
-            html.Span(s["icon"], className="scenario-icon",
+            html.Span(icon, className="scenario-icon",
                       style={"fontSize": "18px", "marginRight": "8px"}),
             html.Div([
-                html.Div(s["name"], className="scenario-name",
+                html.Div(s.get("name", "N/A"), className="scenario-name",
                          style={"fontSize": "12px", "fontWeight": "600"}),
                 html.Div([
-                    html.Span(f"#{s['id']}", style={"color": "#334155",
+                    html.Span(f"#{s.get('id', 0)}", style={"color": "#334155",
                                                       "marginRight": "8px",
                                                       "fontSize": "10px"}),
-                    html.Span(s["type"],
-                              style={"color": s["color"], "fontSize": "10px",
-                                     "background": f"rgba({_hex_to_rgb(s['color'])},0.1)",
+                    html.Span(t_name,
+                              style={"color": color, "fontSize": "10px",
+                                     "background": f"rgba({_hex_to_rgb(color)},0.1)",
                                      "padding": "1px 6px", "borderRadius": "3px",
                                      "fontFamily": "Share Tech Mono"}),
                 ]),
@@ -65,12 +78,12 @@ def scenario_card(s):
            style={"display": "flex", "alignItems": "center", "marginBottom": "8px"}),
         html.Button(
             "▶ DÉCLENCHER",
-            id=f"btn-scenario-{s['id']}",
+            id={"type": "btn-scenario", "index": s.get("id", 0)},
             className="btn btn-scenario",
-            style={"--btn-color": s["color"], "width": "100%"},
+            style={"--btn-color": color, "width": "100%"},
         ),
     ], className="card scenario-card",
-       style={"--card-glow": s["color"], "padding": "12px", "marginBottom": "8px"})
+       style={"--card-glow": color, "padding": "12px", "marginBottom": "8px"})
 
 
 def _hex_to_rgb(hex_color):
@@ -81,6 +94,7 @@ def _hex_to_rgb(hex_color):
 
 
 def layout():
+    scens = get_scenarios_from_api()
     return html.Div([
         create_sidebar(active_path="/simulation"),
         html.Div([
@@ -184,7 +198,7 @@ def layout():
                     html.Div([
                         html.Div("Scénarios de Perturbation", className="card-title"),
                         html.Div([
-                            html.Span(str(len(SCENARIOS)),
+                            html.Span(str(len(scens)),
                                       style={"color": "#818cf8", "fontWeight": "700"}),
                             html.Span(" scénarios disponibles",
                                       style={"color": "#334155", "fontSize": "11px",
@@ -192,7 +206,7 @@ def layout():
                         ], style={"marginBottom": "12px"}),
                     ]),
                     html.Div(
-                        [scenario_card(s) for s in SCENARIOS],
+                        [scenario_card(s) for s in scens],
                         style={"maxHeight": "680px", "overflowY": "auto",
                                "paddingRight": "4px"},
                     ),

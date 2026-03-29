@@ -200,6 +200,36 @@ def register(app):
         except Exception:
             return alerts_panel([])
 
+    from dash import MATCH, callback_context
+    @app.callback(
+        Output({"type": "ack-btn", "index": MATCH}, "children"),
+        Output({"type": "ack-btn", "index": MATCH}, "disabled"),
+        Input({"type": "ack-btn", "index": MATCH}, "n_clicks"),
+        prevent_initial_call=True,
+    )
+    def acknowledge_alert(n_clicks):
+        if not n_clicks:
+            return no_update, no_update
+            
+        ctx = callback_context
+        if not ctx.triggered:
+            return no_update, no_update
+            
+        btn_id_str = ctx.triggered[0]["prop_id"].split(".")[0]
+        try:
+            import json
+            btn_id = json.loads(btn_id_str)
+            alert_id = btn_id["index"]
+            
+            r = _session.post(f"{BACKEND}/settings/alerts/{alert_id}/acknowledge", timeout=1)
+            if r.status_code == 200:
+                return "OK ✅", True
+        except Exception as e:
+            print("Erreur acquittement:", e)
+            
+        return "Erreur", False
+
+
     # ── Synoptique ─────────────────────────────────────────────────────
     @app.callback(
         Output("gta-synoptic", "children"),

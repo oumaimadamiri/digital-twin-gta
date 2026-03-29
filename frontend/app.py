@@ -7,12 +7,13 @@ Optimisé :
   - debug/hot_reload via variable ENV (désactivé en prod)
   - Intervalles AI et Analysis déplacés ici (global, non dupliqués)
   - Compression via Flask middleware
+  - WebSocket (dash-extensions) pour push temps réel sans polling
 """
 
-import os
 import dash
 from dash import Dash, html, dcc, Input, Output, State
 from flask_compress import Compress
+from dash_extensions import WebSocket
 
 # ── Import des layouts ──────────────────────────────────────────────
 from layouts.dashboard  import layout as dashboard_layout
@@ -44,17 +45,24 @@ server = app.server  # Pour déploiement WSGI / Docker
 # ── Compression GZIP des réponses HTTP ──────────────────────────────
 Compress(server)
 
+# ── URL WebSocket (dérivée de PUBLIC_BACKEND_URL pour le navigateur) ─
+from config import PUBLIC_BACKEND
+_WS_URL = PUBLIC_BACKEND.replace("http://", "ws://").replace("https://", "wss://") + "/ws/data"
+
 # ── Layout racine (routing multi-pages) ────────────────────────────
 app.layout = html.Div([
     dcc.Location(id="url", refresh=False),
+
+    # WebSocket — push instantané toutes les 500ms depuis le backend
+    WebSocket(id="ws-data", url=_WS_URL),
 
     # Stores Globaux (Source de vérité unique)
     dcc.Store(id="store-current-data",    data={}),
     dcc.Store(id="store-simulation-data", data={}),
     dcc.Store(id="store-history",         data=[]),
 
-    # Intervalles globaux
-    dcc.Interval(id="interval-fast", interval=1000, n_intervals=0),   # 1s  — données temps réel
+    # Intervalles (uniquement pour horloge et alertes, données viennent du WS)
+    dcc.Interval(id="interval-fast", interval=1000, n_intervals=0),   # 1s  — horloge
     dcc.Interval(id="interval-slow", interval=5000, n_intervals=0),   # 5s  — alertes
 
     html.Div(id="page-content"),

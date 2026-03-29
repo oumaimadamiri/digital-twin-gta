@@ -1,20 +1,20 @@
-"""
-simulation/fake_api.py — Générateur de données capteurs (toutes les 500ms)
-Simule le comportement dynamique du GTA en l'absence de capteurs physiques.
-Tourne en tâche de fond (asyncio) dès le démarrage du serveur.
-"""
-
 import asyncio
 import math
 import random
 import time
+import logging
 from datetime import datetime
 
-from core.config import NOMINAL, NOISE_LEVEL, FAKE_API_INTERVAL_MS
+from core.config import (
+    NOMINAL, NOISE_LEVEL, FAKE_API_INTERVAL_MS,
+    WARNING_MARGIN, CRITICAL_MARGIN, OSCILLATION_PERIOD_S, PF_MIN_CLAMP
+)
 from models.gta_parameters import GTAParameters, StatusEnum
 from simulation.physics_model import PhysicsModel
 from simulation.scenarios import get_scenario, Scenario
 
+
+logger = logging.getLogger("gta.simulation")
 
 class FakeAPI:
     """
@@ -63,7 +63,7 @@ class FakeAPI:
         """Enregistre un callback appelé à chaque nouveau snapshot."""
         self._on_new_data = callback
 
-    def set_valves(self, v1=None, v2=None, v3=None):
+    def set_valves(self, v1=None, v2=None, v3=None, v_mp=None, v_bp=None):
         """Modifie les vannes depuis l'API (commande opérateur)."""
         if v1 is not None:
             self._state["valve_v1"] = float(v1)
@@ -71,6 +71,10 @@ class FakeAPI:
             self._state["valve_v2"] = float(v2)
         if v3 is not None:
             self._state["valve_v3"] = float(v3)
+        if v_mp is not None:
+            self._state["valve_mp"] = float(v_mp)
+        if v_bp is not None:
+            self._state["valve_bp"] = float(v_bp)
 
     def trigger_scenario(self, scenario_id: int):
         """Active un scénario de perturbation."""
@@ -124,11 +128,15 @@ class FakeAPI:
         """Boucle principale : génère un snapshot toutes les 500ms."""
         self._running = True
         interval = FAKE_API_INTERVAL_MS / 1000.0
+        logger.info(f"Démarrage de la simulation FakeAPI (intervalle: {interval}s)")
         while self._running:
-            nominal, simulated = self._generate_dual()
-            self._last_params = simulated  # Par défaut, get_current renvoie la simu
-            if self._on_new_data:
-                await self._on_new_data(nominal, simulated)
+            try:
+                nominal, simulated = self._generate_dual()
+                self._last_params = simulated  # Par défaut, get_current renvoie la simu
+                if self._on_new_data:
+                    await self._on_new_data(nominal, simulated)
+            except Exception as e:
+                logger.error(f"Erreur dans la boucle FakeAPI: {e}", exc_info=True)
             await asyncio.sleep(interval)
 
     def stop(self):
@@ -140,6 +148,7 @@ class FakeAPI:
 
     def _generate_dual(self) -> tuple[GTAParameters, GTAParameters]:
         """Calcule l'état nominal (stable) et l'état simulé (avec pannes)."""
+        # logger.debug("Génération snapshot dual...")
         
         # 1) État NOMINAL (Physique pure, sans scénarios, avec bruit minimal)
         state_nom = {
@@ -159,13 +168,17 @@ class FakeAPI:
             if state_nom[v] >= 100.0:
                 state_nom_noisy[v] = 100.0
         
-        computed_nom = self.physics.compute_all(**state_nom_noisy)
-        params_nom = GTAParameters(
-            timestamp = datetime.utcnow(),
-            scenario  = None,
-            status    = StatusEnum.NORMAL,
-            **computed_nom
-        )
+        try:
+            computed_nom = self.physics.compute_all(**state_nom_noisy)
+            params_nom = GTAParameters(
+                timestamp = datetime.utcnow(),
+                scenario  = None,
+                status    = StatusEnum.NORMAL,
+                **computed_nom
+            )
+        except Exception as e:
+            logger.error(f"Erreur lors de la création de params_nom: {e}")
+            raise
 
         # 2) État SIMULÉ (Vannes manuelles + Scénarios + Bruit)
         state_sim = self._state.copy()
@@ -174,28 +187,32 @@ class FakeAPI:
             state_sim, scenario_name = self._apply_scenario(state_sim)
         state_sim = self._add_noise(state_sim)
 
-        computed_sim = self.physics.compute_all(
-            pressure_hp    = state_sim["pressure_hp"],
-            temperature_hp = state_sim["temperature_hp"],
-            steam_flow_hp  = state_sim["steam_flow_hp"],
-            valve_v1       = state_sim["valve_v1"],
-            valve_v2       = state_sim["valve_v2"],
-            valve_v3       = state_sim["valve_v3"],
-            valve_mp       = state_sim["valve_mp"],
-            valve_bp       = state_sim["valve_bp"],
-        )
-        if self._power_factor_offset != 0:
-            computed_sim["power_factor"] = round(
-                max(0.70, computed_sim["power_factor"] + self._power_factor_offset), 3
+        try:
+            computed_sim = self.physics.compute_all(
+                pressure_hp    = state_sim["pressure_hp"],
+                temperature_hp = state_sim["temperature_hp"],
+                steam_flow_hp  = state_sim["steam_flow_hp"],
+                valve_v1       = state_sim["valve_v1"],
+                valve_v2       = state_sim["valve_v2"],
+                valve_v3       = state_sim["valve_v3"],
+                valve_mp       = state_sim["valve_mp"],
+                valve_bp       = state_sim["valve_bp"],
             )
-        status_sim = self._compute_status(computed_sim)
-        
-        params_sim = GTAParameters(
-            timestamp = datetime.utcnow(),
-            scenario  = scenario_name,
-            status    = status_sim,
-            **computed_sim
-        )
+            if self._power_factor_offset != 0:
+                computed_sim["power_factor"] = round(
+                    max(PF_MIN_CLAMP, computed_sim["power_factor"] + self._power_factor_offset), 3
+                )
+            status_sim = self._compute_status(computed_sim)
+            
+            params_sim = GTAParameters(
+                timestamp = datetime.utcnow(),
+                scenario  = scenario_name,
+                status    = status_sim,
+                **computed_sim
+            )
+        except Exception as e:
+            logger.error(f"Erreur lors de la création de params_sim: {e}")
+            raise
 
         return params_nom, params_sim
 
@@ -219,7 +236,7 @@ class FakeAPI:
 
         elif scenario.perturbation_type == "oscillation":
             self._oscillation_t += FAKE_API_INTERVAL_MS / 1000.0
-            factor = math.sin(2 * math.pi * self._oscillation_t / 10.0)  # période 10s
+            factor = math.sin(2 * math.pi * self._oscillation_t / OSCILLATION_PERIOD_S)
 
         else:
             factor = progress
@@ -255,31 +272,27 @@ class FakeAPI:
 
     def _compute_status(self, params: dict) -> StatusEnum:
         """Détermine le statut global (NORMAL / DEGRADED / CRITICAL)."""
-        from core.config import THRESHOLDS
+        from core.config import THRESHOLDS, CRITICAL_MARGIN
         critical_count = 0
         warning_count  = 0
-        # Marges relatives autour des seuils :
-        # - ±3 % : toujours considéré comme NORMAL (tolérance au bruit)
-        # - entre ±3 % et ±10 % : DEGRADED
-        # - au-delà de ±10 % : CRITICAL
-        warning_margin  = 0.03
-        critical_margin = 0.10
 
         for param, limits in THRESHOLDS.items():
             value = params.get(param)
             if value is None:
                 continue
 
-            min_val = limits["min"]
-            max_val = limits["max"]
+            min_val = limits.get("min")
+            max_val = limits.get("max")
+            if min_val is None or max_val is None:
+                continue
 
             # Si on sort de la plage [min, max], c'est au moins DEGRADED
             if value < min_val or value > max_val:
-                # Si on dépasse de plus de 5% de la plage, c'est CRITICAL
+                # Si on dépasse de plus de la marge critique (10% par défaut), c'est CRITICAL
                 range_span = max_val - min_val
-                crit_margin = range_span * 0.25 if range_span > 0 else abs(min_val) * 0.1
+                crit_margin_abs = range_span * CRITICAL_MARGIN if range_span > 0 else abs(min_val) * CRITICAL_MARGIN
                 
-                if value < (min_val - crit_margin) or value > (max_val + crit_margin):
+                if value < (min_val - crit_margin_abs) or value > (max_val + crit_margin_abs):
                     critical_count += 1
                 else:
                     warning_count += 1
