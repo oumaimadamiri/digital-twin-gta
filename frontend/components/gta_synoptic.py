@@ -205,22 +205,21 @@ def _build_synoptic_div(data: dict, static_ids: bool) -> html.Div:
 
     # ── Construction des tags SCADA ───────────────────────────────────────────
     if static_ids:
-        tag_php  = _tag_static(80,  270, "Pression",    "syn-php",  f"{p_hp:.1f}",  "bar",  alm_php)
-        tag_thp  = _tag_static(80,  307, "Température", "syn-thp",  f"{t_hp:.0f}",  "°C",   alm_thp)
+        tag_php  = _tag_static(80,  258, "Pression",    "syn-php",  f"{p_hp:.1f}",  "bar",  alm_php)   # FIX#1 y:270→258
+        tag_thp  = _tag_static(80,  296, "Température", "syn-thp",  f"{t_hp:.0f}",  "°C",   alm_thp)   # FIX#1 y:307→296
         tag_qhp  = _tag_static(195, 200, "Débit HP",    "syn-qhp",  f"{q_hp:.0f}",  "T/h",  alm_qhp)
-        tag_spd  = _tag_static(755, 258, "Vit. arbre",  "syn-spd",  f"{speed:.0f}", "RPM",  alm_spd, w=70)
-        tag_v1   = _tag_static(330, 278, "Adm. HP",     "syn-v1t",  f"{v1:.0f}",    "%")
-        tag_uout = _tag_static(1142,215, "U out",       "syn-uout", f"{voltage:.1f}","kV",  w=60)
-        tag_vit2 = _tag_static(915, 258, "Vit.",        "syn-vit2", "1500",          "RPM", w=60)
+        tag_spd  = _tag_static(768, 264, "Vit. arbre",  "syn-spd",  f"{speed:.0f}", "RPM",  alm_spd, w=70)  # FIX#2 x:755→768, y:258→264
+        tag_v1   = _tag_static(368, 278, "Adm. HP",     "syn-v1t",  f"{v1:.0f}",    "%")                    # FIX#4 x:330→368
+        tag_uout = _tag_static(1142,256, "U out",       "syn-uout", f"{voltage:.1f}","kV",  w=60)            # FIX#5 y:215→256
+        tag_vit2 = _tag_static(915, 264, "Vit.",        "syn-vit2", "1500",          "RPM", w=60)            # FIX#3 y:258→264
     else:
-        # Appel direct — _tag est défini dans ce même module
-        tag_php  = _tag(80,  270, "Pression",    f"{p_hp:.1f}",  "bar", alm_php)
-        tag_thp  = _tag(80,  307, "Température", f"{t_hp:.0f}",  "°C",  alm_thp)
+        tag_php  = _tag(80,  258, "Pression",    f"{p_hp:.1f}",  "bar", alm_php)                # FIX#1
+        tag_thp  = _tag(80,  296, "Température", f"{t_hp:.0f}",  "°C",  alm_thp)                # FIX#1
         tag_qhp  = _tag(195, 200, "Débit HP",    f"{q_hp:.0f}",  "T/h", alm_qhp)
-        tag_spd  = _tag(755, 258, "Vit. arbre",  f"{speed:.0f}", "RPM", alarm=alm_spd, w=70)
-        tag_v1   = _tag(330, 278, "Adm. HP",     f"{v1:.0f}",    "%")
-        tag_uout = _tag(1142,215, "U out",       f"{voltage:.1f}","kV", w=60)
-        tag_vit2 = _tag(915, 258, "Vit.",        "1500",          "RPM", w=60)
+        tag_spd  = _tag(768, 264, "Vit. arbre",  f"{speed:.0f}", "RPM", alarm=alm_spd, w=70)   # FIX#2
+        tag_v1   = _tag(368, 278, "Adm. HP",     f"{v1:.0f}",    "%")                            # FIX#4
+        tag_uout = _tag(1142,256, "U out",        f"{voltage:.1f}","kV", w=60)                   # FIX#5
+        tag_vit2 = _tag(915, 264, "Vit.",         "1500",          "RPM", w=60)                  # FIX#3
 
     # ── Symboles vannes ───────────────────────────────────────────────────────
     if static_ids:
@@ -318,7 +317,7 @@ def _build_synoptic_div(data: dict, static_ids: bool) -> html.Div:
 
   <!-- ════ SOURCE VAPEUR HP ════ -->
   <g filter="url(#go)">
-    <rect x="18" y="195" width="125" height="120" rx="10"
+    <rect x="18" y="195" width="125" height="160" rx="10"
           fill="#0a101a" stroke="{hp_col}" stroke-width="1.8"/>
   </g>
   <text x="80" y="218" fill="#f8fafc" font-size="11" font-weight="600"
@@ -326,7 +325,7 @@ def _build_synoptic_div(data: dict, static_ids: bool) -> html.Div:
   <text x="80" y="233" fill="#64748b" font-size="8.5" text-anchor="middle">Unité Acide Sulfurique</text>
 
   <!-- Flamme animée -->
-  <text{sid("hp-flame")} x="80" y="264" fill="{hp_col}" font-size="22" text-anchor="middle"
+  <text{sid("hp-flame")} x="80" y="252" fill="{hp_col}" font-size="22" text-anchor="middle"
         class="{'pulse' if alm_thp else ''}">{'⚠' if alm_thp else '🔥'}</text>
 
   <!-- Tags source HP -->
@@ -334,7 +333,8 @@ def _build_synoptic_div(data: dict, static_ids: bool) -> html.Div:
   {tag_thp}
 
   <!-- Indicateur T design vs opérationnel -->
-  {'<rect x="18" y="315" width="125" height="16" rx="3" fill="rgba(245,158,11,0.15)" stroke="#f59e0b" stroke-width="0.6"/><text x="80" y="326" fill="#f59e0b" font-size="8" text-anchor="middle" font-family="Share Tech Mono">⚠ En dessous T design 486°C</text>' if t_warn_design else '<rect x="18" y="315" width="125" height="16" rx="3" fill="rgba(16,185,129,0.1)" stroke="#10b981" stroke-width="0.6"/><text x="80" y="326" fill="#10b981" font-size="8" text-anchor="middle" font-family="Share Tech Mono">✓ T design atteinte</text>'}
+  {'<rect x="18" y="337" width="125" height="16" rx="3" fill="rgba(245,158,11,0.15)" stroke="#f59e0b" stroke-width="0.6"/><text x="80" y="348" fill="#f59e0b" font-size="8" text-anchor="middle" font-family="Share Tech Mono">⚠ En dessous T design 486°C</text>' 
+  if t_warn_design else '<rect x="18" y="337" width="125" height="16" rx="3" fill="rgba(16,185,129,0.1)" stroke="#10b981" stroke-width="0.6"/><text x="80" y="348" fill="#10b981" font-size="8" text-anchor="middle" font-family="Share Tech Mono">✓ T design atteinte</text>'}
 
   {_instrument_circle(143, 255, "PT", "#f97316")}
 
@@ -379,7 +379,7 @@ def _build_synoptic_div(data: dict, static_ids: bool) -> html.Div:
   {vsym_v3}
   <line x1="295" y1="306" x2="390" y2="306"
         stroke="#60a5fa" stroke-width="2.5" stroke-dasharray="5,3"/>
-  <text x="342" y="293" fill="#60a5fa" font-size="8" text-anchor="middle">Équilibrage ~7%</text>
+  <text x="342" y="319" fill="#60a5fa" font-size="8" text-anchor="middle">Équilibrage ~7%</text>
 
   <!-- ════ BLOC TURBINE HP/MP/BP ════ -->
   <g class="{turb_cls}">
@@ -422,7 +422,7 @@ def _build_synoptic_div(data: dict, static_ids: bool) -> html.Div:
       <line x1="9" y1="-9" x2="-9" y2="9" stroke="#818cf8" stroke-width="1"/>
     </g></g>
     <circle cx="544" cy="185" r="5" fill="#a78bfa"/>
-    <text x="570" y="185" fill="#a78bfa" font-size="8">Ext. MP</text>
+    <text x="552" y="182" fill="#a78bfa" font-size="8">Ext. MP</text>
 
     <!-- Étage BP -->
     <rect x="604" y="185" width="105" height="115" rx="6"
@@ -644,7 +644,7 @@ def _build_synoptic_div(data: dict, static_ids: bool) -> html.Div:
         text-anchor="middle">64 T/h (démarrage)</text>
   <line x1="143" y1="472" x2="385" y2="358"
         stroke="#38bdf8" stroke-width="2" stroke-dasharray="4,4" opacity="0.4"/>
-  <text x="270" y="425" fill="#38bdf8" font-size="8" opacity="0.6">
+  <text x="270" y="442" fill="#38bdf8" font-size="8" opacity="0.6">
     (démarrage uniquement)
   </text>
 
