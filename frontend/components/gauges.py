@@ -154,7 +154,7 @@ def make_gauge(value, cfg):
         height=180,
         font={"family": "Share Tech Mono"},
     )
-    return fi
+    return fig
 
 
 def gauge_card(gauge_id):

@@ -1,10 +1,14 @@
 """
 layouts/dashboard.py — Vue Dashboard temps réel SCADA
 Organisation : Synoptique → KPIs → Jauges par section (Thermo / Électrique / BP)
+
+[FIX-5a] Le synoptique est maintenant rendu statiquement au chargement.
+         Les valeurs sont mises à jour par patchGtaSynoptic() en JS.
 """
 from dash import html, dcc
 from components.sidebar import create_sidebar
 from components.gauges import gauge_card, GAUGE_CONFIGS
+from components.gta_synoptic import create_gta_synoptic_static
 
 
 def _gauge_section(title, gauge_keys, color):
@@ -49,10 +53,14 @@ def layout():
                 html.Div(id="kpi-row", className="kpi-row",
                          style={"marginTop": "16px", "marginBottom": "20px"}),
 
-                # ── Synoptique pleine largeur ──────────────────────────────
-                html.Div([
-                    html.Div(id="gta-synoptic"),
-                ], style={"marginBottom": "20px"}),
+                # ── Synoptique pleine largeur [FIX-5a] ──────────────────
+                # Structure SVG statique rendue UNE SEULE FOIS ;
+                # les valeurs sont patchées côté navigateur via synoptic_patch.js
+                html.Div(
+                    id="gta-synoptic",
+                    children=[create_gta_synoptic_static()],
+                    style={"marginBottom": "20px"},
+                ),
 
                 # ── Graphique temps réel ───────────────────────────────────
                 html.Div([

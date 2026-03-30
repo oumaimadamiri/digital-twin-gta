@@ -60,6 +60,9 @@ app.layout = html.Div([
     dcc.Store(id="store-current-data",    data={}),
     dcc.Store(id="store-simulation-data", data={}),
     dcc.Store(id="store-history",         data=[]),
+    # Output factice du clientside_callback synoptique [FIX-5c]
+    # Le callback JS patche le SVG en place — ce store n'est jamais lu
+    dcc.Store(id="syn-patch-tick",        data=0),
 
     # Intervalles (uniquement pour horloge et alertes, données viennent du WS)
     dcc.Interval(id="interval-fast", interval=1000, n_intervals=0),   # 1s  — horloge

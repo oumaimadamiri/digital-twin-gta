@@ -7,6 +7,9 @@ CORRECTIONS :
   2. update_status_pill : retourne une string CSS valide, pas un html.Span imbriqué.
   3. Axe X graphique RT : tickformat="%H:%M:%S" pour affichage lisible.
   4. Jauges : hauteur portée à 180px, margin.t réduit à 40px.
+  5. [FIX-4b] Graphe RT : fenêtre 90 → 180 points (90s d'historique visuel).
+  6. [FIX-5c] Synoptique : callback Python remplacé par clientside_callback
+     → le patch SVG se fait entièrement côté navigateur, sans aller-retour Python.
 """
 import json
 from datetime import datetime
@@ -14,7 +17,7 @@ import requests
 import plotly.graph_objects as go
 from dash import Input, Output, State, html, no_update, Patch
 from components.gauges import make_gauge, GAUGE_CONFIGS
-from components.gta_synoptic import create_gta_synoptic
+# create_gta_synoptic supprimé [FIX-5c] : patch géré par clientside_callback JS
 from components.alert_banner import alerts_panel
 from config import BACKEND
 
@@ -215,8 +218,9 @@ def register(app):
             existing_y = current_fig["data"][i].get("y") or []
             xs = list(existing_x) + [ts]
             ys = list(existing_y) + [val]
-            if len(xs) > 90:
-                xs, ys = xs[-90:], ys[-90:]
+            # [FIX-4b] fenêtre portée à 180 points = 90s @ 500ms/push
+            if len(xs) > 180:
+                xs, ys = xs[-180:], ys[-180:]
             patched["data"][i]["x"] = xs
             patched["data"][i]["y"] = ys
 
@@ -266,14 +270,21 @@ def register(app):
             print("Erreur acquittement:", e)
         return "Erreur", False
 
-    # ── Synoptique ─────────────────────────────────────────────────────
-    @app.callback(
-        Output("gta-synoptic", "children"),
+    # ── Synoptique [FIX-5c] ──────────────────────────────────────────────
+    # Le patch du SVG est délégué à une clientside_callback (JS pur).
+    # Plus de sérialisation Python→JSON→DOM à chaque push WebSocket.
+    # La fonction JS est définie dans assets/synoptic_patch.js.
+    app.clientside_callback(
+        """function(data, pathname) {
+            if (pathname !== '/') return window.dash_clientside.no_update;
+            if (!data || Object.keys(data).length === 0)
+                return window.dash_clientside.no_update;
+            if (typeof window.patchGtaSynoptic === 'function')
+                window.patchGtaSynoptic(data);
+            return window.dash_clientside.no_update;
+        }""",
+        Output("syn-patch-tick", "data"),   # store factice — le JS patche le SVG en place
         Input("store-current-data", "data"),
         State("url", "pathname"),
         prevent_initial_call=True,
     )
-    def update_synoptic(d, pathname):
-        if pathname != "/":
-            return no_update
-        return create_gta_synoptic(d or {})

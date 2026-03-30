@@ -3,14 +3,17 @@ callbacks/cb_data.py — Master Data Fetcher (WebSocket + Polling)
 
 CORRECTIONS :
   1. Race condition WS + polling : les deux triggers ne partagent plus
-     le même Output "store-history". Le polling ne touche QUE store-simulation-data.
+     le même Output "store-history".
   2. Callback séparé pour la simulation (interval-fast) → plus de conflit.
   3. Guard sur ws_msg["data"] renforcée (KeyError possible).
   4. _last_timestamp déclaré proprement avec nonlocal.
+  5. [FIX-3]  Polling simulation court-circuité hors page /simulation
+     → zéro requête HTTP parasite quand l'utilisateur est ailleurs.
+  6. [FIX-4a] Fenêtre historique : 60 → 300 points (2m30s @ 500ms/push).
 """
 import json
 import requests
-from dash import Input, Output, State, no_update, callback_context
+from dash import Input, Output, State, no_update
 from config import BACKEND
 
 _session = requests.Session()
@@ -54,25 +57,33 @@ def register(app):
             return no_update, no_update
         _last_timestamp = ts
 
-        # Mise à jour historique (fenêtre glissante 60 points)
+        # [FIX-4a] Fenêtre glissante portée à 300 points (2m30s @ 500ms/push)
         history = list(history or [])
         history.append(d_nom)
-        if len(history) > 60:
-            history = history[-60:]
+        if len(history) > 300:
+            history = history[-300:]
 
         return d_nom, history
 
     # ── Callback 2 : Polling → données simulées uniquement ───────────
+    # [FIX-3] State pathname ajouté : le polling est court-circuité si
+    #          l'utilisateur n'est pas sur la page /simulation.
+    #          Cela supprime toutes les requêtes HTTP parasites (~1/s)
+    #          pendant la navigation sur Dashboard, Analyse, IA, Settings.
     @app.callback(
         Output("store-simulation-data", "data"),
         Input("interval-fast", "n_intervals"),
+        State("url", "pathname"),
         prevent_initial_call=True,
     )
-    def update_simulation_from_poll(_):
+    def update_simulation_from_poll(_, pathname):
         """
         Polling des données simulées (sandbox) toutes les secondes.
         ISOLÉ du callback WebSocket pour éviter toute race condition.
+        Désactivé hors page /simulation pour économiser la bande passante.
         """
+        if pathname != "/simulation":
+            return no_update
         try:
             r = _session.get(f"{BACKEND}/data/simulated", timeout=0.8)
             if r.status_code == 200:
