@@ -2,7 +2,7 @@
 layouts/analysis.py — Analyse & Historique
 """
 from dash import html, dcc
-from components.sidebar import create_sidebar, create_topbar
+from components.sidebar import create_sidebar
 from config import BACKEND
 
 
@@ -10,8 +10,6 @@ def layout():
     return html.Div([
         create_sidebar(active_path="/analysis"),
         html.Div([
-            create_topbar("Analyse & Historique", "Données Enregistrées"),
-
             html.Div([
                 # ── FILTRES ──────────────────────────────────
                 html.Div([

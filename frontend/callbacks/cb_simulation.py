@@ -8,11 +8,44 @@ from dash import Input, Output, State, html, no_update
 from datetime import datetime
 from config import BACKEND
 from components.gta_synoptic import create_gta_synoptic
+from layouts.simulation import scenario_card
 
 _session = requests.Session()
 
 
 def register(app):
+
+    # ── Chargement asynchrone des scénarios ───────────────────────────
+    @app.callback(
+        Output("scenarios-list-container", "children"),
+        Output("scenarios-loading-header", "children"),
+        Input("url", "pathname"),
+    )
+    def load_scenarios_on_page_load(pathname):
+        if pathname != "/simulation":
+            return no_update, no_update
+            
+        try:
+            r = _session.get(f"{BACKEND}/simulation/scenarios", timeout=3)
+            if r.status_code == 200:
+                scens = r.json()
+                from layouts.simulation import scenario_card # Import local pour éviter l'erreur si non trouvé
+                cards = [scenario_card(s) for s in scens]
+                header = [
+                    html.Div([
+                        html.Span(str(len(scens)),
+                                  style={"color": "#818cf8", "fontWeight": "700"}),
+                        html.Span(" scénarios disponibles",
+                                  style={"color": "#334155", "fontSize": "11px",
+                                         "fontFamily": "Share Tech Mono"}),
+                    ], style={"marginBottom": "12px"})
+                ]
+                return cards, header
+        except Exception as e:
+            print(f"Erreur chargement scénarios: {e}")
+            
+        return html.Div("Erreur de connexion au serveur", 
+                        style={"color": "#ef4444", "padding": "20px"}), no_update
 
     # ── Affichage valeurs sliders (5 vannes) ──────────────────────────
     @app.callback(

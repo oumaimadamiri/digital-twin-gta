@@ -2,7 +2,7 @@
 layouts/simulation.py — Contrôle de la simulation : 5 vannes + 10 scénarios
 """
 from dash import html, dcc
-from components.sidebar import create_sidebar, create_topbar
+from components.sidebar import create_sidebar
 
 import requests
 from config import BACKEND
@@ -10,15 +10,7 @@ from config import BACKEND
 # Session pour fetch initial
 _session = requests.Session()
 
-def get_scenarios_from_api():
-    """Récupère la liste des scénarios depuis le backend."""
-    try:
-        r = _session.get(f"{BACKEND}/simulation/scenarios", timeout=2)
-        if r.status_code == 200:
-            return r.json()
-    except Exception:
-        pass
-    return [] # Fallback vide si API down
+# (get_scenarios_from_api supprimé pour éviter le blocage au chargement)
 
 
 def _slider_row(valve_id, label, default, color, description):
@@ -68,10 +60,10 @@ def scenario_card(s):
                                                       "marginRight": "8px",
                                                       "fontSize": "10px"}),
                     html.Span(t_name,
-                              style={"color": color, "fontSize": "10px",
-                                     "background": f"rgba({_hex_to_rgb(color)},0.1)",
-                                     "padding": "1px 6px", "borderRadius": "3px",
-                                     "fontFamily": "Share Tech Mono"}),
+                               style={"color": color, "fontSize": "10px",
+                                      "background": f"rgba({_hex_to_rgb(color)},0.1)",
+                                      "padding": "1px 6px", "borderRadius": "3px",
+                                      "fontFamily": "Share Tech Mono"}),
                 ]),
             ]),
         ], className="scenario-header",
@@ -94,12 +86,9 @@ def _hex_to_rgb(hex_color):
 
 
 def layout():
-    scens = get_scenarios_from_api()
     return html.Div([
         create_sidebar(active_path="/simulation"),
         html.Div([
-            create_topbar("Simulation", "Contrôle Interactif"),
-
             # Synoptique simulation
             html.Div(id="gta-synoptic-sim", style={"marginBottom": "20px"}),
 
@@ -197,18 +186,14 @@ def layout():
                 html.Div([
                     html.Div([
                         html.Div("Scénarios de Perturbation", className="card-title"),
-                        html.Div([
-                            html.Span(str(len(scens)),
-                                      style={"color": "#818cf8", "fontWeight": "700"}),
-                            html.Span(" scénarios disponibles",
-                                      style={"color": "#334155", "fontSize": "11px",
-                                             "fontFamily": "Share Tech Mono"}),
-                        ], style={"marginBottom": "12px"}),
+                        html.Div(id="scenarios-loading-header"), # Changement dynamique ici
                     ]),
                     html.Div(
-                        [scenario_card(s) for s in scens],
+                        id="scenarios-list-container",
                         style={"maxHeight": "680px", "overflowY": "auto",
                                "paddingRight": "4px"},
+                        children=[html.Div("Chargement des scénarios...", 
+                                         style={"color": "#64748b", "fontFamily": "Share Tech Mono", "padding": "20px"})]
                     ),
                     html.Div(id="scenario-feedback", style={
                         "marginTop": "10px",

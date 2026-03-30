@@ -1,8 +1,9 @@
 """
 callbacks/cb_settings.py — Callbacks page Paramètres
 """
+import dash
 import requests
-from dash import Input, Output, State
+from dash import Input, Output, State, html, no_update
 from datetime import datetime
 from config import BACKEND
 
@@ -12,7 +13,43 @@ THRESHOLD_PARAMS = [
 ]
 
 
+from layouts.settings import threshold_row
+
+# Configuration des paramètres (déplacé ici pour accès global)
+PARAMS_META = {
+    "pressure_hp":    ("Pression HP", "bar"),
+    "temperature_hp": ("Température HP", "°C"),
+    "steam_flow_hp":  ("Débit vapeur HP", "T/h"),
+    "turbine_speed":  ("Vitesse turbine", "RPM"),
+    "active_power":   ("Puissance active", "MW"),
+    "power_factor":   ("Facteur cosφ", "—"),
+    "efficiency":     ("Rendement", "%"),
+}
+
+
 def register(app):
+
+    @app.callback(
+        Output("thresholds-rows-container", "children"),
+        Input("url", "pathname"),
+    )
+    def load_thresholds_on_page_load(pathname):
+        if pathname != "/settings":
+            return no_update
+            
+        try:
+            r = requests.get(f"{BACKEND}/settings/thresholds", timeout=3)
+            thresholds = r.json() if r.status_code == 200 else {}
+            
+            rows = []
+            for param, (label, unit) in PARAMS_META.items():
+                val = thresholds.get(param, {"min": 0, "max": 100})
+                rows.append(threshold_row(label, param, val["min"], val["max"], unit))
+            return rows
+        except Exception as e:
+            print(f"Erreur chargement seuils: {e}")
+            return html.Div("Erreur de connexion au serveur", 
+                            style={"color": "#ef4444", "padding": "20px"})
 
     @app.callback(
         Output("thresh-save-status", "children"),

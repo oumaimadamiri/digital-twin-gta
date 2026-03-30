@@ -3,7 +3,7 @@ layouts/dashboard.py — Vue Dashboard temps réel SCADA
 Organisation : Synoptique → KPIs → Jauges par section (Thermo / Électrique / BP)
 """
 from dash import html, dcc
-from components.sidebar import create_sidebar, create_topbar
+from components.sidebar import create_sidebar
 from components.gauges import gauge_card, GAUGE_CONFIGS
 
 
@@ -43,8 +43,6 @@ def layout():
     return html.Div([
         create_sidebar(active_path="/"),
         html.Div([
-            create_topbar("Tableau de Bord", "Surveillance Temps Réel"),
-
             html.Div([
 
                 # ── KPI Row ────────────────────────────────────────────────

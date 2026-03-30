@@ -2,7 +2,7 @@
 layouts/settings.py — Paramètres & Profil
 """
 from dash import html, dcc
-from components.sidebar import create_sidebar, create_topbar
+from components.sidebar import create_sidebar
 from config import BACKEND
 
 
@@ -24,46 +24,21 @@ def threshold_row(label, param, default_min, default_max, unit):
     ], className="settings-row")
 
 
-def get_thresholds_from_api():
-    """Récupère les seuils depuis le backend."""
-    try:
-        r = requests.get(f"{BACKEND}/settings/thresholds", timeout=2)
-        if r.status_code == 200:
-            return r.json()
-    except Exception:
-        pass
-    return {}
+# (get_thresholds_from_api supprimé pour éviter le blocage au chargement)
 
 def layout():
-    thresholds = get_thresholds_from_api()
-    
-    # Mapping des labels et unités
-    params_meta = {
-        "pressure_hp":    ("Pression HP", "bar"),
-        "temperature_hp": ("Température HP", "°C"),
-        "steam_flow_hp":  ("Débit vapeur HP", "T/h"),
-        "turbine_speed":  ("Vitesse turbine", "RPM"),
-        "active_power":   ("Puissance active", "MW"),
-        "power_factor":   ("Facteur cosφ", "—"),
-        "efficiency":     ("Rendement", "%"),
-    }
-
-    threshold_rows = []
-    for param, (label, unit) in params_meta.items():
-        val = thresholds.get(param, {"min": 0, "max": 100})
-        threshold_rows.append(threshold_row(label, param, val["min"], val["max"], unit))
-
     return html.Div([
         create_sidebar(active_path="/settings"),
         html.Div([
-            create_topbar("Paramètres", "Configuration Système"),
-
             html.Div([
                 html.Div([
                     # ── SEUILS D'ALARME ──────────────────────
                     html.Div([
                         html.Div("Seuils d'Alarme Configurables", className="card-title"),
-                        html.Div(threshold_rows),
+                        html.Div(id="thresholds-rows-container", children=[
+                            html.Div("Chargement des seuils...", 
+                                     style={"color": "var(--text3)", "fontFamily": "var(--mono)", "padding": "20px"})
+                        ]),
                         html.Div([
                             html.Button("💾 Appliquer les seuils", id="btn-save-thresholds",
                                         className="btn btn-success"),

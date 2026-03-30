@@ -2,15 +2,13 @@
 layouts/ai_module.py — Vue Module IA
 """
 from dash import html, dcc
-from components.sidebar import create_sidebar, create_topbar
+from components.sidebar import create_sidebar
 
 
 def layout():
     return html.Div([
         create_sidebar(active_path="/ai"),
         html.Div([
-            create_topbar("Module IA", "Détection d'Anomalies & RUL"),
-
             html.Div([
                 # ── Carte Autoencodeur ─────────────────────────────
                 html.Div([
