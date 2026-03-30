@@ -1,7 +1,10 @@
 """
 components/gauges.py — Jauges SCADA étendues
-Ajouts : current_a, reactive_power, apparent_power, pressure_bp_barillet,
-         steam_flow_condenser, pressure_condenser
+
+CORRECTIONS :
+  1. Hauteur des jauges portée à 180px (était 155px — texte coupé).
+  2. margin.t réduit à 40px pour maximiser la zone utile.
+  3. gauge_card : style height mis à jour en cohérence.
 """
 from dash import html, dcc
 import plotly.graph_objects as go
@@ -15,7 +18,7 @@ GAUGE_CONFIGS = {
     "temperature_hp": {
         "title": "Température HP", "unit": "°C",
         "min": 380, "max": 540, "warn_low": 420, "warn_high": 500, "color": "#ef4444",
-        "ref_line": 486,   # T design
+        "ref_line": 486,
     },
     "turbine_speed": {
         "title": "Vitesse Turbine", "unit": "RPM",
@@ -29,7 +32,7 @@ GAUGE_CONFIGS = {
     "active_power": {
         "title": "Puissance Active", "unit": "MW",
         "min": 0, "max": 35, "warn_low": None, "warn_high": 30, "color": "#10b981",
-        "trip_line": 32,   # trip à 32 MW
+        "trip_line": 32,
     },
     "reactive_power": {
         "title": "Puissance Réactive", "unit": "MVAR",
@@ -74,13 +77,15 @@ GAUGE_CONFIGS = {
 
 
 def make_gauge(value, cfg):
-    color  = cfg["color"]
+    color = cfg["color"]
     wl, wh = cfg.get("warn_low"), cfg.get("warn_high")
     mn, mx = cfg["min"], cfg["max"]
 
     # Couleur alarme
-    if wl and value < wl:  color = "#f59e0b"
-    if wh and value > wh:  color = "#f59e0b"
+    if wl and value < wl:
+        color = "#f59e0b"
+    if wh and value > wh:
+        color = "#f59e0b"
     if value < mn * 0.88 or (mx > 0 and value > mx * 1.08):
         color = "#ef4444"
 
@@ -88,50 +93,50 @@ def make_gauge(value, cfg):
     steps = []
     if wl and wh:
         steps = [
-            {"range": [mn, wl],  "color": "rgba(239,68,68,0.10)"},
-            {"range": [wl, wh],  "color": "rgba(16,185,129,0.07)"},
-            {"range": [wh, mx],  "color": "rgba(245,158,11,0.10)"},
+            {"range": [mn, wl], "color": "rgba(239,68,68,0.10)"},
+            {"range": [wl, wh], "color": "rgba(16,185,129,0.07)"},
+            {"range": [wh, mx], "color": "rgba(245,158,11,0.10)"},
         ]
     elif wh:
         steps = [
-            {"range": [mn, wh],  "color": "rgba(16,185,129,0.07)"},
-            {"range": [wh, mx],  "color": "rgba(245,158,11,0.10)"},
+            {"range": [mn, wh], "color": "rgba(16,185,129,0.07)"},
+            {"range": [wh, mx], "color": "rgba(245,158,11,0.10)"},
         ]
     elif wl:
         steps = [
-            {"range": [mn, wl],  "color": "rgba(239,68,68,0.10)"},
-            {"range": [wl, mx],  "color": "rgba(16,185,129,0.07)"},
+            {"range": [mn, wl], "color": "rgba(239,68,68,0.10)"},
+            {"range": [wl, mx], "color": "rgba(16,185,129,0.07)"},
         ]
 
-    # Ligne de seuil critique (trip ou design)
     threshold = None
     if cfg.get("trip_line"):
-        threshold = {"line": {"color": "#ef4444", "width": 3}, "thickness": 0.75,
-                     "value": cfg["trip_line"]}
+        threshold = {"line": {"color": "#ef4444", "width": 3},
+                     "thickness": 0.75, "value": cfg["trip_line"]}
     elif cfg.get("ref_line"):
-        threshold = {"line": {"color": "#f59e0b", "width": 2}, "thickness": 0.6,
-                     "value": cfg["ref_line"]}
+        threshold = {"line": {"color": "#f59e0b", "width": 2},
+                     "thickness": 0.6, "value": cfg["ref_line"]}
 
     fig = go.Figure(go.Indicator(
-        mode  = "gauge+number",
-        value = value,
-        title = {
+        mode="gauge+number",
+        value=value,
+        title={
             "text": (
                 f"{cfg['title']}<br>"
                 f"<span style='font-size:9px;color:#475569'>{cfg['unit']}</span>"
             ),
             "font": {"size": 11, "color": "#64748b", "family": "Share Tech Mono"},
         },
-        number = {
+        number={
             "font": {"size": 17, "color": color, "family": "Share Tech Mono"},
             "suffix": f" {cfg['unit']}",
         },
-        gauge = {
+        gauge={
             "axis": {
                 "range":    [mn, mx],
                 "tickcolor": "#0f2744",
-                "tickfont":  {"size": 8, "color": "#334155", "family": "Share Tech Mono"},
-                "nticks":    5,
+                "tickfont":  {"size": 8, "color": "#334155",
+                               "family": "Share Tech Mono"},
+                "nticks": 5,
             },
             "bar":         {"color": color, "thickness": 0.20},
             "bgcolor":     "rgba(0,0,0,0)",
@@ -142,19 +147,24 @@ def make_gauge(value, cfg):
         },
     ))
     fig.update_layout(
-        paper_bgcolor = "rgba(0,0,0,0)",
-        plot_bgcolor  = "rgba(0,0,0,0)",
-        margin        = {"t": 55, "b": 5, "l": 12, "r": 12},
-        height        = 155,
-        font          = {"family": "Share Tech Mono"},
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        # CORRECTION 1+2 : hauteur 180px, margin.t réduit à 40
+        margin={"t": 40, "b": 5, "l": 12, "r": 12},
+        height=180,
+        font={"family": "Share Tech Mono"},
     )
-    return fig
+    return fi
 
 
 def gauge_card(gauge_id):
     return html.Div(
-        [dcc.Graph(id=gauge_id, config={"displayModeBar": False},
-                   style={"height": "155px"})],
+        [dcc.Graph(
+            id=gauge_id,
+            config={"displayModeBar": False},
+            # CORRECTION 3 : hauteur du conteneur alignée avec make_gauge
+            style={"height": "180px"},
+        )],
         className="card",
         style={"padding": "6px"},
     )

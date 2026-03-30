@@ -734,3 +734,232 @@ body {
   color: var(--text2);
   font-weight: 500;
 }
+.main-content-wrap {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  padding-top: 64px; /* hauteur de la topbar */
+}
+ 
+.main-content {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+ 
+/* ───────────────────────────────────────────────────────── */
+/* BOUTONS — VARIANTES MANQUANTES                            */
+/* ───────────────────────────────────────────────────────── */
+ 
+.btn-success {
+  background: var(--green-dim);
+  border-color: var(--green);
+  color: var(--green-bright);
+}
+ 
+.btn-success:hover {
+  background: rgba(16, 185, 129, 0.25);
+  box-shadow: 0 0 15px rgba(16, 185, 129, 0.3);
+}
+ 
+.btn-warn {
+  background: var(--yellow-dim);
+  border-color: var(--yellow);
+  color: var(--yellow-bright);
+}
+ 
+.btn-warn:hover {
+  background: rgba(245, 158, 11, 0.25);
+  box-shadow: 0 0 15px rgba(245, 158, 11, 0.25);
+}
+ 
+/* ───────────────────────────────────────────────────────── */
+/* BADGE STATUT INLINE                                       */
+/* ───────────────────────────────────────────────────────── */
+ 
+/* Utilisé dans les tableaux d'alertes et d'historique */
+.status-pill {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  font-family: var(--ui);
+}
+ 
+.status-pill.normal {
+  background: var(--green-dim);
+  color: var(--green-bright);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+ 
+.status-pill.degraded {
+  background: var(--yellow-dim);
+  color: var(--yellow-bright);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+ 
+.status-pill.critical {
+  background: var(--red-dim);
+  color: var(--red-bright);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+ 
+/* ───────────────────────────────────────────────────────── */
+/* FORMULAIRES                                               */
+/* ───────────────────────────────────────────────────────── */
+ 
+.filter-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--text3);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  font-family: var(--ui);
+  margin-bottom: 6px;
+}
+ 
+.custom-input {
+  background: var(--bg-base);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 13px;
+  padding: 8px 12px;
+  transition: var(--tr);
+  outline: none;
+}
+ 
+.custom-input:focus {
+  border-color: var(--blue);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15);
+}
+ 
+.custom-input:hover {
+  border-color: var(--border-hi);
+}
+ 
+/* ───────────────────────────────────────────────────────── */
+/* DROPDOWN & CHECKLIST DASH                                 */
+/* ───────────────────────────────────────────────────────── */
+ 
+/* Override des styles par défaut de Dash pour correspondre au thème */
+.custom-dropdown .Select-control {
+  background-color: var(--bg-base) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: var(--r) !important;
+  color: var(--text) !important;
+  font-family: var(--mono) !important;
+  font-size: 12px !important;
+}
+ 
+.custom-dropdown .Select-control:hover {
+  border-color: var(--border-hi) !important;
+}
+ 
+.custom-dropdown .Select-menu-outer {
+  background-color: var(--bg-card) !important;
+  border: 1px solid var(--border-hi) !important;
+  border-radius: var(--r) !important;
+}
+ 
+.custom-dropdown .Select-option {
+  background-color: var(--bg-card) !important;
+  color: var(--text2) !important;
+  font-family: var(--mono) !important;
+  font-size: 12px !important;
+}
+ 
+.custom-dropdown .Select-option:hover,
+.custom-dropdown .Select-option.is-focused {
+  background-color: var(--bg-hover) !important;
+  color: var(--text) !important;
+}
+ 
+.custom-dropdown .Select-option.is-selected {
+  background-color: var(--blue-dim) !important;
+  color: var(--blue-bright) !important;
+}
+ 
+.custom-dropdown .Select-value-label {
+  color: var(--text) !important;
+  font-family: var(--mono) !important;
+}
+ 
+.custom-dropdown .Select-arrow {
+  border-top-color: var(--text3) !important;
+}
+ 
+.custom-checklist label {
+  font-family: var(--ui);
+  font-size: 13px;
+  color: var(--text2);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  margin-bottom: 8px;
+}
+ 
+.custom-checklist input[type="checkbox"] {
+  accent-color: var(--blue);
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+}
+ 
+/* ───────────────────────────────────────────────────────── */
+/* SETTINGS ROW                                              */
+/* ───────────────────────────────────────────────────────── */
+ 
+.settings-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+ 
+.settings-row:last-of-type {
+  border-bottom: none;
+}
+ 
+/* ───────────────────────────────────────────────────────── */
+/* KPI VALEURS                                               */
+/* ───────────────────────────────────────────────────────── */
+ 
+/* Chiffre principal dans les badges KPI */
+.kpi-val-num {
+  font-family: var(--ui);
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1;
+}
+ 
+/* ───────────────────────────────────────────────────────── */
+/* MODULE IA — RESPONSIVE                                    */
+/* ───────────────────────────────────────────────────────── */
+ 
+/* Remplacement du grid fixe "1.2fr 2fr 1.2fr" par un grid responsive */
+.ai-cards-grid {
+  display: grid;
+  grid-template-columns: 1.2fr 2fr 1.2fr;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+ 
+@media (max-width: 1200px) {
+  .ai-cards-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+ 
+@media (max-width: 800px) {
+  .ai-cards-grid {
+    grid-template-columns: 1fr;
+  }
+}

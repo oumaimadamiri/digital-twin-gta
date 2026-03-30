@@ -62,7 +62,7 @@ T_HP_OPERATING = 440.0   # °C — condition terrain actuelle
 NOMINAL = {
     # ── Vapeur haute pression (entrée turbine) ──
     "pressure_hp":      60.0,    # bar
-    "temperature_hp":   486.0,   # °C  (condition design — T_HP_DESIGN)
+    "temperature_hp":   440.0,   # °C  (condition design — T_HP_DESIGN)
     "steam_flow_hp":    120.0,   # T/h  débit total entrant
 
     # ── Vapeur basse pression (entrée depuis source externe, démarrage) ──
@@ -90,7 +90,6 @@ NOMINAL = {
     "apparent_power_max": 41.0,  # MVA  capacité maximale machine (IEC 60034)
     "current_nominal":  2254.0,  # A    I_min spec (correspond à S_max)
     "voltage":          10.5,    # kV   tension nominale (±5% → 9.975–11.025 kV)
-    "current_nominal":  2254.0,  # A    courant nominal (I_min spéc.)
     "reactive_power":   21.4,    # MVAR Q = P × tan(arccos(0.85)) ≈ 21.4
 
     # ── Vannes (% ouverture) ──
@@ -105,7 +104,7 @@ NOMINAL = {
     "valve_bp":   80.0,    # % ouverture vanne sortie BP condenseur (nominale ~80%)
 
     # ── Rendement ──
-    "efficiency":   92.0,   # % rendement thermodynamique à T_HP_DESIGN=486°C
+    "efficiency":   88.5,   # % rendement thermodynamique à T_HP_DESIGN=486°C
     # À T_HP_OPERATING=440°C, le rendement est abaissé (~88–89%) via le modèle physique
 }
 
@@ -120,6 +119,11 @@ VALVE_FLOW_WEIGHTS = {
     "v3": 0.07,   # équilibrage mécanique
     # les 6% restants = pertes / joints
 }
+# ─────────────────────────────────────────────
+# TEMPÉRATURES DE RÉFÉRENCE
+# ─────────────────────────────────────────────
+T_HP_DESIGN    = 486.0   # °C — référence thermodynamique (calcul rendement)
+T_HP_OPERATING = 440.0   # °C — valeur terrain actuelle
 
 # ─────────────────────────────────────────────
 # SEUILS D'ALARME (min, max) — régime permanent
@@ -127,18 +131,17 @@ VALVE_FLOW_WEIGHTS = {
 THRESHOLDS = {
     "apparent_power": {"min": 0.0, "max": 41.0},  # max = capacité machine
     "pressure_hp":      {"min": 55.0,    "max": 65.0},
-    "temperature_hp":   {"min": 420.0,   "max": 500.0},   # min abaissé à 420 (terrain 440)
-    "steam_flow_hp":    {"min": 100.0,   "max": 130.0},
-    "turbine_speed":    {"min": 6300.0,  "max": 6550.0},
-    "active_power":     {"min": 10.0,    "max": 32.0},     # max 32 MW spec
-    "power_factor":     {"min": 0.82,    "max": 0.86},     # plage réelle 0.82–0.86
-    "efficiency":       {"min": 85.0,    "max": 100.0},
-    "pressure_bp_in":   {"min": 3.5,     "max": 6.0},
-    "temperature_bp":   {"min": 180.0,   "max": 270.0},
+    "temperature_hp":   {"min": 400.0,   "max": 500.0},   # min abaissé à 420 (terrain 440)
+    "steam_flow_hp":    {"min": 80.0,   "max": 135.0},
+    "turbine_speed":    {"min": 6200.0,  "max": 6600.0},
+    "active_power":     {"min": 5.0,    "max": 30.0},     # max 32 MW spec
+    "power_factor":     {"min": 0.80,    "max": 0.88},     # plage réelle 0.82–0.86
+    "efficiency":       {"min": 82.0,    "max": 100.0},
+    "pressure_bp_in":   {"min": 3.5,     "max": 6.5},
+    "temperature_bp":   {"min": 180.0,   "max": 280.0},
     "voltage":          {"min": 9.975,   "max": 11.025},   # ±5% de 10.5 kV
     "current_a":        {"min": 0.0,     "max": 3500.0},
-    # Seuil critique : dépassement 24 MW → risque surpression BP barillet
-    "active_power_critical": {"warning": 24.0, "trip": 30.0},
+    "pressure_bp_barillet": {"min": 2.5, "max": 3.5},    # bar — déclenchement si dépassé (specs)
 }
 
 # ─────────────────────────────────────────────

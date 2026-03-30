@@ -1,6 +1,10 @@
 """
 callbacks/cb_simulation.py — Callbacks contrôle simulation
-Mise à jour : 5 vannes (V1/V2/V3/MP/BP), 10 scénarios, affichage nouveaux paramètres.
+
+CORRECTIONS :
+  1. trigger_dynamic_scenario : extraction de l'ID simplifiée via
+     ctx.triggered_id["index"] (supprime la double extraction redondante).
+  2. Guard n_clicks None consolidée.
 """
 import dash
 import requests
@@ -8,57 +12,24 @@ from dash import Input, Output, State, html, no_update
 from datetime import datetime
 from config import BACKEND
 from components.gta_synoptic import create_gta_synoptic
-from layouts.simulation import scenario_card
 
 _session = requests.Session()
 
 
 def register(app):
 
-    # ── Chargement asynchrone des scénarios ───────────────────────────
-    @app.callback(
-        Output("scenarios-list-container", "children"),
-        Output("scenarios-loading-header", "children"),
-        Input("url", "pathname"),
-    )
-    def load_scenarios_on_page_load(pathname):
-        if pathname != "/simulation":
-            return no_update, no_update
-            
-        try:
-            r = _session.get(f"{BACKEND}/simulation/scenarios", timeout=3)
-            if r.status_code == 200:
-                scens = r.json()
-                from layouts.simulation import scenario_card # Import local pour éviter l'erreur si non trouvé
-                cards = [scenario_card(s) for s in scens]
-                header = [
-                    html.Div([
-                        html.Span(str(len(scens)),
-                                  style={"color": "#818cf8", "fontWeight": "700"}),
-                        html.Span(" scénarios disponibles",
-                                  style={"color": "#334155", "fontSize": "11px",
-                                         "fontFamily": "Share Tech Mono"}),
-                    ], style={"marginBottom": "12px"})
-                ]
-                return cards, header
-        except Exception as e:
-            print(f"Erreur chargement scénarios: {e}")
-            
-        return html.Div("Erreur de connexion au serveur", 
-                        style={"color": "#ef4444", "padding": "20px"}), no_update
-
     # ── Affichage valeurs sliders (5 vannes) ──────────────────────────
     @app.callback(
-        Output("val-v1",  "children"),
-        Output("val-v2",  "children"),
-        Output("val-v3",  "children"),
-        Output("val-mp",  "children"),
-        Output("val-bp",  "children"),
-        Input("slider-v1",  "value"),
-        Input("slider-v2",  "value"),
-        Input("slider-v3",  "value"),
-        Input("slider-mp",  "value"),
-        Input("slider-bp",  "value"),
+        Output("val-v1", "children"),
+        Output("val-v2", "children"),
+        Output("val-v3", "children"),
+        Output("val-mp", "children"),
+        Output("val-bp", "children"),
+        Input("slider-v1", "value"),
+        Input("slider-v2", "value"),
+        Input("slider-v3", "value"),
+        Input("slider-mp", "value"),
+        Input("slider-bp", "value"),
     )
     def update_valve_displays(v1, v2, v3, vmp, vbp):
         return str(v1), str(v2), str(v3), str(vmp), str(vbp)
@@ -104,6 +75,7 @@ def register(app):
             return f"Erreur reset : {e}"
 
     # ── Scénarios Dynamiques (Pattern Matching) ───────────────────────
+    # CORRECTION 1 : utilisation directe de ctx.triggered_id["index"]
     @app.callback(
         Output("scenario-feedback", "children", allow_duplicate=True),
         Input({"type": "btn-scenario", "index": dash.ALL}, "n_clicks"),
@@ -113,22 +85,22 @@ def register(app):
         ctx = dash.callback_context
         if not ctx.triggered:
             return no_update
-        
-        # Identifier quel bouton a été cliqué
-        prop_id = ctx.triggered[0]['prop_id']
-        if 'n_clicks' not in prop_id:
+
+        # CORRECTION : extraction directe sans double parsing
+        triggered_id = ctx.triggered_id
+        if not isinstance(triggered_id, dict) or "index" not in triggered_id:
             return no_update
-        
-        # Extraire l'ID du scénario depuis l'index
-        import json
-        button_id = json.loads(prop_id.split('.')[0])
-        scenario_id = button_id['index']
-        
-        # Vérifier si c'est bien un clic (n_clicks > 0)
-        idx = ctx.triggered_id['index']
-        # Comme on a une liste de n_clicks, on vérifie celui qui correspond
-        active_idx = [i for i, v in enumerate(ctx.inputs_list[0]) if v['id']['index'] == scenario_id][0]
-        if not n_clicks_list[active_idx]:
+
+        scenario_id = triggered_id["index"]
+
+        # CORRECTION 2 : guard robuste sur n_clicks
+        # Retrouver la valeur du clic pour ce bouton
+        clicked_value = next(
+            (v for item, v in zip(ctx.inputs_list[0], n_clicks_list)
+             if item["id"].get("index") == scenario_id),
+            None,
+        )
+        if not clicked_value:
             return no_update
 
         try:
@@ -139,7 +111,7 @@ def register(app):
             )
             data = r.json()
             name = data.get("scenario", {}).get("name", f"#{scenario_id}")
-            ts   = datetime.now().strftime("%H:%M:%S")
+            ts = datetime.now().strftime("%H:%M:%S")
             return f"[{ts}] Scénario déclenché : {name}"
         except Exception as e:
             return f"Erreur scénario : {e}"
@@ -160,9 +132,9 @@ def register(app):
 
     # ── Synoptique + panneau état ─────────────────────────────────────
     @app.callback(
-        Output("sim-state-panel",  "children"),
-        Output("gta-synoptic-sim", "children"),
-        Output("btn-stop-scenario","style"),
+        Output("sim-state-panel",   "children"),
+        Output("gta-synoptic-sim",  "children"),
+        Output("btn-stop-scenario", "style"),
         Input("store-simulation-data", "data"),
         State("url", "pathname"),
         prevent_initial_call=True,
@@ -173,53 +145,52 @@ def register(app):
         d = d or {}
 
         synoptic_view = create_gta_synoptic(d)
-        status  = d.get("status", "NORMAL")
+        status = d.get("status", "NORMAL")
         s_color = {"NORMAL": "#10b981", "DEGRADED": "#f59e0b",
                    "CRITICAL": "#ef4444"}.get(status, "#10b981")
 
-        # Affichage des 5 vannes
-        valve_rows = []
         valves = [
-            ("V1", "valve_v1",  "#f97316", "Adm. HP"),
-            ("V2", "valve_v2",  "#60a5fa", "Équil."),
-            ("V3", "valve_v3",  "#60a5fa", "Équil."),
-            ("MP", "valve_mp",  "#a78bfa", "Extr. MP"),
-            ("BP", "valve_bp",  "#38bdf8", "Cond."),
+            ("V1", "valve_v1", "#f97316", "Adm. HP"),
+            ("V2", "valve_v2", "#60a5fa", "Équil."),
+            ("V3", "valve_v3", "#60a5fa", "Équil."),
+            ("MP", "valve_mp", "#a78bfa", "Extr. MP"),
+            ("BP", "valve_bp", "#38bdf8", "Cond."),
         ]
+        valve_rows = []
         for name, key, col, desc in valves:
             val = d.get(key, 0)
             color = col if val > 30 else "#ef4444"
             valve_rows.append(html.Div([
                 html.Span(f"{name}:", style={"color": "#475569", "width": "28px",
-                                             "display": "inline-block"}),
+                                              "display": "inline-block"}),
                 html.Span(f"{val:.0f}%", style={"color": color, "fontWeight": "700",
                                                   "width": "38px", "display": "inline-block"}),
                 html.Span(desc, style={"color": "#334155", "fontSize": "10px"}),
             ], style={"fontFamily": "Share Tech Mono", "fontSize": "12px",
                       "marginBottom": "3px"}))
 
-        # Paramètres clés
         params_grid = html.Div([
             html.Div([
                 html.Span("P active: ", style={"color": "#475569"}),
-                html.Span(f"{d.get('active_power',0):.1f} MW",
+                html.Span(f"{d.get('active_power', 0):.1f} MW",
                           style={"color": "#10b981", "fontWeight": "700"}),
             ], style={"fontFamily": "Share Tech Mono", "fontSize": "12px"}),
             html.Div([
                 html.Span("Vitesse: ", style={"color": "#475569"}),
-                html.Span(f"{d.get('turbine_speed',0):.0f} RPM",
+                html.Span(f"{d.get('turbine_speed', 0):.0f} RPM",
                           style={"color": "#60a5fa", "fontWeight": "700"}),
             ], style={"fontFamily": "Share Tech Mono", "fontSize": "12px"}),
             html.Div([
                 html.Span("Rendement: ", style={"color": "#475569"}),
-                html.Span(f"{d.get('efficiency',0):.1f}%",
+                html.Span(f"{d.get('efficiency', 0):.1f}%",
                           style={"color": "#38bdf8", "fontWeight": "700"}),
             ], style={"fontFamily": "Share Tech Mono", "fontSize": "12px"}),
             html.Div([
                 html.Span("P barillet: ", style={"color": "#475569"}),
                 html.Span(
-                    f"{d.get('pressure_bp_barillet',3.0):.2f} bar",
-                    style={"color": "#ef4444" if d.get("pressure_bp_barillet",3.0) > 3.5
+                    f"{d.get('pressure_bp_barillet', 3.0):.2f} bar",
+                    style={"color": "#ef4444"
+                           if d.get("pressure_bp_barillet", 3.0) > 3.5
                            else "#a78bfa", "fontWeight": "700"},
                 ),
             ], style={"fontFamily": "Share Tech Mono", "fontSize": "12px"}),
@@ -239,7 +210,7 @@ def register(app):
             ], style={"fontFamily": "Share Tech Mono", "fontSize": "12px",
                       "marginBottom": "10px"}),
             html.Div("Vannes", style={"color": "#334155", "fontSize": "10px",
-                                      "marginBottom": "4px", "letterSpacing": "1px"}),
+                                       "marginBottom": "4px", "letterSpacing": "1px"}),
             html.Div(valve_rows),
             params_grid,
         ])

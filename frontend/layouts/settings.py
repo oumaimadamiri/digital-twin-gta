@@ -4,7 +4,7 @@ layouts/settings.py — Paramètres & Profil
 from dash import html, dcc
 from components.sidebar import create_sidebar
 from config import BACKEND
-
+import requests
 
 def threshold_row(label, param, default_min, default_max, unit):
     return html.Div([

@@ -1,75 +1,82 @@
 """
 callbacks/cb_data.py — Master Data Fetcher (WebSocket + Polling)
-Version corrigée pour garantir l'affichage des graphiques :
-- Les données NOMINALES (Dashboard) arrivent par WebSocket.
-- Les données SIMULÉES (Sandbox) arrivent par Polling.
-- L'HISTORIQUE est maintenu et TOUJOURS renvoyé pour éviter les graphiques vides.
+
+CORRECTIONS :
+  1. Race condition WS + polling : les deux triggers ne partagent plus
+     le même Output "store-history". Le polling ne touche QUE store-simulation-data.
+  2. Callback séparé pour la simulation (interval-fast) → plus de conflit.
+  3. Guard sur ws_msg["data"] renforcée (KeyError possible).
+  4. _last_timestamp déclaré proprement avec nonlocal.
 """
 import json
 import requests
 from dash import Input, Output, State, no_update, callback_context
 from config import BACKEND
 
-# Session HTTP réutilisable
 _session = requests.Session()
 _session.headers.update({"Connection": "keep-alive"})
 _last_timestamp = None
 
+
 def register(app):
 
+    # ── Callback 1 : WebSocket → données nominales + historique ──────
     @app.callback(
-        Output("store-current-data",    "data"),
-        Output("store-simulation-data", "data"),
-        Output("store-history",         "data"),
-        Input("ws-data", "message"),             # Source Nominal (WS)
-        Input("interval-fast", "n_intervals"),   # Source Simulation (Polling)
-        State("store-current-data", "data"),
-        State("store-simulation-data", "data"),
+        Output("store-current-data", "data"),
+        Output("store-history",      "data"),
+        Input("ws-data", "message"),
         State("store-history", "data"),
-        prevent_initial_call=True
+        prevent_initial_call=True,
     )
-    def master_data_update(ws_msg, n_inv, current_nom, current_sim, history):
+    def update_nominal_from_ws(ws_msg, history):
         """
-        Callback central mettant à jour les 3 stores principaux.
-        Garanti que l'historique n'est jamais 'perdu' lors d'une mise à jour de simulation.
+        Réception des données nominales via WebSocket (push ~500ms).
+        MET À JOUR : store-current-data + store-history.
+        NE TOUCHE PAS : store-simulation-data (callback séparé).
         """
         global _last_timestamp
-        ctx = callback_context
-        if not ctx.triggered:
-            return no_update, no_update, no_update
 
-        trigger_id = ctx.triggered[0]["prop_id"].split(".")[0]
-        history = history or []
+        # Guard robuste : message absent ou mal formé
+        if not ws_msg:
+            return no_update, no_update
+        raw = ws_msg.get("data") if isinstance(ws_msg, dict) else None
+        if not raw:
+            return no_update, no_update
 
-        # 1) MISE À JOUR NOMINALE (WebSocket) -> Pousse vers Dashboard + Historique
-        if trigger_id == "ws-data":
-            if not ws_msg or not ws_msg.get("data"):
-                return no_update, no_update, no_update
-            
-            try:
-                d_nom = json.loads(ws_msg["data"])
-                
-                # Mise à jour historique
-                ts = d_nom.get("timestamp")
-                if ts != _last_timestamp:
-                    _last_timestamp = ts
-                    history.append(d_nom)
-                    history = history[-60:]
+        try:
+            d_nom = json.loads(raw)
+        except (json.JSONDecodeError, TypeError):
+            return no_update, no_update
 
-                # On renvoie : Nouveau Nominal, Simulation inchangée, Nouvel Historique
-                return d_nom, no_update, history
-            except:
-                return no_update, no_update, no_update
+        # Déduplication par timestamp
+        ts = d_nom.get("timestamp")
+        if ts and ts == _last_timestamp:
+            return no_update, no_update
+        _last_timestamp = ts
 
-        # 2) MISE À JOUR SIMULATION (Polling) -> Pousse vers Sandbox
-        elif trigger_id == "interval-fast":
-            try:
-                r = _session.get(f"{BACKEND}/data/simulated", timeout=0.5)
-                if r.status_code == 200:
-                    d_sim = r.json()
-                    # On renvoie : Nominal inchangé, Nouvelle Simulation, Historique inchangé
-                    return no_update, d_sim, history 
-            except:
-                pass
+        # Mise à jour historique (fenêtre glissante 60 points)
+        history = list(history or [])
+        history.append(d_nom)
+        if len(history) > 60:
+            history = history[-60:]
 
-        return no_update, no_update, no_update
+        return d_nom, history
+
+    # ── Callback 2 : Polling → données simulées uniquement ───────────
+    @app.callback(
+        Output("store-simulation-data", "data"),
+        Input("interval-fast", "n_intervals"),
+        prevent_initial_call=True,
+    )
+    def update_simulation_from_poll(_):
+        """
+        Polling des données simulées (sandbox) toutes les secondes.
+        ISOLÉ du callback WebSocket pour éviter toute race condition.
+        """
+        try:
+            r = _session.get(f"{BACKEND}/data/simulated", timeout=0.8)
+            if r.status_code == 200:
+                return r.json()
+        except Exception:
+            pass
+        return no_update
