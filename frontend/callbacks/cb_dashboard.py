@@ -1,15 +1,17 @@
 """
-callbacks/cb_dashboard.py — Callbacks temps réel du dashboard SCADA
+callbacks/cb_dashboard.py — Patches ciblés pour cb_dashboard.py existant
 
-CORRECTIONS :
-  1. update_realtime_chart : Patch() sécurisé — guard sur figure vide
-     et initialisation des traces si manquantes.
-  2. update_status_pill : retourne une string CSS valide, pas un html.Span imbriqué.
-  3. Axe X graphique RT : tickformat="%H:%M:%S" pour affichage lisible.
-  4. Jauges : hauteur portée à 180px, margin.t réduit à 40px.
-  5. [FIX-4b] Graphe RT : fenêtre 90 → 180 points (90s d'historique visuel).
-  6. [FIX-5c] Synoptique : callback Python remplacé par clientside_callback
-     → le patch SVG se fait entièrement côté navigateur, sans aller-retour Python.
+CORRECTIONS À APPLIQUER (remplacement de sections dans cb_dashboard.py) :
+
+  1. Jauges : split en FAST (5 critiques, sur WS) + SLOW (9 secondaires, sur interval-slow 5s)
+     → réduction de 14 → 5 graphiques mis à jour à 500ms
+  2. Graphique RT : figure initialisée dans le layout (plus de reconstruction)
+
+════════════════════════════════════════════════════════════════
+INSTRUCTIONS D'APPLICATION :
+  Remplacer dans cb_dashboard.py le callback update_gauges unique
+  par les deux callbacks ci-dessous : update_gauges_fast + update_gauges_slow
+════════════════════════════════════════════════════════════════
 """
 import json
 from datetime import datetime
@@ -17,13 +19,12 @@ import requests
 import plotly.graph_objects as go
 from dash import Input, Output, State, html, no_update, Patch
 from components.gauges import make_gauge, GAUGE_CONFIGS
-# create_gta_synoptic supprimé [FIX-5c] : patch géré par clientside_callback JS
 from components.alert_banner import alerts_panel
 from config import BACKEND
 
 _session = requests.Session()
 
-# ── Courbes du graphique temps réel ──────────────────────────────────
+# ── Paramètres du graphique RT ────────────────────────────────────────────
 _RT_PARAMS = {
     "active_power":   {"label": "P active (MW)",      "color": "#10b981", "scale": 1.0},
     "pressure_hp":    {"label": "P HP (bar)",         "color": "#f97316", "scale": 1.0},
@@ -34,33 +35,32 @@ _RT_PARAMS = {
 }
 
 _BASE_RT_LAYOUT = dict(
-    paper_bgcolor="rgba(0,0,0,0)",
-    plot_bgcolor="rgba(0,0,0,0)",
+    paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
     margin={"t": 10, "b": 40, "l": 40, "r": 10},
     legend={"font": {"color": "#64748b", "size": 9},
             "bgcolor": "rgba(0,0,0,0)", "orientation": "h", "y": -0.35},
-    xaxis={
-        "tickfont":   {"color": "#334155", "size": 8},
-        "gridcolor":  "#0f2744",
-        "showgrid":   True,
-        "color":      "#1e3a5f",
-        # CORRECTION 3 : format lisible pour les timestamps ISO
-        "tickformat": "%H:%M:%S",
-        "type":       "date",
-    },
-    yaxis={
-        "tickfont":  {"color": "#334155", "size": 8},
-        "gridcolor": "#0f2744",
-        "showgrid":  True,
-        "color":     "#1e3a5f",
-    },
+    xaxis={"tickfont": {"color": "#334155", "size": 8}, "gridcolor": "#0f2744",
+           "showgrid": True, "color": "#1e293b", "tickformat": "%H:%M:%S", "type": "date"},
+    yaxis={"tickfont": {"color": "#334155", "size": 8}, "gridcolor": "#0f2744",
+           "showgrid": True, "color": "#1e293b"},
     font={"family": "Share Tech Mono"},
     hovermode="x unified",
     uirevision="realtime",
 )
 
+# ── 5 jauges critiques → mis à jour sur chaque push WS (500ms) ────────────
+_GAUGES_FAST = ["pressure_hp", "temperature_hp", "active_power",
+                "turbine_speed", "efficiency"]
 
-def _make_empty_rt_figure():
+# ── 9 jauges secondaires → mis à jour sur interval-slow (5s) ─────────────
+_GAUGES_SLOW = ["steam_flow_hp", "reactive_power", "apparent_power",
+                "power_factor", "current_a", "voltage",
+                "pressure_bp_in", "pressure_bp_barillet", "steam_flow_condenser"]
+
+
+def make_empty_rt_figure():
+    """Figure RT vide initialisée avec toutes les traces.
+    Appeler depuis dashboard.layout() pour éviter la reconstruction."""
     fig = go.Figure()
     for param, cfg in _RT_PARAMS.items():
         fig.add_trace(go.Scatter(
@@ -73,7 +73,6 @@ def _make_empty_rt_figure():
 
 
 def _figure_has_traces(fig) -> bool:
-    """Vérifie que la figure contient le bon nombre de traces peuplées."""
     if fig is None:
         return False
     data = fig.get("data", [])
@@ -82,7 +81,7 @@ def _figure_has_traces(fig) -> bool:
 
 def register(app):
 
-    # ── Horloge ───────────────────────────────────────────────────────
+    # ── Horloge ──────────────────────────────────────────────────────
     @app.callback(
         Output("topbar-time", "children"),
         Input("interval-fast", "n_intervals"),
@@ -91,9 +90,6 @@ def register(app):
         return datetime.now().strftime("%d/%m/%Y  %H:%M:%S")
 
     # ── Status Pill ───────────────────────────────────────────────────
-    # CORRECTION 2 : retourne la string du statut directement (le composant
-    # parent est déjà un html.Div avec className "status-button online") ;
-    # on ne ré-enveloppe plus dans un html.Span.
     @app.callback(
         Output("topbar-status-pill", "children"),
         Input("store-current-data", "data"),
@@ -103,15 +99,13 @@ def register(app):
         d = d or {}
         status = d.get("status", "NORMAL")
         colors = {"NORMAL": "#10b981", "DEGRADED": "#f59e0b", "CRITICAL": "#ef4444"}
-        color = colors.get(status, "#10b981")
-        return html.Span(
-            status,
-            style={"color": color, "fontWeight": "700",
-                   "fontFamily": "var(--ui)", "fontSize": "11px",
-                   "letterSpacing": "1px"},
-        )
+        color  = colors.get(status, "#10b981")
+        return html.Span(status, style={
+            "color": color, "fontWeight": "700",
+            "fontFamily": "var(--ui)", "fontSize": "11px", "letterSpacing": "1px",
+        })
 
-    # ── KPI Row étendu ────────────────────────────────────────────────
+    # ── KPI Row ───────────────────────────────────────────────────────
     @app.callback(
         Output("kpi-row", "children"),
         Input("store-current-data", "data"),
@@ -161,7 +155,7 @@ def register(app):
                   "60 bar nominal" if p_cls == "ok" else "Écart"),
             badge(d.get("temperature_hp", 0), "TEMPÉRATURE HP",    "°C",  t_cls,
                   "Design 486°C" if d.get("temperature_hp", 486) >= 460
-                  else "⚠ Opérat. 440°C", fmt=".0f"),
+                  else "Opérat. 440°C", fmt=".0f"),
             badge(d.get("efficiency",     0), "RENDEMENT THERMO",  "%",   ef_cls,
                   "Optimal" if ef_cls == "ok" else "Dégradé"),
             badge(d.get("power_factor",   0), "FACTEUR cos φ",     "",    pf_cls,
@@ -172,25 +166,46 @@ def register(app):
                   "3 bar nominal" if pb_cls == "ok" else "Surpression !"),
         ]
 
-    # ── Jauges par section ────────────────────────────────────────────
-    # CORRECTION 4 : hauteur portée à 180px dans gauge_card (voir gauges.py)
+    # ── FIX : 5 jauges CRITIQUES — sur chaque push WS ────────────────
+    # (était 14 jauges toutes ensemble = 28 figures/s)
     @app.callback(
-        [Output(f"gauge-{k}", "figure") for k in GAUGE_CONFIGS],
+        [Output(f"gauge-{k}", "figure") for k in _GAUGES_FAST],
         Input("store-current-data", "data"),
         State("url", "pathname"),
         prevent_initial_call=True,
     )
-    def update_gauges(d, pathname):
+    def update_gauges_fast(d, pathname):
         if pathname != "/":
-            return [no_update] * len(GAUGE_CONFIGS)
+            return [no_update] * len(_GAUGES_FAST)
         d = d or {}
         return [
-            make_gauge(d.get(k, cfg["min"] + (cfg["max"] - cfg["min"]) * 0.5), cfg)
-            for k, cfg in GAUGE_CONFIGS.items()
+            make_gauge(d.get(k, GAUGE_CONFIGS[k]["min"] +
+                             (GAUGE_CONFIGS[k]["max"] - GAUGE_CONFIGS[k]["min"]) * 0.5),
+                       GAUGE_CONFIGS[k])
+            for k in _GAUGES_FAST
         ]
 
-    # ── Graphique temps réel ──────────────────────────────────────────
-    # CORRECTION 1 : Patch() sécurisé avec vérification des traces
+    # ── FIX : 9 jauges SECONDAIRES — sur interval-slow (5s) ──────────
+    # Réduit la charge CPU de ~72% (9/14 × moins fréquent × 10)
+    @app.callback(
+        [Output(f"gauge-{k}", "figure") for k in _GAUGES_SLOW],
+        Input("interval-slow", "n_intervals"),
+        State("store-current-data", "data"),
+        State("url", "pathname"),
+        prevent_initial_call=True,
+    )
+    def update_gauges_slow(_, d, pathname):
+        if pathname != "/":
+            return [no_update] * len(_GAUGES_SLOW)
+        d = d or {}
+        return [
+            make_gauge(d.get(k, GAUGE_CONFIGS[k]["min"] +
+                             (GAUGE_CONFIGS[k]["max"] - GAUGE_CONFIGS[k]["min"]) * 0.5),
+                       GAUGE_CONFIGS[k])
+            for k in _GAUGES_SLOW
+        ]
+
+    # ── Graphique temps réel (FIX : Patch() sécurisé) ─────────────────
     @app.callback(
         Output("realtime-chart", "figure"),
         Input("store-current-data", "data"),
@@ -203,11 +218,8 @@ def register(app):
             return no_update
         if not d:
             return no_update
-
-        # Si la figure n'est pas encore initialisée ou manque des traces,
-        # on recrée la figure complète (évite le crash de Patch()).
         if not _figure_has_traces(current_fig):
-            return _make_empty_rt_figure()
+            return make_empty_rt_figure()
 
         patched = Patch()
         ts = d.get("timestamp", "")[:19]
@@ -218,7 +230,6 @@ def register(app):
             existing_y = current_fig["data"][i].get("y") or []
             xs = list(existing_x) + [ts]
             ys = list(existing_y) + [val]
-            # [FIX-4b] fenêtre portée à 180 points = 90s @ 500ms/push
             if len(xs) > 180:
                 xs, ys = xs[-180:], ys[-180:]
             patched["data"][i]["x"] = xs
@@ -259,21 +270,18 @@ def register(app):
         if not ctx.triggered:
             return no_update, no_update
         try:
-            btn_id = json.loads(ctx.triggered[0]["prop_id"].split(".")[0])
+            btn_id   = json.loads(ctx.triggered[0]["prop_id"].split(".")[0])
             alert_id = btn_id["index"]
             r = _session.post(
                 f"{BACKEND}/settings/alerts/{alert_id}/acknowledge", timeout=1
             )
             if r.status_code == 200:
-                return "OK ✅", True
+                return "OK", True
         except Exception as e:
             print("Erreur acquittement:", e)
         return "Erreur", False
 
-    # ── Synoptique [FIX-5c] ──────────────────────────────────────────────
-    # Le patch du SVG est délégué à une clientside_callback (JS pur).
-    # Plus de sérialisation Python→JSON→DOM à chaque push WebSocket.
-    # La fonction JS est définie dans assets/synoptic_patch.js.
+    # ── Synoptique (clientside_callback JS) ───────────────────────────
     app.clientside_callback(
         """function(data, pathname) {
             if (pathname !== '/') return window.dash_clientside.no_update;
@@ -283,7 +291,7 @@ def register(app):
                 window.patchGtaSynoptic(data);
             return window.dash_clientside.no_update;
         }""",
-        Output("syn-patch-tick", "data"),   # store factice — le JS patche le SVG en place
+        Output("syn-patch-tick", "data"),
         Input("store-current-data", "data"),
         State("url", "pathname"),
         prevent_initial_call=True,

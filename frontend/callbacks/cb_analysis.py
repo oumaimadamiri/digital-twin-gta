@@ -1,15 +1,18 @@
 """
 callbacks/cb_analysis.py — Callbacks page Analyse & Historique
-Optimisé :
-  - Session HTTP réutilisable
-  - prevent_initial_call=True
-  - Intervalles rallongés (30s par défaut, rafraîchi uniquement si page active)
-  - Calcul des stats via pandas vectorisé au lieu de boucles Python
+
+CORRECTIONS :
+  1. Filtres rapides (1h, 6h, 24h, 7j, Tout) → remplissent automatiquement
+     date-start et date-end sans saisie manuelle
+  2. Le callback principal lit date-start/date-end (dcc.Input)
+     au lieu de DatePickerRange supprimé
+  3. Mise en évidence du bouton filtre actif
 """
 import requests
 import plotly.graph_objects as go
-from dash import Input, Output, State, html, no_update
+from dash import Input, Output, State, html, no_update, ctx
 import pandas as pd
+from datetime import datetime, timedelta
 from config import BACKEND
 
 _session = requests.Session()
@@ -34,7 +37,6 @@ PARAM_LABELS = {
     "steam_flow_hp":  "Débit HP (T/h)",
 }
 
-# Layout de base partagé pour les figures d'analyse
 _DARK_LAYOUT = dict(
     paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
     legend={"font": {"family": "Inter, sans-serif", "color": "#94a3b8", "size": 10},
@@ -50,23 +52,89 @@ _DARK_LAYOUT = dict(
 
 def register(app):
 
+    # ── Filtres rapides → remplissent les inputs date ─────────────────
     @app.callback(
-        Output("history-chart", "figure"),
-        Output("stats-table", "children"),
-        Output("status-pie", "figure"),
-        Output("history-data-table", "children"),
-        Input("btn-refresh-history", "n_clicks"),
-        Input("interval-analysis", "n_intervals"),
-        State("param-selector", "value"),
-        State("url", "pathname"),
+        Output("date-start", "value"),
+        Output("date-end",   "value"),
+        Input("qf-1h",  "n_clicks"),
+        Input("qf-6h",  "n_clicks"),
+        Input("qf-24h", "n_clicks"),
+        Input("qf-7j",  "n_clicks"),
+        Input("qf-all", "n_clicks"),
         prevent_initial_call=True,
     )
-    def update_analysis(_, __, params, pathname):
+    def apply_quick_filter(*_):
+        now = datetime.utcnow()
+        end_str = now.strftime("%Y-%m-%d")
+
+        mapping = {
+            "qf-1h":  timedelta(hours=1),
+            "qf-6h":  timedelta(hours=6),
+            "qf-24h": timedelta(hours=24),
+            "qf-7j":  timedelta(days=7),
+        }
+
+        triggered = ctx.triggered_id
+        if triggered == "qf-all":
+            return None, end_str
+
+        delta = mapping.get(triggered)
+        if delta:
+            start = now - delta
+            return start.strftime("%Y-%m-%d"), end_str
+
+        return no_update, no_update
+
+    # ── Mise en valeur du bouton actif ────────────────────────────────
+    @app.callback(
+        Output("qf-1h",  "className"),
+        Output("qf-6h",  "className"),
+        Output("qf-24h", "className"),
+        Output("qf-7j",  "className"),
+        Output("qf-all", "className"),
+        Input("qf-1h",  "n_clicks"),
+        Input("qf-6h",  "n_clicks"),
+        Input("qf-24h", "n_clicks"),
+        Input("qf-7j",  "n_clicks"),
+        Input("qf-all", "n_clicks"),
+        prevent_initial_call=True,
+    )
+    def highlight_active_filter(*_):
+        triggered = ctx.triggered_id
+        order = ["qf-1h", "qf-6h", "qf-24h", "qf-7j", "qf-all"]
+        return [
+            "btn btn-primary" if btn_id == triggered else "btn btn-outline"
+            for btn_id in order
+        ]
+
+    # ── Graphique + statistiques + tableaux ───────────────────────────
+    @app.callback(
+        Output("history-chart",      "figure"),
+        Output("stats-table",        "children"),
+        Output("status-pie",         "figure"),
+        Output("history-data-table", "children"),
+        Input("btn-refresh-history", "n_clicks"),
+        Input("interval-analysis",   "n_intervals"),
+        # FIX : dcc.Input(type="date") au lieu de DatePickerRange
+        State("date-start",     "value"),
+        State("date-end",       "value"),
+        State("param-selector", "value"),
+        State("url",            "pathname"),
+        prevent_initial_call=True,
+    )
+    def update_analysis(_, __, date_start, date_end, params, pathname):
         if pathname != "/analysis":
             return [no_update] * 4
 
+        # Construction de l'URL avec filtres de date optionnels
+        url = f"{BACKEND}/data/history?limit=500"
+        if date_start:
+            url += f"&start={date_start}T00:00:00"
+        if date_end:
+            url += f"&end={date_end}T23:59:59"
+
         try:
-            r    = _session.get(f"{BACKEND}/data/history?limit=200", timeout=3)
+            r    = _session.get(url, timeout=3)
             data = r.json()
         except Exception:
             data = []
@@ -75,9 +143,13 @@ def register(app):
         if not data:
             empty = go.Figure()
             empty.update_layout(**empty_layout)
-            return empty, html.Div("Pas de données"), empty, html.Div("Pas de données")
+            return (empty,
+                    html.Div("Pas de données pour cette période",
+                             style={"color": "#64748b", "fontFamily": "Share Tech Mono",
+                                    "padding": "10px"}),
+                    empty,
+                    html.Div("Pas de données"))
 
-        # ── DataFrame pour traitement vectorisé ──────────────────────
         df = pd.DataFrame(data)
         timestamps = df.get("timestamp", pd.Series(dtype=str)).str[:19]
 
@@ -93,8 +165,9 @@ def register(app):
                 ))
         fig.update_layout(margin={"t": 10, "b": 30, "l": 50, "r": 10}, **_DARK_LAYOUT)
 
-        # ── Statistiques vectorisées via pandas ───────────────────────
-        stat_params = ["pressure_hp", "temperature_hp", "active_power", "turbine_speed", "efficiency"]
+        # ── Statistiques ──────────────────────────────────────────────
+        stat_params = ["pressure_hp", "temperature_hp", "active_power",
+                       "turbine_speed", "efficiency"]
         rows = [html.Tr([
             html.Th(h) for h in ["Paramètre", "Moyenne", "Min", "Max", "Écart-type"]
         ], style={"background": "#080c10"})]
@@ -112,7 +185,6 @@ def register(app):
                 html.Td(f"{col.max():.2f}"),
                 html.Td(f"{col.std():.2f}"),
             ]))
-
         stats_table = html.Table(rows, className="data-table")
 
         # ── Pie statuts ───────────────────────────────────────────────
@@ -127,13 +199,15 @@ def register(app):
         pie.update_layout(
             margin={"t": 10, "b": 10, "l": 10, "r": 10},
             showlegend=True,
-            **{k: v for k, v in _DARK_LAYOUT.items() if k not in ("hovermode", "uirevision", "xaxis", "yaxis")},
+            **{k: v for k, v in _DARK_LAYOUT.items()
+               if k not in ("hovermode", "uirevision", "xaxis", "yaxis")},
         )
 
         # ── Tableau données ───────────────────────────────────────────
         last10 = data[:10]
         tbl_hdr = html.Tr([html.Th(h) for h in
-                           ["Timestamp", "P-HP (bar)", "T-HP (°C)", "RPM", "P (MW)", "cosφ", "Statut"]])
+                           ["Timestamp", "P-HP (bar)", "T-HP (°C)", "RPM",
+                            "P (MW)", "cosφ", "Statut"]])
         tbl_rows = [html.Tr([
             html.Td(d.get("timestamp", "")[:19].replace("T", " ")),
             html.Td(f"{d.get('pressure_hp', 0):.1f}"),
@@ -142,9 +216,11 @@ def register(app):
             html.Td(f"{d.get('active_power', 0):.2f}"),
             html.Td(f"{d.get('power_factor', 0):.3f}"),
             html.Td(html.Span(d.get("status", "NORMAL"),
-                              className=f"status-pill {d.get('status', 'NORMAL').lower()}")),
+                              className=f"status-pill {d.get('status','NORMAL').lower()}")),
         ]) for d in last10]
 
-        data_table = html.Table([html.Thead(tbl_hdr), html.Tbody(tbl_rows)],
-                                className="data-table")
+        data_table = html.Table(
+            [html.Thead(tbl_hdr), html.Tbody(tbl_rows)],
+            className="data-table",
+        )
         return fig, stats_table, pie, data_table

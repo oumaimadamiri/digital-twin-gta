@@ -1,35 +1,49 @@
 """
 layouts/ai_module.py — Vue Module IA
 
-CORRECTION :
-  1. Grid des 3 cartes IA : remplacement du style inline fixe
-     "gridTemplateColumns: 1.2fr 2fr 1.2fr" par className="ai-cards-grid"
-     défini dans style_patch.css → responsive sur petits écrans.
+CORRECTIONS :
+  1. Suppression de create_topbar → plus de double barre (économise 64px)
+  2. Grid des 3 cartes IA : 1fr 1fr 1fr (colonnes égales) via style inline
+     → chaque carte a le même espace, jauge AE lisible
+  3. RUL : affichage couleur dynamique (vert/orange/rouge selon seuil)
+  4. Alertes IA + Actions : layout flex conservé
 """
 from dash import html, dcc
-from components.sidebar import create_sidebar, create_topbar
+from components.sidebar import create_sidebar
 
 
 def layout():
     return html.Div([
         create_sidebar(active_path="/ai"),
         html.Div([
-            create_topbar("Module IA", "Détection d'Anomalies & RUL"),
+
+            # Titre de page intégré (remplace create_topbar supprimé)
+            html.Div([
+                html.Span("Module IA", style={
+                    "fontFamily": "var(--ui)", "fontWeight": "600",
+                    "fontSize": "16px", "color": "var(--text)",
+                }),
+                html.Span(" / Détection d'anomalies & RUL", style={
+                    "color": "var(--text3)", "fontWeight": "400", "marginLeft": "8px",
+                }),
+            ], style={
+                "padding": "16px 0 12px",
+                "borderBottom": "1px solid var(--border)",
+                "marginBottom": "20px",
+            }),
 
             html.Div([
-                # ── Cartes IA (grid responsive via CSS) ───────────────
+                # ── 3 cartes IA — grid égal 1fr 1fr 1fr ──────────────
                 html.Div([
 
                     # Carte Autoencodeur
                     html.Div([
-                        html.Div("Autoencodeur — Détection d'Anomalies",
+                        html.Div("Autoencodeur — détection d'anomalies",
                                  className="card-title"),
                         html.Div([
                             html.Div("Erreur de reconstruction", style={
-                                "fontFamily": "var(--mono)",
-                                "fontSize": "11px",
-                                "color": "var(--text3)",
-                                "marginBottom": "4px",
+                                "fontFamily": "var(--mono)", "fontSize": "11px",
+                                "color": "var(--text3)", "marginBottom": "4px",
                             }),
                             html.Div(id="ae-error-value"),
                             html.Div(id="ae-status-label", style={"marginTop": "6px"}),
@@ -40,17 +54,15 @@ def layout():
 
                     # Carte LSTM
                     html.Div([
-                        html.Div("Prédiction LSTM — Horizon Court Terme",
+                        html.Div("Prédiction LSTM — horizon court terme",
                                  className="card-title"),
                         html.Div([
-                            html.Span("Précision attendue : ",
-                                      style={"color": "var(--text3)",
-                                             "fontSize": "11px"}),
-                            html.Span(id="lstm-precision-value",
-                                      style={"fontFamily": "var(--mono)",
-                                             "fontSize": "12px",
-                                             "color": "var(--green)",
-                                             "marginLeft": "4px"}),
+                            html.Span("Précision modèle : ",
+                                      style={"color": "var(--text3)", "fontSize": "11px"}),
+                            html.Span(id="lstm-precision-value", style={
+                                "fontFamily": "var(--mono)", "fontSize": "12px",
+                                "color": "var(--green)", "marginLeft": "4px",
+                            }),
                         ], style={"marginBottom": "6px"}),
                         dcc.Graph(id="lstm-prediction-chart",
                                   config={"displayModeBar": False},
@@ -59,55 +71,54 @@ def layout():
 
                     # Carte RUL
                     html.Div([
-                        html.Div("Remaining Useful Life (RUL)",
+                        html.Div("Remaining useful life (RUL)",
                                  className="card-title"),
                         html.Div([
                             html.Div("RUL estimé", style={
-                                "fontFamily": "var(--mono)",
-                                "fontSize": "11px",
-                                "color": "var(--text3)",
-                                "marginBottom": "4px",
+                                "fontFamily": "var(--mono)", "fontSize": "11px",
+                                "color": "var(--text3)", "marginBottom": "4px",
                             }),
+                            # Valeur colorée dynamiquement par cb_ai.py
                             html.Div(id="rul-value", style={
-                                "fontFamily": "var(--mono)",
-                                "fontSize": "28px",
-                                "fontWeight": "700",
-                                "color": "var(--green)",
+                                "fontFamily": "var(--mono)", "fontSize": "28px",
+                                "fontWeight": "700", "color": "var(--green)",
                             }),
                             html.Div(id="rul-progress", style={"marginTop": "10px"}),
                         ]),
                     ], className="card"),
 
-                # CORRECTION 1 : className au lieu de style inline fixe
-                ], className="ai-cards-grid"),
+                # FIX : colonnes égales au lieu de 1.2fr 2fr 1.2fr
+                ], style={
+                    "display": "grid",
+                    "gridTemplateColumns": "1fr 1fr 1fr",
+                    "gap": "16px",
+                    "marginBottom": "16px",
+                }),
 
                 # ── Alertes IA + actions ───────────────────────────────
                 html.Div([
                     html.Div([
-                        html.Div("Alertes IA Récentes", className="card-title"),
+                        html.Div("Alertes IA récentes", className="card-title"),
                         html.Div(id="ai-alerts-table"),
                     ], className="card", style={"flex": "3"}),
 
                     html.Div([
                         html.Div("Actions IA", className="card-title"),
                         html.Button(
-                            "▶ Lancer une analyse complète",
+                            "Lancer une analyse complète",
                             id="btn-run-ai",
                             className="btn btn-primary",
                             style={"width": "100%", "marginBottom": "10px"},
                         ),
                         html.Div(id="ai-run-status", style={
-                            "fontFamily": "var(--mono)",
-                            "fontSize": "11px",
+                            "fontFamily": "var(--mono)", "fontSize": "11px",
                             "color": "var(--text3)",
                         }),
-                        html.Div([
-                            html.Div(
-                                "Fréquence de rafraîchissement IA : 5s",
-                                style={"color": "var(--text3)", "fontSize": "11px",
-                                       "fontFamily": "var(--mono)", "marginTop": "16px"},
-                            ),
-                        ]),
+                        html.Div(
+                            "Rafraîchissement IA : 5s",
+                            style={"color": "var(--text3)", "fontSize": "11px",
+                                   "fontFamily": "var(--mono)", "marginTop": "16px"},
+                        ),
                     ], className="card", style={"flex": "1"}),
                 ], style={"display": "flex", "gap": "16px"}),
 

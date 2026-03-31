@@ -1,5 +1,13 @@
 """
 layouts/simulation.py — Contrôle de la simulation : 5 vannes + 10 scénarios
+
+CORRECTIONS :
+  1. scenario_card() : badge de criticité (CRITIQUE / MAJEUR / MODÉRÉ)
+     calculé depuis perturbation_type et durée
+  2. Chargement des scénarios sans race condition :
+     le contenu initial affiche un spinner léger, le callback
+     cb_simulation.update_history() charge sur pathname match
+  3. Tri des scénarios : CRITIQUE en premier
 """
 from dash import html, dcc
 from components.sidebar import create_sidebar
@@ -7,17 +15,29 @@ from components.sidebar import create_sidebar
 import requests
 from config import BACKEND
 
-# Session pour fetch initial
 _session = requests.Session()
 
-# (get_scenarios_from_api supprimé pour éviter le blocage au chargement)
+# ── Mapping criticité ─────────────────────────────────────────────────
+_CRITICITE = {
+    # (perturbation_type, scenario_id) → niveau
+    # Scénarios identifiés comme critiques dans scenarios.py
+    4: ("CRITIQUE", "#ef4444"),   # perte de charge brutale — step immédiat
+    9: ("CRITIQUE", "#ef4444"),   # interruption source vapeur — step brutal
+    8: ("MAJEUR",   "#f59e0b"),   # dépassement puissance — ramp vers trip
+    1: ("MAJEUR",   "#f59e0b"),   # chute pression HP
+    2: ("MAJEUR",   "#f59e0b"),   # surchauffe
+    7: ("MAJEUR",   "#f59e0b"),   # défaut alternateur
+    10:("MAJEUR",   "#f59e0b"),   # panne pompe huile
+    3: ("MODÉRÉ",   "#818cf8"),   # fermeture V1 — step mais récupérable
+    6: ("MODÉRÉ",   "#818cf8"),   # oscillations DEH
+    5: ("MODÉRÉ",   "#818cf8"),   # dégradation progressive — ramp lent
+}
 
 
 def _slider_row(valve_id, label, default, color, description):
     return html.Div([
         html.Div([
-            html.Span(label, className="slider-label-text",
-                      style={"color": color}),
+            html.Span(label, className="slider-label-text", style={"color": color}),
             html.Div([
                 html.Span(id=f"val-{valve_id}", className="slider-val-num"),
                 html.Span("%", className="slider-val-unit"),
@@ -37,49 +57,72 @@ def _slider_row(valve_id, label, default, color, description):
 
 
 def scenario_card(s):
-    # Mapping depuis le format API backend
+    """Carte scénario avec badge de criticité."""
     ptype = s.get("perturbation_type", "unknown")
+    sid   = s.get("id", 0)
+
+    # Type de perturbation
     if ptype == "ramp":
-        icon, color, t_name = "📉", "#f59e0b", "RAMP"
+        ptype_color, ptype_label = "#f59e0b", "RAMP"
     elif ptype == "step":
-        icon, color, t_name = "⚡", "#ef4444", "STEP"
+        ptype_color, ptype_label = "#ef4444", "STEP"
     elif ptype == "oscillation":
-        icon, color, t_name = "〰", "#8b5cf6", "OSCIL"
+        ptype_color, ptype_label = "#818cf8", "OSCIL"
     else:
-        icon, color, t_name = "⚙", "#94a3b8", "OTHER"
+        ptype_color, ptype_label = "#94a3b8", "OTHER"
+
+    # Badge criticité
+    crit_label, crit_color = _CRITICITE.get(sid, ("MODÉRÉ", "#818cf8"))
 
     return html.Div([
+        # En-tête avec nom et badges
         html.Div([
-            html.Span(icon, className="scenario-icon",
-                      style={"fontSize": "18px", "marginRight": "8px"}),
             html.Div([
                 html.Div(s.get("name", "N/A"), className="scenario-name",
-                         style={"fontSize": "12px", "fontWeight": "600"}),
+                         style={"fontSize": "12px", "fontWeight": "600",
+                                "marginBottom": "5px"}),
                 html.Div([
-                    html.Span(f"#{s.get('id', 0)}", style={"color": "#334155",
-                                                      "marginRight": "8px",
-                                                      "fontSize": "10px"}),
-                    html.Span(t_name,
-                               style={"color": color, "fontSize": "10px",
-                                      "background": f"rgba({_hex_to_rgb(color)},0.1)",
-                                      "padding": "1px 6px", "borderRadius": "3px",
-                                      "fontFamily": "Share Tech Mono"}),
+                    # Badge criticité (nouveau)
+                    html.Span(crit_label, style={
+                        "color": crit_color,
+                        "fontSize": "9px",
+                        "background": f"rgba({_hex_to_rgb(crit_color)},0.12)",
+                        "padding": "1px 6px",
+                        "borderRadius": "3px",
+                        "fontFamily": "Share Tech Mono",
+                        "marginRight": "6px",
+                        "fontWeight": "600",
+                    }),
+                    # Badge type perturbation
+                    html.Span(ptype_label, style={
+                        "color": ptype_color,
+                        "fontSize": "9px",
+                        "background": f"rgba({_hex_to_rgb(ptype_color)},0.1)",
+                        "padding": "1px 6px",
+                        "borderRadius": "3px",
+                        "fontFamily": "Share Tech Mono",
+                    }),
+                    html.Span(f" #{sid}", style={
+                        "color": "#334155", "fontSize": "9px",
+                        "marginLeft": "6px",
+                    }),
                 ]),
             ]),
         ], className="scenario-header",
-           style={"display": "flex", "alignItems": "center", "marginBottom": "8px"}),
+           style={"display": "flex", "alignItems": "flex-start",
+                  "marginBottom": "10px"}),
+
         html.Button(
-            "▶ DÉCLENCHER",
-            id={"type": "btn-scenario", "index": s.get("id", 0)},
+            "Déclencher",
+            id={"type": "btn-scenario", "index": sid},
             className="btn btn-scenario",
-            style={"--btn-color": color, "width": "100%"},
+            style={"--btn-color": crit_color, "width": "100%"},
         ),
     ], className="card scenario-card",
-       style={"--card-glow": color, "padding": "12px", "marginBottom": "8px"})
+       style={"--card-glow": crit_color, "padding": "12px", "marginBottom": "8px"})
 
 
 def _hex_to_rgb(hex_color):
-    """Convertit #rrggbb en 'r,g,b' pour rgba()."""
     h = hex_color.lstrip("#")
     r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
     return f"{r},{g},{b}"
@@ -89,31 +132,26 @@ def layout():
     return html.Div([
         create_sidebar(active_path="/simulation"),
         html.Div([
-            # Synoptique simulation
             html.Div(id="gta-synoptic-sim", style={"marginBottom": "20px"}),
 
             html.Div([
                 # ── Colonne gauche : vannes + état ──────────────────
                 html.Div([
-
-                    # Vannes
                     html.Div([
-                        html.Div("Contrôle des Vannes", className="card-title"),
+                        html.Div("Contrôle des vannes", className="card-title"),
 
-                        # V1 — admission HP (rôle principal)
                         html.Div([
                             html.Div("ADMISSION HP", style={
                                 "fontSize": "9px", "color": "#334155",
                                 "letterSpacing": "1.5px", "marginBottom": "6px",
                                 "fontFamily": "Share Tech Mono",
                             }),
-                            _slider_row("v1", "V1 — Admission HP",  100, "#f97316",
+                            _slider_row("v1", "V1 — Admission HP", 100, "#f97316",
                                         "Contrôle 80% du débit HP — régulation principale"),
                         ]),
 
                         html.Hr(style={"borderColor": "#0f2744", "margin": "10px 0"}),
 
-                        # V2/V3 — équilibrage mécanique
                         html.Div([
                             html.Div("ÉQUILIBRAGE MÉCANIQUE TURBINE", style={
                                 "fontSize": "9px", "color": "#334155",
@@ -121,14 +159,13 @@ def layout():
                                 "fontFamily": "Share Tech Mono",
                             }),
                             _slider_row("v2", "V2 — Équilibrage", 100, "#60a5fa",
-                                        "Répartition effort mécanique ~7% — pas d'effet thermo"),
+                                        "Répartition effort mécanique ~7%"),
                             _slider_row("v3", "V3 — Équilibrage", 100, "#60a5fa",
-                                        "Répartition effort mécanique ~7% — pas d'effet thermo"),
+                                        "Répartition effort mécanique ~7%"),
                         ]),
 
                         html.Hr(style={"borderColor": "#0f2744", "margin": "10px 0"}),
 
-                        # MP/BP — extraction et condenseur
                         html.Div([
                             html.Div("EXTRACTION / CONDENSEUR", style={
                                 "fontSize": "9px", "color": "#334155",
@@ -136,47 +173,36 @@ def layout():
                                 "fontFamily": "Share Tech Mono",
                             }),
                             _slider_row("mp", "Vanne MP — Extraction", 50, "#a78bfa",
-                                        "Extraction vers barillet MP · P barillet monte si ouverture ↑"),
-                            _slider_row("bp", "Vanne BP — Condenseur",  80, "#38bdf8",
+                                        "Extraction vers barillet MP"),
+                            _slider_row("bp", "Vanne BP — Condenseur", 80, "#38bdf8",
                                         "Sortie BP vers condenseur · min 5% sécurité"),
                         ]),
 
                         html.Div([
-                            html.Button("✔ Appliquer", id="btn-apply-valves",
+                            html.Button("Appliquer", id="btn-apply-valves",
                                         className="btn btn-success"),
-                            html.Button("↺ Reset nominal", id="btn-reset",
+                            html.Button("Reset nominal", id="btn-reset",
                                         className="btn btn-danger",
                                         style={"marginLeft": "10px"}),
                         ], style={"marginTop": "14px"}),
 
                         html.Div(id="valve-feedback", style={
-                            "marginTop": "10px",
-                            "fontFamily": "Share Tech Mono",
-                            "fontSize": "10.5px",
-                            "color": "#64748b",
-                            "minHeight": "20px",
+                            "marginTop": "10px", "fontFamily": "Share Tech Mono",
+                            "fontSize": "10.5px", "color": "#64748b", "minHeight": "20px",
                         }),
                     ], className="card"),
 
-                    # État courant
                     html.Div([
-                        html.Div("État Système", className="card-title"),
+                        html.Div("État système", className="card-title"),
                         html.Div(id="sim-state-panel"),
-                        html.Button(
-                            "🛑 ARRÊTER SCÉNARIO",
-                            id="btn-stop-scenario",
-                            className="btn btn-danger",
-                            style={"display": "none"},
-                        ),
+                        html.Button("Arrêter le scénario", id="btn-stop-scenario",
+                                    className="btn btn-danger", style={"display": "none"}),
                     ], className="card", style={"marginTop": "14px"}),
 
-                    # Historique
                     html.Div([
-                        html.Div("Historique des Scénarios",
-                                 className="card-title",
+                        html.Div("Historique des scénarios", className="card-title",
                                  style={"marginBottom": "10px"}),
-                        html.Div(id="scenario-history-list",
-                                 className="history-container",
+                        html.Div(id="scenario-history-list", className="history-container",
                                  style={"maxHeight": "160px", "overflowY": "auto"}),
                     ], className="card", style={"marginTop": "14px"}),
 
@@ -185,22 +211,48 @@ def layout():
                 # ── Colonne droite : scénarios ──────────────────────
                 html.Div([
                     html.Div([
-                        html.Div("Scénarios de Perturbation", className="card-title"),
-                        html.Div(id="scenarios-loading-header"), # Changement dynamique ici
+                        html.Div("Scénarios de perturbation", className="card-title"),
+                        # Légende criticité (nouveau)
+                        html.Div([
+                            html.Span("Criticité : ", style={"color": "#475569",
+                                                              "fontSize": "10px"}),
+                            html.Span("CRITIQUE", style={"color": "#ef4444",
+                                                          "fontSize": "10px",
+                                                          "marginRight": "8px"}),
+                            html.Span("MAJEUR", style={"color": "#f59e0b",
+                                                        "fontSize": "10px",
+                                                        "marginRight": "8px"}),
+                            html.Span("MODÉRÉ", style={"color": "#818cf8",
+                                                        "fontSize": "10px"}),
+                        ], style={"marginBottom": "10px"}),
                     ]),
+                    # FIX race condition : spinner initial discret, remplacé par
+                    # le callback update_scenarios_list déclenché par pathname
                     html.Div(
                         id="scenarios-list-container",
                         style={"maxHeight": "680px", "overflowY": "auto",
                                "paddingRight": "4px"},
-                        children=[html.Div("Chargement des scénarios...", 
-                                         style={"color": "#64748b", "fontFamily": "Share Tech Mono", "padding": "20px"})]
+                        children=[
+                            html.Div([
+                                html.Div(style={
+                                    "width": "20px", "height": "20px",
+                                    "border": "2px solid #334155",
+                                    "borderTopColor": "#60a5fa",
+                                    "borderRadius": "50%",
+                                    "display": "inline-block",
+                                    "marginRight": "8px",
+                                }),
+                                html.Span("Chargement...", style={
+                                    "color": "#475569", "fontSize": "11px",
+                                    "fontFamily": "Share Tech Mono",
+                                }),
+                            ], style={"display": "flex", "alignItems": "center",
+                                      "padding": "16px"}),
+                        ]
                     ),
                     html.Div(id="scenario-feedback", style={
-                        "marginTop": "10px",
-                        "fontFamily": "Share Tech Mono",
-                        "fontSize": "10.5px",
-                        "color": "#f97316",
-                        "minHeight": "18px",
+                        "marginTop": "10px", "fontFamily": "Share Tech Mono",
+                        "fontSize": "10.5px", "color": "#f97316", "minHeight": "18px",
                     }),
                 ], className="card", style={"flex": "1", "minWidth": "0"}),
 

@@ -117,8 +117,6 @@ body {
   font-weight: 500;
 }
 
-
-
 .nav-item {
   display: flex;
   align-items: center;
@@ -182,10 +180,9 @@ body {
 /* TOPBAR                                                    */
 /* ───────────────────────────────────────────────────────── */
 .main-content {
-  margin-top: 64px;
-  min-height: calc(100vh - 64px);
   display: flex;
   flex-direction: column;
+  flex: 1;
 }
 
 .topbar {
@@ -294,6 +291,7 @@ body {
 /* ───────────────────────────────────────────────────────── */
 .kpi-row {
   display: flex;
+  flex-wrap: wrap;
   gap: 1px;
   /* To simulate border between them if we put them in a container, or space them */
   background: var(--border);
@@ -304,6 +302,7 @@ body {
 
 .kpi-badge {
   flex: 1;
+  min-width: 130px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -947,19 +946,37 @@ body {
 /* Remplacement du grid fixe "1.2fr 2fr 1.2fr" par un grid responsive */
 .ai-cards-grid {
   display: grid;
-  grid-template-columns: 1.2fr 2fr 1.2fr;
+  grid-template-columns: 1fr 1fr 1fr;
   gap: 16px;
   margin-bottom: 16px;
 }
  
-@media (max-width: 1200px) {
+@media (max-width: 1100px) {
   .ai-cards-grid {
     grid-template-columns: 1fr 1fr;
   }
 }
  
-@media (max-width: 800px) {
+@media (max-width: 750px) {
   .ai-cards-grid {
     grid-template-columns: 1fr;
   }
+}
+
+.btn.btn-primary.qf-active {
+  background: var(--blue-dim);
+  border-color: var(--blue);
+  color: var(--blue-bright);
+}
+ 
+/* Inputs date — override pour cohérence thème sombre */
+input[type="date"].custom-input {
+  color-scheme: dark;          /* Chrome/Edge : calendrier sombre */
+  font-family: var(--mono);
+  font-size: 12px;
+}
+ 
+input[type="date"].custom-input::-webkit-calendar-picker-indicator {
+  filter: invert(0.6);         /* Icône calendrier adaptée au fond sombre */
+  cursor: pointer;
 }

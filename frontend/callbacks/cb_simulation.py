@@ -2,9 +2,11 @@
 callbacks/cb_simulation.py — Callbacks contrôle simulation
 
 CORRECTIONS :
-  1. trigger_dynamic_scenario : extraction de l'ID simplifiée via
-     ctx.triggered_id["index"] (supprime la double extraction redondante).
-  2. Guard n_clicks None consolidée.
+  1. Nouveau callback update_scenarios_list : charge les scénarios
+     immédiatement sur changement de pathname (plus d'attente 5s)
+     → résout la race condition "Chargement des scénarios..."
+  2. Les scénarios sont triés par criticité (CRITIQUE en premier)
+  3. trigger_dynamic_scenario : inchangé
 """
 import dash
 import requests
@@ -12,13 +14,17 @@ from dash import Input, Output, State, html, no_update
 from datetime import datetime
 from config import BACKEND
 from components.gta_synoptic import create_gta_synoptic
+from layouts.simulation import scenario_card, _CRITICITE
 
 _session = requests.Session()
+
+# Ordre de tri pour l'affichage des scénarios
+_CRIT_ORDER = {"CRITIQUE": 0, "MAJEUR": 1, "MODÉRÉ": 2}
 
 
 def register(app):
 
-    # ── Affichage valeurs sliders (5 vannes) ──────────────────────────
+    # ── Affichage valeurs sliders ────────────────────────────────────
     @app.callback(
         Output("val-v1", "children"),
         Output("val-v2", "children"),
@@ -33,6 +39,42 @@ def register(app):
     )
     def update_valve_displays(v1, v2, v3, vmp, vbp):
         return str(v1), str(v2), str(v3), str(vmp), str(vbp)
+
+    # ── FIX : chargement scénarios sur URL change (plus de race condition) ──
+    @app.callback(
+        Output("scenarios-list-container", "children"),
+        Input("url", "pathname"),
+    )
+    def update_scenarios_list(pathname):
+        """
+        Chargement immédiat des scénarios à l'arrivée sur /simulation.
+        Remplace le chargement différé sur interval-slow (délai 5s).
+        Les scénarios sont triés par criticité : CRITIQUE → MAJEUR → MODÉRÉ.
+        """
+        if pathname != "/simulation":
+            return no_update
+        try:
+            r = _session.get(f"{BACKEND}/simulation/scenarios", timeout=2)
+            if r.status_code != 200:
+                raise Exception(f"HTTP {r.status_code}")
+            scenarios = r.json()
+
+            # Tri par criticité
+            def sort_key(s):
+                sid = s.get("id", 99)
+                crit_label = _CRITICITE.get(sid, ("MODÉRÉ", ""))[0]
+                return _CRIT_ORDER.get(crit_label, 2)
+
+            scenarios_sorted = sorted(scenarios, key=sort_key)
+
+            return [scenario_card(s) for s in scenarios_sorted]
+
+        except Exception as e:
+            return html.Div(
+                f"Erreur de chargement : {e}",
+                style={"color": "#ef4444", "fontFamily": "Share Tech Mono",
+                       "fontSize": "11px", "padding": "16px"},
+            )
 
     # ── Appliquer les vannes ──────────────────────────────────────────
     @app.callback(
@@ -74,8 +116,7 @@ def register(app):
         except Exception as e:
             return f"Erreur reset : {e}"
 
-    # ── Scénarios Dynamiques (Pattern Matching) ───────────────────────
-    # CORRECTION 1 : utilisation directe de ctx.triggered_id["index"]
+    # ── Déclenchement scénario (Pattern Matching) ─────────────────────
     @app.callback(
         Output("scenario-feedback", "children", allow_duplicate=True),
         Input({"type": "btn-scenario", "index": dash.ALL}, "n_clicks"),
@@ -86,15 +127,11 @@ def register(app):
         if not ctx.triggered:
             return no_update
 
-        # CORRECTION : extraction directe sans double parsing
         triggered_id = ctx.triggered_id
         if not isinstance(triggered_id, dict) or "index" not in triggered_id:
             return no_update
 
         scenario_id = triggered_id["index"]
-
-        # CORRECTION 2 : guard robuste sur n_clicks
-        # Retrouver la valeur du clic pour ce bouton
         clicked_value = next(
             (v for item, v in zip(ctx.inputs_list[0], n_clicks_list)
              if item["id"].get("index") == scenario_id),
@@ -145,7 +182,7 @@ def register(app):
         d = d or {}
 
         synoptic_view = create_gta_synoptic(d)
-        status = d.get("status", "NORMAL")
+        status  = d.get("status", "NORMAL")
         s_color = {"NORMAL": "#10b981", "DEGRADED": "#f59e0b",
                    "CRITICAL": "#ef4444"}.get(status, "#10b981")
 
@@ -156,18 +193,19 @@ def register(app):
             ("MP", "valve_mp", "#a78bfa", "Extr. MP"),
             ("BP", "valve_bp", "#38bdf8", "Cond."),
         ]
-        valve_rows = []
-        for name, key, col, desc in valves:
-            val = d.get(key, 0)
-            color = col if val > 30 else "#ef4444"
-            valve_rows.append(html.Div([
+        valve_rows = [
+            html.Div([
                 html.Span(f"{name}:", style={"color": "#475569", "width": "28px",
                                               "display": "inline-block"}),
-                html.Span(f"{val:.0f}%", style={"color": color, "fontWeight": "700",
-                                                  "width": "38px", "display": "inline-block"}),
+                html.Span(f"{d.get(key, 0):.0f}%", style={
+                    "color": col if d.get(key, 0) > 30 else "#ef4444",
+                    "fontWeight": "700", "width": "38px", "display": "inline-block",
+                }),
                 html.Span(desc, style={"color": "#334155", "fontSize": "10px"}),
             ], style={"fontFamily": "Share Tech Mono", "fontSize": "12px",
-                      "marginBottom": "3px"}))
+                      "marginBottom": "3px"})
+            for name, key, col, desc in valves
+        ]
 
         params_grid = html.Div([
             html.Div([
@@ -244,7 +282,7 @@ def register(app):
                     ], style={"marginBottom": "4px"})
                     for item in reversed(r.json())
                 ]
-                return items or html.Div("Aucun scénario",
+                return items or html.Div("Aucun scénario déclenché",
                                          style={"color": "#334155", "fontSize": "11px"})
         except Exception:
             pass

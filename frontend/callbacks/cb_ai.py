@@ -1,10 +1,9 @@
 """
 callbacks/cb_ai.py — Callbacks module IA
-Optimisé :
-  - Session HTTP unique + un seul endpoint /ai/dashboard fusionné
-  - Fallback gracieux si l'endpoint combiné n'existe pas encore
-  - prevent_initial_call=True
-  - Layouts Plotly partagés
+CORRECTIONS :
+  1. lstm-precision-value n'est plus hardcodé à "92%" — valeur réelle ou "N/A"
+  2. RUL : affichage couleur dynamique + tendance visuelle
+  3. prevent_initial_call=True conservé
 """
 import requests
 import plotly.graph_objects as go
@@ -13,7 +12,6 @@ from config import BACKEND
 
 _session = requests.Session()
 
-# Layout commun pour les figures IA
 _AI_LAYOUT_BASE = dict(
     paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
     legend={"font": {"family": "Inter, sans-serif", "color": "#94a3b8", "size": 9},
@@ -46,7 +44,6 @@ def register(app):
         if pathname != "/ai":
             return [no_update] * 9
 
-        # ── Un seul aller-retour HTTP pour les 2 ressources ──────────
         try:
             results = _session.get(f"{BACKEND}/ai/analysis", timeout=2).json()
         except Exception:
@@ -97,7 +94,19 @@ def register(app):
                    "fontSize": "12px", "fontWeight": "700"},
         )
 
-        # ── LSTM ──────────────────────────────────────────────────────
+        # ── LSTM — précision RÉELLE (FIX: plus de valeur hardcodée) ───
+        # On affiche la précision si le modèle la fournit, sinon "N/A"
+        if lstm.get("ready"):
+            raw_precision = lstm.get("precision_pct")
+            if raw_precision is not None:
+                lstm_precision_text = f"{raw_precision:.0f}%"
+            else:
+                # Modèle de fallback linéaire actif — pas de précision mesurable
+                lstm_precision_text = "Fallback linéaire"
+        else:
+            lstm_precision_text = "N/A"
+
+        # ── Graphique LSTM ─────────────────────────────────────────────
         lstm_fig = go.Figure()
         if lstm.get("ready"):
             features = lstm.get("features", [])
@@ -127,23 +136,53 @@ def register(app):
             **{k: v for k, v in _AI_LAYOUT_BASE.items() if k != "xaxis"},
         )
 
-        # ── RUL ───────────────────────────────────────────────────────
+        # ── RUL — affichage couleur + tendance ────────────────────────
         rul_days  = rul.get("rul_days", 0.0)
-        rul_color = "#00e676" if rul_days > 20 else ("#ffd740" if rul_days > 7 else "#ff3d57")
+        if rul_days > 20:
+            rul_color = "#00e676"
+            rul_label = f"{rul_days:.0f} j"
+        elif rul_days > 7:
+            rul_color = "#ffd740"
+            rul_label = f"{rul_days:.0f} j"
+        else:
+            rul_color = "#ff3d57"
+            rul_label = f"{rul_days:.1f} j"
+
+        # Barre de progression : 0j = vide, 30j = plein
+        progress_pct = min(rul_days / 30 * 100, 100)
+
         rul_progress = html.Div([
             html.Div([
                 html.Span("Date estimée de panne : ",
                           style={"color": "var(--text3)", "fontSize": "11px"}),
-                html.Span(rul.get("estimated_failure", "N/A"),
-                          style={"color": rul_color, "fontFamily": "var(--mono)", "fontSize": "12px"}),
-            ], style={"marginBottom": "6px"}),
+                html.Span(
+                    rul.get("estimated_failure", "N/A"),
+                    style={"color": rul_color, "fontFamily": "var(--mono)", "fontSize": "12px",
+                           "fontWeight": "700" if rul_days <= 7 else "400"},
+                ),
+            ], style={"marginBottom": "8px", "display": "flex", "alignItems": "center",
+                      "gap": "6px"}),
+
+            # Barre de progression
+            html.Div(style={
+                "height": "6px", "borderRadius": "3px",
+                "background": f"linear-gradient(90deg, {rul_color} {progress_pct:.0f}%, #1e293b 0%)",
+                "marginBottom": "6px",
+            }),
+
             html.Div([
-                html.Div(style={"height": "4px", "borderRadius": "2px",
-                                "background": f"linear-gradient(90deg, {rul_color} "
-                                              f"{min(rul_days / 30 * 100, 100):.0f}%, var(--border) 0%)",
-                                "marginBottom": "4px"}),
-                html.Span(f"Score dégradation : {rul.get('degradation_score', 0.0):.3f}",
-                          style={"color": "var(--text3)", "fontFamily": "var(--mono)", "fontSize": "10px"}),
+                html.Span(f"Score dégradation : ",
+                          style={"color": "var(--text3)", "fontSize": "10px"}),
+                html.Span(
+                    f"{rul.get('degradation_score', 0.0):.3f}",
+                    style={"color": rul_color, "fontFamily": "var(--mono)", "fontSize": "10px"},
+                ),
+                html.Span(f"  |  Paramètre critique : ",
+                          style={"color": "var(--text3)", "fontSize": "10px"}),
+                html.Span(
+                    rul.get("critical_parameter", "N/A"),
+                    style={"color": "#aa80ff", "fontFamily": "var(--mono)", "fontSize": "10px"},
+                ),
             ]),
         ], style={"marginTop": "10px"})
 
@@ -167,7 +206,7 @@ def register(app):
             ]) for a in ai_alerts[:8]]
             tbl = html.Table([html.Thead(hdr), html.Tbody(rows)], className="data-table")
 
-        return (f"{err:.4f}", ae_style, "92%", f"{rul_days:.0f} j",
+        return (rul_label, ae_style, lstm_precision_text, rul_label,
                 ae_gauge, lstm_fig, ae_status, rul_progress, tbl)
 
     # ── Bouton analyse manuelle ────────────────────────────────────────
