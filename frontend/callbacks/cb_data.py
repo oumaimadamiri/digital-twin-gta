@@ -20,9 +20,31 @@ _session = requests.Session()
 _session.headers.update({"Connection": "keep-alive"})
 _last_timestamp = None
 
+_RT_FIELDS = frozenset([
+    "timestamp", "active_power", "pressure_hp",
+    "turbine_speed", "temperature_hp", "efficiency", "power_factor",
+    # champs nécessaires aux KPIs et alertes (conservés en plus)
+    "status", "turbine_speed", "current_a", "pressure_bp_barillet",
+    "reactive_power", "apparent_power", "power_factor", "voltage",
+    "steam_flow_hp", "pressure_bp_in", "steam_flow_condenser",
+])
 
 def register(app):
 
+    # ── Activation/désactivation de interval-fast selon la page ──────
+    @app.callback(
+        Output("interval-fast", "disabled"),
+        Input("url", "pathname"),
+    )
+    def toggle_interval_fast(pathname):
+        """
+        interval-fast (1s) sert uniquement au polling simulation sur /simulation.
+        Il est désactivé sur toutes les autres pages pour économiser les cycles JS.
+        Note : l'horloge (cb_dashboard) passe sur interval-slow (5s) hors /dashboard,
+               ce qui est suffisant.
+        """
+        return pathname != "/simulation"
+    
     # ── Callback 1 : WebSocket → données nominales + historique ──────
     @app.callback(
         Output("store-current-data", "data"),
@@ -57,9 +79,12 @@ def register(app):
             return no_update, no_update
         _last_timestamp = ts
 
+        # ── FIX : snapshot allégé pour l'historique ──────────────────
+        slim = {k: v for k, v in d_nom.items() if k in _RT_FIELDS}
+
         # [FIX-4a] Fenêtre glissante portée à 300 points (2m30s @ 500ms/push)
         history = list(history or [])
-        history.append(d_nom)
+        history.append(slim)
         if len(history) > 300:
             history = history[-300:]
 

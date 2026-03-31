@@ -65,7 +65,7 @@ app.layout = html.Div([
     dcc.Store(id="syn-patch-tick",        data=0),
 
     # Intervalles (uniquement pour horloge et alertes, données viennent du WS)
-    dcc.Interval(id="interval-fast", interval=1000, n_intervals=0),   # 1s  — horloge
+    dcc.Interval(id="interval-fast", interval=1000, n_intervals=0, disabled=True),   # 1s  — horloge
     dcc.Interval(id="interval-slow", interval=5000, n_intervals=0),   # 5s  — alertes
 
     html.Div(id="page-content"),

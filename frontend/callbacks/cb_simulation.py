@@ -168,20 +168,37 @@ def register(app):
             return f"Erreur arrêt : {e}"
 
     # ── Synoptique + panneau état ─────────────────────────────────────
+    # ── NOUVEAU : patch JS du synoptique simulation (même logique que Dashboard) ──
+    app.clientside_callback(
+        """function(data, pathname) {
+            if (pathname !== '/simulation') return window.dash_clientside.no_update;
+            if (!data || Object.keys(data).length === 0)
+                return window.dash_clientside.no_update;
+            if (typeof window.patchGtaSynoptic === 'function')
+                window.patchGtaSynoptic(data);
+            return window.dash_clientside.no_update;
+        }""",
+        Output("syn-sim-patch-tick", "data"),
+        Input("store-simulation-data", "data"),
+        State("url", "pathname"),
+        prevent_initial_call=True,
+    )
+
+    # ── MODIFIÉ : update_sim_ui ne reconstruit plus le SVG ──
     @app.callback(
         Output("sim-state-panel",   "children"),
-        Output("gta-synoptic-sim",  "children"),
         Output("btn-stop-scenario", "style"),
+        # Output("gta-synoptic-sim", "children"),  ← SUPPRIMÉ
         Input("store-simulation-data", "data"),
         State("url", "pathname"),
         prevent_initial_call=True,
     )
     def update_sim_ui(d, pathname):
         if pathname != "/simulation":
-            return no_update, no_update, no_update
+            return no_update, no_update  # 2 outputs au lieu de 3
         d = d or {}
 
-        synoptic_view = create_gta_synoptic(d)
+        # synoptic_view = create_gta_synoptic(d)  ← SUPPRIMÉ
         status  = d.get("status", "NORMAL")
         s_color = {"NORMAL": "#10b981", "DEGRADED": "#f59e0b",
                    "CRITICAL": "#ef4444"}.get(status, "#10b981")
@@ -257,7 +274,7 @@ def register(app):
         stop_style = ({"marginTop": "14px", "width": "100%", "display": "block"}
                       if has_scenario else {"display": "none"})
 
-        return state_panel, synoptic_view, stop_style
+        return state_panel, stop_style  # ← 2 valeurs au lieu de 3
 
     # ── Historique des scénarios ──────────────────────────────────────
     @app.callback(

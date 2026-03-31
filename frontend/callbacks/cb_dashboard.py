@@ -85,6 +85,7 @@ def register(app):
     @app.callback(
         Output("topbar-time", "children"),
         Input("interval-fast", "n_intervals"),
+        Input("interval-slow",  "n_intervals"),
     )
     def update_clock(_):
         return datetime.now().strftime("%d/%m/%Y  %H:%M:%S")
