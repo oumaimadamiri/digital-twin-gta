@@ -105,9 +105,34 @@ def layout():
         html.Div([
             # Synoptique simulation
             html.Div(
-                id="gta-synoptic-sim",
-                children=[create_gta_synoptic_static()],  # ← rendu une seule fois
-                style={"marginBottom": "20px"},
+                style={"position": "relative", "marginBottom": "20px"},
+                children=[
+                    html.Div(
+                        id="gta-synoptic-sim",
+                        children=[create_gta_synoptic_static()],
+                    ),
+                    html.Div([
+                        html.Div("État Système", className="card-title"),
+                        html.Div(id="sim-state-panel"),
+                        html.Button(
+                            "🛑 ARRÊTER SCÉNARIO",
+                            id="btn-stop-scenario",
+                            className="btn btn-danger",
+                            style={"display": "none"},
+                        ),
+                    ], style={
+                        "position":       "absolute",
+                        "bottom":         "12px",
+                        "right":          "12px",
+                        "width":          "240px",
+                        "background":     "rgba(10,16,26,0.92)",
+                        "border":         "1px solid #1e3a5f",
+                        "borderRadius":   "8px",
+                        "padding":        "12px",
+                        "zIndex":         "10",
+                        "backdropFilter": "blur(4px)",
+                    }),
+                ],
             ),
             dcc.Store(id="syn-sim-patch-tick", data=0),
             html.Div([
@@ -177,16 +202,16 @@ def layout():
                     ], className="card"),
 
                     # État courant
-                    html.Div([
-                        html.Div("État Système", className="card-title"),
-                        html.Div(id="sim-state-panel"),
-                        html.Button(
-                            "🛑 ARRÊTER SCÉNARIO",
-                            id="btn-stop-scenario",
-                            className="btn btn-danger",
-                            style={"display": "none"},
-                        ),
-                    ], className="card", style={"marginTop": "14px"}),
+                    # html.Div([
+                    #     html.Div("État Système", className="card-title"),
+                    #     html.Div(id="sim-state-panel"),
+                    #     html.Button(
+                    #         "🛑 ARRÊTER SCÉNARIO",
+                    #         id="btn-stop-scenario",
+                    #         className="btn btn-danger",
+                    #         style={"display": "none"},
+                    #     ),
+                    # ], className="card", style={"marginTop": "14px"}),
 
                 ], style={"flex": "1", "minWidth": "0"}),
 

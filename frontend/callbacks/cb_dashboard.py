@@ -106,67 +106,121 @@ def register(app):
             "fontFamily": "var(--ui)", "fontSize": "11px", "letterSpacing": "1px",
         })
 
-    # ── KPI Row ───────────────────────────────────────────────────────
-    # @app.callback(
-    #     Output("kpi-row", "children"),
-    #     Input("store-current-data", "data"),
-    #     State("url", "pathname"),
-    #     prevent_initial_call=True,
-    # )
-    # def update_kpis(d, pathname):
-    #     if pathname != "/":
-    #         return no_update
-    #     d = d or {}
+    @app.callback(
+        Output("dash-state-panel", "children"),
+        Input("store-current-data", "data"),
+        State("url", "pathname"),
+        prevent_initial_call=True,
+    )
+    def update_dash_state_panel(d, pathname):
+        if pathname != "/":
+            return no_update
+        d = d or {}
 
-    #     def badge(val, label, unit, cls, sub="", fmt=".1f"):
-    #         return html.Div([
-    #             html.Div(label, className="kpi-label"),
-    #             html.Div([
-    #                 html.Span(f"{val:{fmt}}", className="kpi-val-num"),
-    #                 html.Span(unit, className="kpi-unit"),
-    #             ], className="kpi-val"),
-    #             html.Div(sub, className="kpi-sub") if sub else None,
-    #         ], className=f"kpi-badge {cls}")
+        status  = d.get("status", "NORMAL")
+        s_color = {"NORMAL": "#10b981", "DEGRADED": "#f59e0b",
+                "CRITICAL": "#ef4444"}.get(status, "#10b981")
 
-    #     def cls_range(val, lo, hi):
-    #         if val < lo or val > hi:
-    #             return "crit"
-    #         margin = (hi - lo) * 0.15
-    #         if val < lo + margin or val > hi - margin:
-    #             return "warn"
-    #         return "ok"
+        valves = [
+            ("V1",  "valve_v1",  "#f97316"),
+            ("V2",  "valve_v2",  "#60a5fa"),
+            ("V3",  "valve_v3",  "#60a5fa"),
+            ("MP",  "valve_mp",  "#a78bfa"),
+            ("BP",  "valve_bp",  "#38bdf8"),
+        ]
+        valve_rows = [
+            html.Div([
+                html.Span(f"{name}:", style={"color": "#475569", "width": "28px",
+                                            "display": "inline-block"}),
+                html.Span(f"{d.get(key, 0):.0f}%", style={
+                    "color": col if d.get(key, 0) > 30 else "#ef4444",
+                    "fontWeight": "700", "width": "38px", "display": "inline-block",
+                }),
+            ], style={"fontFamily": "Share Tech Mono", "fontSize": "11px",
+                    "marginBottom": "2px"})
+            for name, key, col in valves
+        ]
 
-    #     p_cls  = cls_range(d.get("pressure_hp",  60),   55,   65)
-    #     t_cls  = cls_range(d.get("temperature_hp",486),  420,  500)
-    #     s_cls  = cls_range(d.get("turbine_speed",6435), 6300, 6550)
-    #     pw_cls = ("crit" if d.get("active_power", 24) > 30
-    #               else "warn" if d.get("active_power", 24) > 24 else "ok")
-    #     pf_cls = cls_range(d.get("power_factor", 0.85), 0.82, 0.86)
-    #     ef_cls = ("crit" if d.get("efficiency", 92) < 85
-    #               else "warn" if d.get("efficiency", 92) < 88 else "ok")
-    #     ia_cls = "crit" if d.get("current_a", 2254) > 3200 else "ok"
-    #     pb_cls = "crit" if d.get("pressure_bp_barillet", 3.0) > 3.5 else "ok"
+        params_grid = html.Div([
+            html.Div([
+                html.Span("P active: ", style={"color": "#475569"}),
+                html.Span(f"{d.get('active_power', 0):.1f} MW",
+                        style={"color": "#10b981", "fontWeight": "700"}),
+            ]),
+            html.Div([
+                html.Span("Vitesse: ", style={"color": "#475569"}),
+                html.Span(f"{d.get('turbine_speed', 0):.0f} RPM",
+                        style={"color": "#60a5fa", "fontWeight": "700"}),
+            ]),
+            html.Div([
+                html.Span("Rendement: ", style={"color": "#475569"}),
+                html.Span(f"{d.get('efficiency', 0):.1f}%",
+                        style={"color": "#38bdf8", "fontWeight": "700"}),
+            ]),
+            html.Div([
+                html.Span("P barillet: ", style={"color": "#475569"}),
+                html.Span(
+                    f"{d.get('pressure_bp_barillet', 3.0):.2f} bar",
+                    style={"color": "#ef4444"
+                        if d.get("pressure_bp_barillet", 3.0) > 3.5
+                        else "#a78bfa", "fontWeight": "700"},
+                ),
+            ]),
+        ], style={"display": "grid", "gridTemplateColumns": "1fr 1fr",
+                "gap": "4px", "marginTop": "8px",
+                "fontFamily": "Share Tech Mono", "fontSize": "11px"})
 
-    #     return [
-    #         badge(d.get("active_power",   0), "PUISSANCE ACTIVE",  "MW",  pw_cls,
-    #               "Nominal 24 MW" if pw_cls == "ok" else "Dépassement !"),
-    #         badge(d.get("turbine_speed",  0), "VITESSE TURBINE",   "RPM", s_cls,
-    #               "6435 RPM cible" if s_cls == "ok" else "Hors plage", fmt=".0f"),
-    #         badge(d.get("pressure_hp",    0), "PRESSION HP",       "bar", p_cls,
-    #               "60 bar nominal" if p_cls == "ok" else "Écart"),
-    #         badge(d.get("temperature_hp", 0), "TEMPÉRATURE HP",    "°C",  t_cls,
-    #               "Design 486°C" if d.get("temperature_hp", 486) >= 460
-    #               else "Opérat. 440°C", fmt=".0f"),
-    #         badge(d.get("efficiency",     0), "RENDEMENT THERMO",  "%",   ef_cls,
-    #               "Optimal" if ef_cls == "ok" else "Dégradé"),
-    #         badge(d.get("power_factor",   0), "FACTEUR cos φ",     "",    pf_cls,
-    #               "0.82–0.86 spec" if pf_cls == "ok" else "Hors plage", fmt=".3f"),
-    #         badge(d.get("current_a",      0), "COURANT DE LIGNE",  "A",   ia_cls,
-    #               "Normal" if ia_cls == "ok" else "Surintensité", fmt=".0f"),
-    #         badge(d.get("pressure_bp_barillet", 3.0), "PRESS. BARILLET", "bar", pb_cls,
-    #               "3 bar nominal" if pb_cls == "ok" else "Surpression !"),
-    #     ]
+        return [
+            html.Div([
+                # html.Span("ÉTAT SYSTÈME", style={
+                #     "color": "#334155", "fontSize": "9px",
+                #     "letterSpacing": "1.5px", "fontFamily": "Share Tech Mono",
+                # }),
+                html.Div("État Système", className="card-title", style={"marginBottom": "0"}),
+                # html.Span("Statut: ", style={"color": "#475569"}),
+                html.Span(status, style={"color": s_color, "fontWeight": "700",
+                             "fontFamily": "Share Tech Mono", "fontSize": "11px"}),
+                ], style={
+                    "display": "flex", "justifyContent": "space-between", "alignItems": "center",
+                    "marginBottom": "8px", "borderBottom": "1px solid #1e3a5f", "paddingBottom": "6px",
+                }),
 
+            # Vannes à gauche, params à droite
+            html.Div([
+                # Colonne vannes
+                html.Div([
+                    html.Div([
+                        html.Span(f"{name}:", style={"color": "#475569", "width": "28px",
+                                                    "display": "inline-block"}),
+                        html.Span(f"{d.get(key, 0):.0f}%", style={
+                            "color": col if d.get(key, 0) > 30 else "#ef4444",
+                            "fontWeight": "700",
+                        }),
+                    ], style={"fontFamily": "Share Tech Mono", "fontSize": "11px",
+                            "height": "22px", "display": "flex", "alignItems": "center"})
+                    for name, key, col in valves
+                ]),
+
+                # Colonne params — même hauteur de ligne que les vannes
+                html.Div([
+                    html.Div([
+                        html.Span(f"{label}:", style={"color": "#475569", "width": "70px",
+                                                    "display": "inline-block"}),
+                        html.Span(f"{val}", style={"color": col, "fontWeight": "700"}),
+                    ], style={"fontFamily": "Share Tech Mono", "fontSize": "11px",
+                            "height": "22px", "display": "flex", "alignItems": "center"})
+                    for label, val, col in [
+                        ("P active",  f"{d.get('active_power', 0):.1f} MW",   "#10b981"),
+                        ("Vitesse",   f"{d.get('turbine_speed', 0):.0f} RPM", "#60a5fa"),
+                        ("Rendement", f"{d.get('efficiency', 0):.1f} %",      "#38bdf8"),
+                        ("P barillet",f"{d.get('pressure_bp_barillet', 3.0):.2f} bar",
+                                    "#ef4444" if d.get("pressure_bp_barillet", 3.0) > 3.5 else "#a78bfa"),
+                        ("cos φ",     f"{d.get('power_factor', 0):.3f}",      "#fbbf24"),
+                    ]
+                ]),
+
+            ], style={"display": "flex", "justifyContent": "space-between", "gap": "12px"}),
+        ]
     # ── FIX : 5 jauges CRITIQUES — sur chaque push WS ────────────────
     # (était 14 jauges toutes ensemble = 28 figures/s)
     @app.callback(

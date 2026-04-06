@@ -43,17 +43,17 @@ def create_sidebar(active_path="/"):
     ], className="sidebar")
 
 
-def create_topbar(page_title, subtitle=""):
-    return html.Div([
-        html.Div([
-            html.Span(page_title, className="topbar-title"),
-            html.Span(f" / {subtitle}", className="topbar-title-sub") if subtitle else None
-        ]),
-        html.Div([
-            html.Div([
-                html.Span("Dernière mise à jour", style={"color": "var(--text3)", "fontSize": "10px", "marginBottom": "2px"}),
-                html.Div(id="topbar-time", className="time-val")
-            ], className="topbar-time"),
-            html.Div("● CONNECTÉ", className="status-button online", id="topbar-status-pill"),
-        ], className="topbar-right"),
-    ], className="topbar")
+# def create_topbar(page_title, subtitle=""):
+#     return html.Div([
+#         html.Div([
+#             html.Span(page_title, className="topbar-title"),
+#             html.Span(f" / {subtitle}", className="topbar-title-sub") if subtitle else None
+#         ]),
+#         html.Div([
+#             html.Div([
+#                 html.Span("Dernière mise à jour", style={"color": "var(--text3)", "fontSize": "10px", "marginBottom": "2px"}),
+#                 html.Div(id="topbar-time", className="time-val")
+#             ], className="topbar-time"),
+#             html.Div("● CONNECTÉ", className="status-button online", id="topbar-status-pill"),
+#         ], className="topbar-right"),
+#     ], className="topbar")

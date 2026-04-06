@@ -49,26 +49,40 @@ def layout():
         html.Div([
             html.Div([
 
-                # # ── KPI Row ────────────────────────────────────────────────
-                # html.Div(id="kpi-row", className="kpi-row",
-                #          style={"marginTop": "16px", "marginBottom": "20px"}),
-
-                # ── Synoptique statique ────────────────────────────────────
+                # ── Synoptique + panneau état système ──────────────────────
                 html.Div(
-                    id="gta-synoptic",
-                    children=[create_gta_synoptic_static()],
-                    style={"marginBottom": "20px"},
+                    style={"position": "relative", "marginBottom": "20px"},
+                    children=[
+                        html.Div(
+                            id="gta-synoptic",
+                            children=[create_gta_synoptic_static()],
+                        ),
+                        # Panneau état superposé en bas à droite
+                        html.Div(
+                            id="dash-state-panel",
+                            style={
+                                "position":       "absolute",
+                                "bottom":         "12px",
+                                "right":          "12px",
+                                "width":          "220px",
+                                "background":     "rgba(10,16,26,0.92)",
+                                "border":         "1px solid #1e3a5f",
+                                "borderRadius":   "8px",
+                                "padding":        "12px",
+                                "zIndex":         "10",
+                                "backdropFilter": "blur(4px)",
+                            },
+                        ),
+                    ],
                 ),
 
                 # ── Graphique temps réel ───────────────────────────────────
-                # FIX : figure initialisée ici → _figure_has_traces() toujours True
                 html.Div([
                     html.Div("Tendances temps réel", className="card-title"),
                     dcc.Graph(
                         id="realtime-chart",
                         config={"displayModeBar": False},
                         style={"height": "320px"},
-                        # FIX : figure pré-initialisée avec les 6 traces vides
                         figure=make_empty_rt_figure(),
                     ),
                 ], className="card", style={"marginBottom": "20px"}),

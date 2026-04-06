@@ -290,13 +290,6 @@ def _build_synoptic_div(data: dict, static_ids: bool) -> html.Div:
       @keyframes blink {{ 50% {{ opacity:0; }} }}
     </style>
   </defs>
-
-  <!-- ════ TITRE & STATUT GLOBAL ════ -->
-  <rect x="8" y="6" width="280" height="28" rx="4"
-        fill="rgba(15,23,42,0.9)" stroke="#1e3a5f" stroke-width="0.8"/>
-  <text x="18" y="25" fill="#94a3b8" font-size="11">GTA — SYNOPTIQUE SCADA</text>
-  <text{sid("status")} x="230" y="25" fill="{sc}" font-size="11" font-weight="700">{status}</text>
-
   <!-- Scénario actif -->
   {f'''<rect x="300" y="6" width="{70 + len(scenario)*7}" height="28" rx="4"
         fill="rgba(239,68,68,0.1)" stroke="#ef4444" stroke-width="1"/>
@@ -331,12 +324,6 @@ def _build_synoptic_div(data: dict, static_ids: bool) -> html.Div:
   <!-- Tags source HP -->
   {tag_php}
   {tag_thp}
-
-  <!-- Indicateur T design vs opérationnel -->
-  {'<rect x="18" y="337" width="125" height="16" rx="3" fill="rgba(245,158,11,0.15)" stroke="#f59e0b" stroke-width="0.6"/><text x="80" y="348" fill="#f59e0b" font-size="8" text-anchor="middle" font-family="Share Tech Mono">⚠ En dessous T design 486°C</text>' 
-  if t_warn_design else '<rect x="18" y="337" width="125" height="16" rx="3" fill="rgba(16,185,129,0.1)" stroke="#10b981" stroke-width="0.6"/><text x="80" y="348" fill="#10b981" font-size="8" text-anchor="middle" font-family="Share Tech Mono">✓ T design atteinte</text>'}
-
-  {_instrument_circle(143, 255, "PT", "#f97316")}
 
   <!-- ════ LIGNE HP ════ -->
   <line x1="143" y1="255" x2="195" y2="255"

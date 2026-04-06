@@ -246,64 +246,77 @@ def register(app):
             ("MP", "valve_mp", "#a78bfa", "Extr. MP"),
             ("BP", "valve_bp", "#38bdf8", "Cond."),
         ]
-        valve_rows = [
-            html.Div([
-                html.Span(f"{name}:", style={"color": "#475569", "width": "28px",
-                                              "display": "inline-block"}),
-                html.Span(f"{d.get(key, 0):.0f}%", style={
-                    "color": col if d.get(key, 0) > 30 else "#ef4444",
-                    "fontWeight": "700", "width": "38px", "display": "inline-block",
-                }),
-                html.Span(desc, style={"color": "#334155", "fontSize": "10px"}),
-            ], style={"fontFamily": "Share Tech Mono", "fontSize": "12px",
-                      "marginBottom": "3px"})
-            for name, key, col, desc in valves
-        ]
-
-        params_grid = html.Div([
-            html.Div([
-                html.Span("P active: ", style={"color": "#475569"}),
-                html.Span(f"{d.get('active_power', 0):.1f} MW",
-                          style={"color": "#10b981", "fontWeight": "700"}),
-            ], style={"fontFamily": "Share Tech Mono", "fontSize": "12px"}),
-            html.Div([
-                html.Span("Vitesse: ", style={"color": "#475569"}),
-                html.Span(f"{d.get('turbine_speed', 0):.0f} RPM",
-                          style={"color": "#60a5fa", "fontWeight": "700"}),
-            ], style={"fontFamily": "Share Tech Mono", "fontSize": "12px"}),
-            html.Div([
-                html.Span("Rendement: ", style={"color": "#475569"}),
-                html.Span(f"{d.get('efficiency', 0):.1f}%",
-                          style={"color": "#38bdf8", "fontWeight": "700"}),
-            ], style={"fontFamily": "Share Tech Mono", "fontSize": "12px"}),
-            html.Div([
-                html.Span("P barillet: ", style={"color": "#475569"}),
-                html.Span(
-                    f"{d.get('pressure_bp_barillet', 3.0):.2f} bar",
-                    style={"color": "#ef4444"
-                           if d.get("pressure_bp_barillet", 3.0) > 3.5
-                           else "#a78bfa", "fontWeight": "700"},
-                ),
-            ], style={"fontFamily": "Share Tech Mono", "fontSize": "12px"}),
-        ], style={"marginTop": "8px", "display": "grid",
-                  "gridTemplateColumns": "1fr 1fr", "gap": "4px"})
-
+        
         state_panel = html.Div([
+            # Deux colonnes
             html.Div([
-                html.Span("Statut : ", style={"color": "#475569"}),
-                html.Span(status, style={"color": s_color, "fontWeight": "700"}),
-            ], style={"fontFamily": "Share Tech Mono", "fontSize": "13px",
-                      "marginBottom": "8px"}),
-            html.Div([
-                html.Span("Scénario : ", style={"color": "#475569"}),
-                html.Span(d.get("scenario") or "Nominal",
-                          style={"color": "#818cf8"}),
-            ], style={"fontFamily": "Share Tech Mono", "fontSize": "12px",
-                      "marginBottom": "10px"}),
-            html.Div("Vannes", style={"color": "#334155", "fontSize": "10px",
-                                       "marginBottom": "4px", "letterSpacing": "1px"}),
-            html.Div(valve_rows),
-            params_grid,
+
+                # ── Colonne gauche : statut + vannes ──
+                html.Div([
+                    html.Div([
+                        html.Span("Statut: ", style={"color": "#475569"}),
+                        html.Span(status, style={"color": s_color, "fontWeight": "700"}),
+                    ], style={"fontFamily": "Share Tech Mono", "fontSize": "11px",
+                            "height": "22px", "display": "flex", "alignItems": "center",
+                            "marginBottom": "6px"}),
+                    html.Hr(style={"borderColor": "#2c5ea0", "margin": "10px 5"}),
+                    # html.Div("VANNES", style={
+                    #     "color": "#334155", "fontSize": "9px",
+                    #     "letterSpacing": "1.5px", "fontFamily": "Share Tech Mono",
+                    #     "marginBottom": "4px",
+                    # }),
+
+                    *[html.Div([
+                        html.Span(f"{name}:", style={"color": "#475569", "width": "28px",
+                                                    "display": "inline-block"}),
+                        html.Span(f"{d.get(key, 0):.0f}%", style={
+                            "color": col if d.get(key, 0) > 30 else "#ef4444",
+                            "fontWeight": "700",
+                        }),
+                    ], style={"fontFamily": "Share Tech Mono", "fontSize": "11px",
+                            "height": "22px", "display": "flex", "alignItems": "center"})
+                    for name, key, col in [
+                        ("V1", "valve_v1", "#f97316"),
+                        ("V2", "valve_v2", "#60a5fa"),
+                        ("V3", "valve_v3", "#60a5fa"),
+                        ("MP", "valve_mp", "#a78bfa"),
+                        ("BP", "valve_bp", "#38bdf8"),
+                    ]],
+                ]),
+
+                # ── Colonne droite : scénario + params ──
+                html.Div([
+                    html.Div([
+                        html.Span("Scénario: ", style={"color": "#475569"}),
+                        html.Span(d.get("scenario") or "Nominal",
+                                style={"color": "#818cf8", "fontWeight": "700"}),
+                    ], style={"fontFamily": "Share Tech Mono", "fontSize": "11px",
+                            "height": "22px", "display": "flex", "alignItems": "center",
+                            "marginBottom": "6px"}),
+                    html.Hr(style={"borderColor": "#2c5ea0", "margin": "10px 5"}),
+                    # html.Div("PARAMÈTRES", style={
+                    #     "color": "#334155", "fontSize": "9px",
+                    #     "letterSpacing": "1.5px", "fontFamily": "Share Tech Mono",
+                    #     "marginBottom": "4px",
+                    # }),
+
+                    *[html.Div([
+                        html.Span(f"{label}:", style={"color": "#475569", "width": "60px",
+                                                    "display": "inline-block"}),
+                        html.Span(val, style={"color": col, "fontWeight": "700"}),
+                    ], style={"fontFamily": "Share Tech Mono", "fontSize": "11px",
+                            "height": "22px", "display": "flex", "alignItems": "center"})
+                    for label, val, col in [
+                        ("P active",   f"{d.get('active_power', 0):.1f} MW",   "#10b981"),
+                        ("Vitesse",    f"{d.get('turbine_speed', 0):.0f} RPM", "#60a5fa"),
+                        ("Rendement",  f"{d.get('efficiency', 0):.1f} %",      "#38bdf8"),
+                        ("P barillet", f"{d.get('pressure_bp_barillet', 3.0):.2f} bar",
+                                    "#ef4444" if d.get("pressure_bp_barillet", 3.0) > 3.5 else "#a78bfa"),
+                        ("cos φ",      f"{d.get('power_factor', 0):.3f}",      "#fbbf24"),
+                    ]],
+                ]),
+
+            ], style={"display": "flex", "gap": "16px"}),
         ])
 
         has_scenario = d.get("scenario") is not None
