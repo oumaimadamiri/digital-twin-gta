@@ -167,6 +167,42 @@ def register(app):
         except Exception as e:
             return f"Erreur arrêt : {e}"
 
+    # ── Boutons scénarios dynamiques (Pattern Matching) ───────────────
+    @app.callback(
+        Output({"type": "btn-scenario", "index": dash.ALL}, "children"),
+        Output({"type": "btn-scenario", "index": dash.ALL}, "className"),
+        Output({"type": "btn-scenario", "index": dash.ALL}, "disabled"),
+        Input("store-simulation-data", "data"),
+        State({"type": "btn-scenario", "index": dash.ALL}, "value"),
+        prevent_initial_call=True,
+    )
+    def update_scenario_buttons(d, btn_names):
+        if not btn_names:
+            return dash.no_update
+        
+        d = d or {}
+        active_name = d.get("scenario")
+        
+        children = []
+        classes = []
+        disabled_list = []
+        
+        for name in btn_names:
+            if not active_name:
+                children.append("▶ DÉCLENCHER")
+                classes.append("btn btn-scenario")
+                disabled_list.append(False)
+            elif name == active_name:
+                children.append("🛑 EN COURS...")
+                classes.append("btn btn-scenario active-scenario-btn")
+                disabled_list.append(True)
+            else:
+                children.append("▶ DÉCLENCHER")
+                classes.append("btn btn-scenario disabled-scenario-btn")
+                disabled_list.append(True)
+                
+        return children, classes, disabled_list
+
     # ── Synoptique + panneau état ─────────────────────────────────────
     # ── NOUVEAU : patch JS du synoptique simulation (même logique que Dashboard) ──
     app.clientside_callback(

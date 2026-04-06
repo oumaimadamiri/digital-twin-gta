@@ -49,9 +49,9 @@ def layout():
         html.Div([
             html.Div([
 
-                # ── KPI Row ────────────────────────────────────────────────
-                html.Div(id="kpi-row", className="kpi-row",
-                         style={"marginTop": "16px", "marginBottom": "20px"}),
+                # # ── KPI Row ────────────────────────────────────────────────
+                # html.Div(id="kpi-row", className="kpi-row",
+                #          style={"marginTop": "16px", "marginBottom": "20px"}),
 
                 # ── Synoptique statique ────────────────────────────────────
                 html.Div(

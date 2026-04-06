@@ -84,6 +84,7 @@ def scenario_card(s):
         html.Button(
             "▶ DÉCLENCHER",
             id={"type": "btn-scenario", "index": s.get("id", 0)},
+            value=s.get("name", "N/A"),
             className="btn btn-scenario",
             style={"--btn-color": color, "width": "100%"},
         ),
@@ -187,6 +188,32 @@ def layout():
                         ),
                     ], className="card", style={"marginTop": "14px"}),
 
+                ], style={"flex": "1", "minWidth": "0"}),
+
+                # ── Colonne droite : scénarios & historique ──────────────────────
+                html.Div([
+                    # Scénarios
+                    html.Div([
+                        html.Div([
+                            html.Div("Scénarios de Perturbation", className="card-title"),
+                            html.Div(id="scenarios-loading-header"), # Changement dynamique ici
+                        ]),
+                        html.Div(
+                            id="scenarios-list-container",
+                            style={"maxHeight": "480px", "overflowY": "auto",
+                                   "paddingRight": "4px"},
+                            children=[html.Div("Chargement des scénarios...", 
+                                             style={"color": "#64748b", "fontFamily": "Share Tech Mono", "padding": "20px"})]
+                        ),
+                        html.Div(id="scenario-feedback", style={
+                            "marginTop": "10px",
+                            "fontFamily": "Share Tech Mono",
+                            "fontSize": "10.5px",
+                            "color": "#f97316",
+                            "minHeight": "18px",
+                        }),
+                    ], className="card"),
+
                     # Historique
                     html.Div([
                         html.Div("Historique des Scénarios",
@@ -194,32 +221,10 @@ def layout():
                                  style={"marginBottom": "10px"}),
                         html.Div(id="scenario-history-list",
                                  className="history-container",
-                                 style={"maxHeight": "160px", "overflowY": "auto"}),
+                                 style={"maxHeight": "150px", "overflowY": "auto"}),
                     ], className="card", style={"marginTop": "14px"}),
 
-                ], style={"flex": "1", "minWidth": "0"}),
-
-                # ── Colonne droite : scénarios ──────────────────────
-                html.Div([
-                    html.Div([
-                        html.Div("Scénarios de Perturbation", className="card-title"),
-                        html.Div(id="scenarios-loading-header"), # Changement dynamique ici
-                    ]),
-                    html.Div(
-                        id="scenarios-list-container",
-                        style={"maxHeight": "680px", "overflowY": "auto",
-                               "paddingRight": "4px"},
-                        children=[html.Div("Chargement des scénarios...", 
-                                         style={"color": "#64748b", "fontFamily": "Share Tech Mono", "padding": "20px"})]
-                    ),
-                    html.Div(id="scenario-feedback", style={
-                        "marginTop": "10px",
-                        "fontFamily": "Share Tech Mono",
-                        "fontSize": "10.5px",
-                        "color": "#f97316",
-                        "minHeight": "18px",
-                    }),
-                ], className="card", style={"flex": "1", "minWidth": "0"}),
+                ], style={"flex": "1", "minWidth": "0", "display": "flex", "flexDirection": "column"}),
 
             ], style={"display": "flex", "gap": "16px", "alignItems": "flex-start"}),
 

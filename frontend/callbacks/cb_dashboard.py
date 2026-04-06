@@ -107,65 +107,65 @@ def register(app):
         })
 
     # ── KPI Row ───────────────────────────────────────────────────────
-    @app.callback(
-        Output("kpi-row", "children"),
-        Input("store-current-data", "data"),
-        State("url", "pathname"),
-        prevent_initial_call=True,
-    )
-    def update_kpis(d, pathname):
-        if pathname != "/":
-            return no_update
-        d = d or {}
+    # @app.callback(
+    #     Output("kpi-row", "children"),
+    #     Input("store-current-data", "data"),
+    #     State("url", "pathname"),
+    #     prevent_initial_call=True,
+    # )
+    # def update_kpis(d, pathname):
+    #     if pathname != "/":
+    #         return no_update
+    #     d = d or {}
 
-        def badge(val, label, unit, cls, sub="", fmt=".1f"):
-            return html.Div([
-                html.Div(label, className="kpi-label"),
-                html.Div([
-                    html.Span(f"{val:{fmt}}", className="kpi-val-num"),
-                    html.Span(unit, className="kpi-unit"),
-                ], className="kpi-val"),
-                html.Div(sub, className="kpi-sub") if sub else None,
-            ], className=f"kpi-badge {cls}")
+    #     def badge(val, label, unit, cls, sub="", fmt=".1f"):
+    #         return html.Div([
+    #             html.Div(label, className="kpi-label"),
+    #             html.Div([
+    #                 html.Span(f"{val:{fmt}}", className="kpi-val-num"),
+    #                 html.Span(unit, className="kpi-unit"),
+    #             ], className="kpi-val"),
+    #             html.Div(sub, className="kpi-sub") if sub else None,
+    #         ], className=f"kpi-badge {cls}")
 
-        def cls_range(val, lo, hi):
-            if val < lo or val > hi:
-                return "crit"
-            margin = (hi - lo) * 0.15
-            if val < lo + margin or val > hi - margin:
-                return "warn"
-            return "ok"
+    #     def cls_range(val, lo, hi):
+    #         if val < lo or val > hi:
+    #             return "crit"
+    #         margin = (hi - lo) * 0.15
+    #         if val < lo + margin or val > hi - margin:
+    #             return "warn"
+    #         return "ok"
 
-        p_cls  = cls_range(d.get("pressure_hp",  60),   55,   65)
-        t_cls  = cls_range(d.get("temperature_hp",486),  420,  500)
-        s_cls  = cls_range(d.get("turbine_speed",6435), 6300, 6550)
-        pw_cls = ("crit" if d.get("active_power", 24) > 30
-                  else "warn" if d.get("active_power", 24) > 24 else "ok")
-        pf_cls = cls_range(d.get("power_factor", 0.85), 0.82, 0.86)
-        ef_cls = ("crit" if d.get("efficiency", 92) < 85
-                  else "warn" if d.get("efficiency", 92) < 88 else "ok")
-        ia_cls = "crit" if d.get("current_a", 2254) > 3200 else "ok"
-        pb_cls = "crit" if d.get("pressure_bp_barillet", 3.0) > 3.5 else "ok"
+    #     p_cls  = cls_range(d.get("pressure_hp",  60),   55,   65)
+    #     t_cls  = cls_range(d.get("temperature_hp",486),  420,  500)
+    #     s_cls  = cls_range(d.get("turbine_speed",6435), 6300, 6550)
+    #     pw_cls = ("crit" if d.get("active_power", 24) > 30
+    #               else "warn" if d.get("active_power", 24) > 24 else "ok")
+    #     pf_cls = cls_range(d.get("power_factor", 0.85), 0.82, 0.86)
+    #     ef_cls = ("crit" if d.get("efficiency", 92) < 85
+    #               else "warn" if d.get("efficiency", 92) < 88 else "ok")
+    #     ia_cls = "crit" if d.get("current_a", 2254) > 3200 else "ok"
+    #     pb_cls = "crit" if d.get("pressure_bp_barillet", 3.0) > 3.5 else "ok"
 
-        return [
-            badge(d.get("active_power",   0), "PUISSANCE ACTIVE",  "MW",  pw_cls,
-                  "Nominal 24 MW" if pw_cls == "ok" else "Dépassement !"),
-            badge(d.get("turbine_speed",  0), "VITESSE TURBINE",   "RPM", s_cls,
-                  "6435 RPM cible" if s_cls == "ok" else "Hors plage", fmt=".0f"),
-            badge(d.get("pressure_hp",    0), "PRESSION HP",       "bar", p_cls,
-                  "60 bar nominal" if p_cls == "ok" else "Écart"),
-            badge(d.get("temperature_hp", 0), "TEMPÉRATURE HP",    "°C",  t_cls,
-                  "Design 486°C" if d.get("temperature_hp", 486) >= 460
-                  else "Opérat. 440°C", fmt=".0f"),
-            badge(d.get("efficiency",     0), "RENDEMENT THERMO",  "%",   ef_cls,
-                  "Optimal" if ef_cls == "ok" else "Dégradé"),
-            badge(d.get("power_factor",   0), "FACTEUR cos φ",     "",    pf_cls,
-                  "0.82–0.86 spec" if pf_cls == "ok" else "Hors plage", fmt=".3f"),
-            badge(d.get("current_a",      0), "COURANT DE LIGNE",  "A",   ia_cls,
-                  "Normal" if ia_cls == "ok" else "Surintensité", fmt=".0f"),
-            badge(d.get("pressure_bp_barillet", 3.0), "PRESS. BARILLET", "bar", pb_cls,
-                  "3 bar nominal" if pb_cls == "ok" else "Surpression !"),
-        ]
+    #     return [
+    #         badge(d.get("active_power",   0), "PUISSANCE ACTIVE",  "MW",  pw_cls,
+    #               "Nominal 24 MW" if pw_cls == "ok" else "Dépassement !"),
+    #         badge(d.get("turbine_speed",  0), "VITESSE TURBINE",   "RPM", s_cls,
+    #               "6435 RPM cible" if s_cls == "ok" else "Hors plage", fmt=".0f"),
+    #         badge(d.get("pressure_hp",    0), "PRESSION HP",       "bar", p_cls,
+    #               "60 bar nominal" if p_cls == "ok" else "Écart"),
+    #         badge(d.get("temperature_hp", 0), "TEMPÉRATURE HP",    "°C",  t_cls,
+    #               "Design 486°C" if d.get("temperature_hp", 486) >= 460
+    #               else "Opérat. 440°C", fmt=".0f"),
+    #         badge(d.get("efficiency",     0), "RENDEMENT THERMO",  "%",   ef_cls,
+    #               "Optimal" if ef_cls == "ok" else "Dégradé"),
+    #         badge(d.get("power_factor",   0), "FACTEUR cos φ",     "",    pf_cls,
+    #               "0.82–0.86 spec" if pf_cls == "ok" else "Hors plage", fmt=".3f"),
+    #         badge(d.get("current_a",      0), "COURANT DE LIGNE",  "A",   ia_cls,
+    #               "Normal" if ia_cls == "ok" else "Surintensité", fmt=".0f"),
+    #         badge(d.get("pressure_bp_barillet", 3.0), "PRESS. BARILLET", "bar", pb_cls,
+    #               "3 bar nominal" if pb_cls == "ok" else "Surpression !"),
+    #     ]
 
     # ── FIX : 5 jauges CRITIQUES — sur chaque push WS ────────────────
     # (était 14 jauges toutes ensemble = 28 figures/s)
