@@ -124,11 +124,13 @@ def layout():
         html.Div([
             # Synoptique simulation
             html.Div(
-                style={"position": "relative", "marginBottom": "20px"},
+                className="synoptic-bleed",
+                style={"position": "relative", "marginBottom": "20px", "minHeight": "520px"},
                 children=[
                     html.Div(
                         id="gta-synoptic-sim",
                         children=[create_gta_synoptic_static()],
+                        style={"minHeight": "520px"},
                     ),
                     html.Div([
                         html.Div("État Système", className="card-title"),
@@ -141,7 +143,7 @@ def layout():
                         ),
                     ], style={
                         "position":       "absolute",
-                        "bottom":         "12px",
+                        "bottom":         "25px",
                         "right":          "12px",
                         "minWidth":       "260px",
                         "maxWidth":       "440px",

@@ -270,7 +270,7 @@ def _build_synoptic_div(data: dict, static_ids: bool) -> html.Div:
         vsym_vbp = _valve_symbol(656, 415, v_bp, v_bp_tgt,"VBP", vc_bp, 18, orient="right")
 
     svg = f"""
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -30 1400 680"
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-20 -38 1430 643"
      width="100%" height="100%"
      style="font-family:'Share Tech Mono',monospace;background:transparent">
   <defs>

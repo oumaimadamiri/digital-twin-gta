@@ -16,22 +16,6 @@ def layout():
     return html.Div([
         create_sidebar(active_path="/ai"),
         html.Div([
-
-            # Titre de page intégré (remplace create_topbar supprimé)
-            html.Div([
-                html.Span("Module IA", style={
-                    "fontFamily": "var(--ui)", "fontWeight": "600",
-                    "fontSize": "16px", "color": "var(--text)",
-                }),
-                html.Span(" / Détection d'anomalies & RUL", style={
-                    "color": "var(--text3)", "fontWeight": "400", "marginLeft": "8px",
-                }),
-            ], style={
-                "padding": "16px 0 12px",
-                "borderBottom": "1px solid var(--border)",
-                "marginBottom": "20px",
-            }),
-
             html.Div([
                 # ── 3 cartes IA — grid égal 1fr 1fr 1fr ──────────────
                 html.Div([
@@ -48,8 +32,10 @@ def layout():
                             html.Div(id="ae-error-value"),
                             html.Div(id="ae-status-label", style={"marginTop": "6px"}),
                         ], style={"marginBottom": "12px"}),
-                        dcc.Graph(id="ae-gauge", config={"displayModeBar": False},
-                                  style={"height": "190px"}),
+                        dcc.Loading(
+                            dcc.Graph(id="ae-gauge", config={"displayModeBar": False}, style={"height": "190px"}),
+                            type="circle", color="#00e676"
+                        )
                     ], className="card"),
 
                     # Carte LSTM
@@ -64,9 +50,10 @@ def layout():
                                 "color": "var(--green)", "marginLeft": "4px",
                             }),
                         ], style={"marginBottom": "6px"}),
-                        dcc.Graph(id="lstm-prediction-chart",
-                                  config={"displayModeBar": False},
-                                  style={"height": "260px"}),
+                        dcc.Loading(
+                            dcc.Graph(id="lstm-prediction-chart", config={"displayModeBar": False}, style={"height": "260px"}),
+                            type="circle", color="#00e676"
+                        )
                     ], className="card"),
 
                     # Carte RUL
@@ -99,7 +86,10 @@ def layout():
                 html.Div([
                     html.Div([
                         html.Div("Alertes IA récentes", className="card-title"),
-                        html.Div(id="ai-alerts-table"),
+                        dcc.Loading(
+                            html.Div(id="ai-alerts-table"),
+                            type="circle", color="#00e676"
+                        ),
                     ], className="card", style={"flex": "3"}),
 
                     html.Div([

@@ -51,18 +51,20 @@ def layout():
 
                 # ── Synoptique + panneau état système ──────────────────────
                 html.Div(
-                    style={"position": "relative", "marginBottom": "20px"},
+                    className="synoptic-bleed",
+                    style={"position": "relative", "marginBottom": "20px", "minHeight": "520px"},
                     children=[
                         html.Div(
                             id="gta-synoptic",
                             children=[create_gta_synoptic_static()],
+                            style={"minHeight": "520px"},
                         ),
                         # Panneau état superposé en bas à droite
                         html.Div(
                             id="dash-state-panel",
                             style={
                                 "position":       "absolute",
-                                "bottom":         "12px",
+                                "bottom":         "25px",
                                 "right":          "12px",
                                 "width":          "220px",
                                 "background":     "rgba(10,16,26,0.92)",

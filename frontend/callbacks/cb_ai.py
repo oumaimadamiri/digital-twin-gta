@@ -37,8 +37,7 @@ def register(app):
         Output("rul-progress",        "children"),
         Output("ai-alerts-table",     "children"),
         Input("interval-ai", "n_intervals"),
-        State("url", "pathname"),
-        prevent_initial_call=True,
+        Input("url", "pathname"),
     )
     def update_ai(_, pathname):
         if pathname != "/ai":

@@ -109,21 +109,28 @@ def layout():
                 html.Div([
                     html.Div("Évolution temporelle multi-paramètres",
                              className="card-title"),
-                    dcc.Graph(id="history-chart", config={"displayModeBar": True},
-                               style={"height": "320px"}),
+                    dcc.Loading(
+                        dcc.Graph(id="history-chart", config={"displayModeBar": True}, style={"height": "320px"}),
+                        type="circle", color="#38bdf8"
+                    ),
                 ], className="card", style={"marginBottom": "16px"}),
 
                 # ── STATS + DISTRIBUTION ─────────────────────────────
                 html.Div([
                     html.Div([
                         html.Div("Statistiques descriptives", className="card-title"),
-                        html.Div(id="stats-table"),
+                        dcc.Loading(
+                            html.Div(id="stats-table"),
+                            type="circle", color="#38bdf8"
+                        ),
                     ], className="card", style={"flex": "3"}),
 
                     html.Div([
                         html.Div("Répartition des états", className="card-title"),
-                        dcc.Graph(id="status-pie", config={"displayModeBar": False},
-                                  style={"height": "220px"}),
+                        dcc.Loading(
+                            dcc.Graph(id="status-pie", config={"displayModeBar": False}, style={"height": "220px"}),
+                            type="circle", color="#38bdf8"
+                        ),
                     ], className="card", style={"flex": "2"}),
 
                 ], style={"display": "flex", "gap": "16px", "marginBottom": "16px"}),
@@ -131,7 +138,10 @@ def layout():
                 # ── TABLEAU DÉTAILLÉ ──────────────────────────────────
                 html.Div([
                     html.Div("Journal de données détaillé", className="card-title"),
-                    html.Div(id="history-data-table", style={"overflowX": "auto"}),
+                    dcc.Loading(
+                        html.Div(id="history-data-table", style={"overflowX": "auto"}),
+                        type="circle", color="#38bdf8"
+                    ),
                 ], className="card"),
 
             ], className="page-content"),

@@ -238,6 +238,13 @@ body {
   flex: 1;
 }
 
+/* Fait déborder le synoptique en dehors du padding latéral */
+.synoptic-bleed {
+  margin-left:  -32px;
+  margin-right: -32px;
+  overflow: hidden;
+}
+
 .card {
   background: var(--bg-card);
   border: 1px solid var(--border);

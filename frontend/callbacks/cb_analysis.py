@@ -116,13 +116,12 @@ def register(app):
         Input("btn-refresh-history", "n_clicks"),
         Input("interval-analysis",   "n_intervals"),
         # FIX : dcc.Input(type="date") au lieu de DatePickerRange
+        Input("url",            "pathname"),
         State("date-start",     "value"),
         State("date-end",       "value"),
         State("param-selector", "value"),
-        State("url",            "pathname"),
-        prevent_initial_call=True,
     )
-    def update_analysis(_, __, date_start, date_end, params, pathname):
+    def update_analysis(_, __, pathname, date_start, date_end, params):
         if pathname != "/analysis":
             return [no_update] * 4
 
