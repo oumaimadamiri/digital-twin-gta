@@ -98,6 +98,18 @@ def _hex_to_rgb(hex_color):
     r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
     return f"{r},{g},{b}"
 
+def _collapsible_header(title, toggle_id, is_open=True):
+    return html.Div([
+        html.Span(title, style={"fontWeight": "600", "fontSize": "13px",
+                                "color": "var(--text2)", "letterSpacing": "1px",
+                                "textTransform": "uppercase"}),
+        html.Span("▲" if is_open else "▼", id=toggle_id,
+                  style={"color": "var(--text3)", "cursor": "pointer",
+                         "fontSize": "10px", "marginLeft": "8px"}),
+    ], id=f"{toggle_id}-btn", n_clicks=0,
+       style={"display": "flex", "justifyContent": "space-between",
+              "alignItems": "center", "cursor": "pointer",
+              "marginBottom": "12px" if is_open else "0"})
 
 def layout():
     return html.Div([
@@ -124,7 +136,7 @@ def layout():
                         "position":       "absolute",
                         "bottom":         "12px",
                         "right":          "12px",
-                        "width":          "240px",
+                        "width":          "260px",
                         "background":     "rgba(10,16,26,0.92)",
                         "border":         "1px solid #1e3a5f",
                         "borderRadius":   "8px",
@@ -141,112 +153,100 @@ def layout():
 
                     # Vannes
                     html.Div([
-                        html.Div("Contrôle des Vannes", className="card-title"),
+                        _collapsible_header("Contrôle des Vannes", "toggle-valves"),
+                        html.Div(id="collapse-valves", children=[
 
-                        # V1 — admission HP (rôle principal)
-                        html.Div([
-                            html.Div("ADMISSION HP", style={
-                                "fontSize": "9px", "color": "#334155",
-                                "letterSpacing": "1.5px", "marginBottom": "6px",
+                            # V1 — admission HP (rôle principal)
+                            html.Div([
+                                html.Div("ADMISSION HP", style={
+                                    "fontSize": "9px", "color": "#334155",
+                                    "letterSpacing": "1.5px", "marginBottom": "6px",
+                                    "fontFamily": "Share Tech Mono",
+                                }),
+                                _slider_row("v1", "V1 — Admission HP",  100, "#f97316",
+                                            "Contrôle 80% du débit HP — régulation principale"),
+                            ]),
+
+                            html.Hr(style={"borderColor": "#0f2744", "margin": "10px 0"}),
+
+                            # V2/V3 — équilibrage mécanique
+                            html.Div([
+                                html.Div("ÉQUILIBRAGE MÉCANIQUE TURBINE", style={
+                                    "fontSize": "9px", "color": "#334155",
+                                    "letterSpacing": "1.5px", "marginBottom": "6px",
+                                    "fontFamily": "Share Tech Mono",
+                                }),
+                                _slider_row("v2", "V2 — Équilibrage", 100, "#60a5fa",
+                                            "Répartition effort mécanique ~7% — pas d'effet thermo"),
+                                _slider_row("v3", "V3 — Équilibrage", 100, "#60a5fa",
+                                            "Répartition effort mécanique ~7% — pas d'effet thermo"),
+                            ]),
+
+                            html.Hr(style={"borderColor": "#0f2744", "margin": "10px 0"}),
+
+                            # MP/BP — extraction et condenseur
+                            html.Div([
+                                html.Div("EXTRACTION / CONDENSEUR", style={
+                                    "fontSize": "9px", "color": "#334155",
+                                    "letterSpacing": "1.5px", "marginBottom": "6px",
+                                    "fontFamily": "Share Tech Mono",
+                                }),
+                                _slider_row("mp", "Vanne MP — Extraction", 50, "#a78bfa",
+                                            "Extraction vers barillet MP · P barillet monte si ouverture ↑"),
+                                _slider_row("bp", "Vanne BP — Condenseur",  80, "#38bdf8",
+                                            "Sortie BP vers condenseur · min 5% sécurité"),
+                            ]),
+
+                            html.Div([
+                                html.Button("✔ Appliquer", id="btn-apply-valves",
+                                            className="btn btn-success"),
+                                html.Button("↺ Reset nominal", id="btn-reset",
+                                            className="btn btn-danger",
+                                            style={"marginLeft": "10px"}),
+                            ], style={"marginTop": "14px"}),
+
+                            html.Div(id="valve-feedback", style={
+                                "marginTop": "10px",
                                 "fontFamily": "Share Tech Mono",
+                                "fontSize": "10.5px",
+                                "color": "#64748b",
+                                "minHeight": "20px",
                             }),
-                            _slider_row("v1", "V1 — Admission HP",  100, "#f97316",
-                                        "Contrôle 80% du débit HP — régulation principale"),
-                        ]),
+                        ], className="card"),
 
-                        html.Hr(style={"borderColor": "#0f2744", "margin": "10px 0"}),
-
-                        # V2/V3 — équilibrage mécanique
-                        html.Div([
-                            html.Div("ÉQUILIBRAGE MÉCANIQUE TURBINE", style={
-                                "fontSize": "9px", "color": "#334155",
-                                "letterSpacing": "1.5px", "marginBottom": "6px",
-                                "fontFamily": "Share Tech Mono",
-                            }),
-                            _slider_row("v2", "V2 — Équilibrage", 100, "#60a5fa",
-                                        "Répartition effort mécanique ~7% — pas d'effet thermo"),
-                            _slider_row("v3", "V3 — Équilibrage", 100, "#60a5fa",
-                                        "Répartition effort mécanique ~7% — pas d'effet thermo"),
-                        ]),
-
-                        html.Hr(style={"borderColor": "#0f2744", "margin": "10px 0"}),
-
-                        # MP/BP — extraction et condenseur
-                        html.Div([
-                            html.Div("EXTRACTION / CONDENSEUR", style={
-                                "fontSize": "9px", "color": "#334155",
-                                "letterSpacing": "1.5px", "marginBottom": "6px",
-                                "fontFamily": "Share Tech Mono",
-                            }),
-                            _slider_row("mp", "Vanne MP — Extraction", 50, "#a78bfa",
-                                        "Extraction vers barillet MP · P barillet monte si ouverture ↑"),
-                            _slider_row("bp", "Vanne BP — Condenseur",  80, "#38bdf8",
-                                        "Sortie BP vers condenseur · min 5% sécurité"),
-                        ]),
-
-                        html.Div([
-                            html.Button("✔ Appliquer", id="btn-apply-valves",
-                                        className="btn btn-success"),
-                            html.Button("↺ Reset nominal", id="btn-reset",
-                                        className="btn btn-danger",
-                                        style={"marginLeft": "10px"}),
-                        ], style={"marginTop": "14px"}),
-
-                        html.Div(id="valve-feedback", style={
-                            "marginTop": "10px",
-                            "fontFamily": "Share Tech Mono",
-                            "fontSize": "10.5px",
-                            "color": "#64748b",
-                            "minHeight": "20px",
-                        }),
-                    ], className="card"),
-
-                    # État courant
-                    # html.Div([
-                    #     html.Div("État Système", className="card-title"),
-                    #     html.Div(id="sim-state-panel"),
-                    #     html.Button(
-                    #         "🛑 ARRÊTER SCÉNARIO",
-                    #         id="btn-stop-scenario",
-                    #         className="btn btn-danger",
-                    #         style={"display": "none"},
-                    #     ),
-                    # ], className="card", style={"marginTop": "14px"}),
-
-                ], style={"flex": "1", "minWidth": "0"}),
+                    ], style={"flex": "1", "minWidth": "0"}),
+                ]),
 
                 # ── Colonne droite : scénarios & historique ──────────────────────
                 html.Div([
                     # Scénarios
                     html.Div([
-                        html.Div([
-                            html.Div("Scénarios de Perturbation", className="card-title"),
-                            html.Div(id="scenarios-loading-header"), # Changement dynamique ici
-                        ]),
-                        html.Div(
-                            id="scenarios-list-container",
-                            style={"maxHeight": "480px", "overflowY": "auto",
-                                   "paddingRight": "4px"},
-                            children=[html.Div("Chargement des scénarios...", 
-                                             style={"color": "#64748b", "fontFamily": "Share Tech Mono", "padding": "20px"})]
-                        ),
-                        html.Div(id="scenario-feedback", style={
-                            "marginTop": "10px",
-                            "fontFamily": "Share Tech Mono",
-                            "fontSize": "10.5px",
-                            "color": "#f97316",
-                            "minHeight": "18px",
-                        }),
-                    ], className="card"),
-
+                        _collapsible_header("Scénarios de Perturbation", "toggle-scenarios"),
+                        html.Div(id="collapse-scenarios", children=[
+                            html.Div(
+                                id="scenarios-list-container",
+                                style={"maxHeight": "480px", "overflowY": "auto",
+                                        "paddingRight": "4px"},
+                                children=[html.Div("Chargement des scénarios...", 
+                                style={"color": "#64748b", "fontFamily": "Share Tech Mono", "padding": "20px"})]
+                                ),
+                            html.Div(id="scenario-feedback", style={
+                                "marginTop": "10px",
+                                "fontFamily": "Share Tech Mono",
+                                "fontSize": "10.5px",
+                                "color": "#f97316",
+                                "minHeight": "18px",
+                            }),
+                        ], className="card"),
+                    ]),
                     # Historique
                     html.Div([
-                        html.Div("Historique des Scénarios",
-                                 className="card-title",
-                                 style={"marginBottom": "10px"}),
-                        html.Div(id="scenario-history-list",
+                        _collapsible_header("Historique des Scénarios", "toggle-history", is_open=False),
+                        html.Div(id="collapse-history", style={"display": "none"}, children=[
+                            html.Div(id="scenario-history-list",
                                  className="history-container",
                                  style={"maxHeight": "150px", "overflowY": "auto"}),
+                            ]),
                     ], className="card", style={"marginTop": "14px"}),
 
                 ], style={"flex": "1", "minWidth": "0", "display": "flex", "flexDirection": "column"}),

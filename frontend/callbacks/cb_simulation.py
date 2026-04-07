@@ -10,7 +10,7 @@ CORRECTIONS :
 """
 import dash
 import requests
-from dash import Input, Output, State, html, no_update
+from dash import Input, Output, State, html, no_update, ctx
 from datetime import datetime
 from config import BACKEND
 from components.gta_synoptic import create_gta_synoptic
@@ -21,9 +21,25 @@ _session = requests.Session()
 # Ordre de tri pour l'affichage des scénarios
 _CRIT_ORDER = {"CRITIQUE": 0, "MAJEUR": 1, "MODÉRÉ": 2}
 
-
+def _make_toggle(app, toggle_id, collapse_id):
+    @app.callback(
+        Output(collapse_id, "style"),
+        Output(toggle_id, "children"),
+        Input(f"{toggle_id}-btn", "n_clicks"),
+        State(collapse_id, "style"),
+        prevent_initial_call=True,
+    )
+    def toggle(n, current_style):
+        is_open = (current_style or {}).get("display") != "none"
+        if is_open:
+            return {"display": "none"}, "▼"
+        else:
+            return {"display": "block"}, "▲"
+        
 def register(app):
-
+    _make_toggle(app, "toggle-valves",    "collapse-valves")
+    _make_toggle(app, "toggle-scenarios", "collapse-scenarios")
+    _make_toggle(app, "toggle-history",   "collapse-history")
     # ── Affichage valeurs sliders ────────────────────────────────────
     @app.callback(
         Output("val-v1", "children"),
@@ -260,12 +276,7 @@ def register(app):
                             "height": "22px", "display": "flex", "alignItems": "center",
                             "marginBottom": "6px"}),
                     html.Hr(style={"borderColor": "#2c5ea0", "margin": "10px 5"}),
-                    # html.Div("VANNES", style={
-                    #     "color": "#334155", "fontSize": "9px",
-                    #     "letterSpacing": "1.5px", "fontFamily": "Share Tech Mono",
-                    #     "marginBottom": "4px",
-                    # }),
-
+                    
                     *[html.Div([
                         html.Span(f"{name}:", style={"color": "#475569", "width": "28px",
                                                     "display": "inline-block"}),
@@ -287,18 +298,17 @@ def register(app):
                 # ── Colonne droite : scénario + params ──
                 html.Div([
                     html.Div([
-                        html.Span("Scénario: ", style={"color": "#475569"}),
+                        html.Span("Scénario: ", style={"color": "#475569", "flexShrink": "0"}),
                         html.Span(d.get("scenario") or "Nominal",
-                                style={"color": "#818cf8", "fontWeight": "700"}),
+                                style={
+                                    "color": "#818cf8", "fontWeight": "700",
+                                    "whiteSpace": "normal", "wordBreak": "break-word",
+                                    "lineHeight": "1.3",
+                                }),
                     ], style={"fontFamily": "Share Tech Mono", "fontSize": "11px",
-                            "height": "22px", "display": "flex", "alignItems": "center",
+                            "height": "22px", "display": "flex", "alignItems": "flex-start",
                             "marginBottom": "6px"}),
                     html.Hr(style={"borderColor": "#2c5ea0", "margin": "10px 5"}),
-                    # html.Div("PARAMÈTRES", style={
-                    #     "color": "#334155", "fontSize": "9px",
-                    #     "letterSpacing": "1.5px", "fontFamily": "Share Tech Mono",
-                    #     "marginBottom": "4px",
-                    # }),
 
                     *[html.Div([
                         html.Span(f"{label}:", style={"color": "#475569", "width": "60px",
@@ -316,7 +326,7 @@ def register(app):
                     ]],
                 ]),
 
-            ], style={"display": "flex", "gap": "16px"}),
+            ], style={"display": "flex", "gap": "16px", "minWidth": "0"}),
         ])
 
         has_scenario = d.get("scenario") is not None
