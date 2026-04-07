@@ -433,6 +433,46 @@ class PhysicsModel:
         }
 
     # ──────────────────────────────────────────
+    # AUXILIAIRES ET SUPERVISION MÉCANIQUE
+    # ──────────────────────────────────────────
+
+    def compute_mechanical_auxiliaries(self, turbine_speed: float, temperature_hp: float, active_power: float) -> dict:
+        import random
+        # 1. Fréquence réseau (Hz) — proportionnelle à la vitesse
+        grid_frequency = (turbine_speed / self.GEAR_RATIO) / 30.0
+        
+        # 2. Vibrations (mm/s) — fonction quadratique de la vitesse + bruit
+        speed_norm = turbine_speed / self.NOMINAL_SPEED
+        base_vib = 1.0 + (speed_norm ** 2) * 1.5
+        vib_fwd = base_vib + random.uniform(-0.1, 0.2) + (active_power / self.MAX_POWER_MW) * 0.3
+        vib_aft = base_vib * 0.85 + random.uniform(-0.05, 0.15) + (active_power / self.MAX_POWER_MW) * 0.2
+        
+        # 3. Températures paliers (°C) — liées aux vibrations et huile
+        temp_fwd = 55.0 + vib_fwd * 7.0 + random.uniform(-1.0, 1.0)
+        temp_aft = 55.0 + vib_aft * 7.5 + random.uniform(-1.0, 1.0)
+        
+        # 4. Huile de graissage (Pression bar, Temp °C)
+        lube_press = 1.5 + random.uniform(-0.02, 0.02) - (temp_fwd - 74) * 0.005 # baisse légère si chaud
+        lube_temp = 45.0 + (active_power / 32.0) * 5.0 + random.uniform(-0.5, 0.5)
+        
+        # 5. Déplacements & Dilatations (thermique)
+        heat_ratio = temperature_hp / T_HP_DESIGN
+        axial_disp = 0.2 + (heat_ratio - 1.0) * 2.0 + (active_power / 32.0) * 0.15
+        expansion = 5.0 * heat_ratio + random.uniform(-0.05, 0.05)
+        
+        return {
+            "grid_frequency": round(max(0.0, grid_frequency), 2),
+            "vib_bearing_fwd": round(max(0.0, vib_fwd), 2),
+            "vib_bearing_aft": round(max(0.0, vib_aft), 2),
+            "temp_bearing_fwd": round(max(0.0, temp_fwd), 1),
+            "temp_bearing_aft": round(max(0.0, temp_aft), 1),
+            "lube_oil_press": round(max(0.0, lube_press), 2),
+            "lube_oil_temp": round(max(0.0, lube_temp), 1),
+            "axial_displacement": round(axial_disp, 3),
+            "casing_expansion": round(max(0.0, expansion), 2),
+        }
+
+    # ──────────────────────────────────────────
     # CALCUL GLOBAL — point d'entrée principal
     # ──────────────────────────────────────────
 
@@ -486,6 +526,9 @@ class PhysicsModel:
         power_factor   = self.compute_power_factor(active_power)
         elec           = self.compute_electrical_signals(active_power, power_factor)
 
+        # ── Mécanique & Auxiliaires ──
+        mech = self.compute_mechanical_auxiliaries(turbine_speed, temperature_hp, active_power)
+
         return {
             # Entrées primaires (arrondies)
             "pressure_hp":          round(pressure_hp, 2),
@@ -508,7 +551,7 @@ class PhysicsModel:
             "reactive_power":       elec["reactive_power"],
             "current_a":            elec["current_a"],
             "voltage":              elec["voltage"],
-            # Vannes
+            # Vannes (sera fusionné avec cibles depuis fake_api)
             "valve_v1": round(valve_v1, 2),
             "valve_v2": round(valve_v2, 2),
             "valve_v3": round(valve_v3, 2),
@@ -525,6 +568,16 @@ class PhysicsModel:
             "flow_surchauffeur":   bp_dist["flow_surchauffeur"],
             "charge_site":     round(charge_site, 2),
             "excedent_reseau": round(excedent_reseau, 2),
+            # Ajouts mécaniques SCADA
+            "grid_frequency":     mech["grid_frequency"],
+            "vib_bearing_fwd":    mech["vib_bearing_fwd"],
+            "vib_bearing_aft":    mech["vib_bearing_aft"],
+            "temp_bearing_fwd":   mech["temp_bearing_fwd"],
+            "temp_bearing_aft":   mech["temp_bearing_aft"],
+            "lube_oil_press":     mech["lube_oil_press"],
+            "lube_oil_temp":      mech["lube_oil_temp"],
+            "axial_displacement": mech["axial_displacement"],
+            "casing_expansion":   mech["casing_expansion"],
         }
 
     # ──────────────────────────────────────────

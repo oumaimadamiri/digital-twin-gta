@@ -55,6 +55,23 @@ window.patchGtaSynoptic = function(data) {
     const i_a     = data.current_a            ?? 2254.0;
     const status  = data.status               ?? "NORMAL";
 
+    /* ── Mécanique & Auxiliaires ── */
+    const freq    = data.grid_frequency       ?? 50.0;
+    const vib_fwd = data.vib_bearing_fwd      ?? 2.1;
+    const vib_aft = data.vib_bearing_aft      ?? 1.8;
+    const temp_fwd= data.temp_bearing_fwd     ?? 74.0;
+    const temp_aft= data.temp_bearing_aft     ?? 76.0;
+    const oil_p   = data.lube_oil_press       ?? 1.5;
+    const oil_t   = data.lube_oil_temp        ?? 45.0;
+    const axial   = data.axial_displacement   ?? 0.2;
+    const casing  = data.casing_expansion     ?? 5.0;
+
+    const v1_tgt  = data.valve_v1_target      ?? (data.valve_v1 ?? 100);
+    const v2_tgt  = data.valve_v2_target      ?? (data.valve_v2 ?? 100);
+    const v3_tgt  = data.valve_v3_target      ?? (data.valve_v3 ?? 100);
+    const vmp_tgt = data.valve_mp_target      ?? (data.valve_mp ?? 50);
+    const vbp_tgt = data.valve_bp_target      ?? (data.valve_bp ?? 80);
+
     /* ── Couleurs statut ── */
     const STATUS_COL = { NORMAL: "#10b981", DEGRADED: "#f59e0b", CRITICAL: "#ef4444" };
     const sc = STATUS_COL[status] || "#10b981";
@@ -215,4 +232,40 @@ window.patchGtaSynoptic = function(data) {
         bpSrcEl.childNodes[0].textContent = p_bp_in.toFixed(1) + " ";
         if (tspan) tspan.textContent = "bar";
     }
+
+    /* ── Application Ajouts SCADA (Mécanique/Auxiliaires) ── */
+    const freqEl = document.getElementById("syn-freq-val");
+    if (freqEl) {
+        const tspan = freqEl.querySelector("tspan");
+        freqEl.childNodes[0].textContent = freq.toFixed(2) + " ";
+        if(tspan) tspan.textContent = "Hz · 2 pôles";
+    }
+
+    _setText("syn-vibfwd-val", vib_fwd.toFixed(1));
+    _setFill("syn-vibfwd-val", vib_fwd > 4.5 ? "#ef4444" : "#fbbf24");
+    _setText("syn-vibaft-val", vib_aft.toFixed(1));
+    _setFill("syn-vibaft-val", vib_aft > 4.5 ? "#ef4444" : "#fbbf24");
+
+    _setText("syn-tempfwd-val", temp_fwd.toFixed(0));
+    _setText("syn-tempaft-val", temp_aft.toFixed(0));
+    
+    _setText("syn-oilp-val", oil_p.toFixed(2));
+    _setText("syn-oilt-val", oil_t.toFixed(1));
+    
+    _setText("syn-axial-val", "+" + axial.toFixed(2));
+    _setText("syn-casing-val", casing.toFixed(1));
+    
+    /* Vannes cibles (et actuel) */
+    _setText("syn-v1-tgt", "Cible:" + v1_tgt.toFixed(0) + "%");
+    _setText("syn-v2-tgt", "Cible:" + v2_tgt.toFixed(0) + "%");
+    _setText("syn-v3-tgt", "Cible:" + v3_tgt.toFixed(0) + "%");
+    _setText("syn-vmp-tgt", "Cible:" + vmp_tgt.toFixed(0) + "%");
+    _setText("syn-vbp-tgt", "Cible:" + vbp_tgt.toFixed(0) + "%");
+    
+    _setText("syn-v1-pct", (data.valve_v1 ?? 100).toFixed(0) + "%");
+    _setText("syn-v2-pct", (data.valve_v2 ?? 100).toFixed(0) + "%");
+    _setText("syn-v3-pct", (data.valve_v3 ?? 100).toFixed(0) + "%");
+    _setText("syn-vmp-pct", (data.valve_mp ?? 50).toFixed(0) + "%");
+    _setText("syn-vbp-pct", (data.valve_bp ?? 80).toFixed(0) + "%");
+
 };

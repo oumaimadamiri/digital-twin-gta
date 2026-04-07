@@ -93,16 +93,33 @@ def _tag_static(x, y, label, elem_id, default_value, default_unit,
     </g>"""
 
 
-def _valve_symbol_static(cx, cy, pct, name, col, vid, size=18):
-    """Symbole vanne SCADA avec IDs stables sur cercle + texte %."""
+def _valve_symbol_static(cx, cy, pct, target, name, col, vid, size=18, orient="top"):
+    """Symbole vanne SCADA : corps circulaire avec servomoteur, orientable."""
+    if orient == "right":
+        actuator = f"""
+        <line x1="{cx+size}" y1="{cy}" x2="{cx+size+10}" y2="{cy}" stroke="{col}" stroke-width="2"/>
+        <path d="M {cx+size+10} {cy-size+2} Q {cx+size+18} {cy} {cx+size+10} {cy+size-2} Z" fill="{col}" opacity="0.3" stroke="{col}" stroke-width="1"/>
+        """
+        tgt_txt = f'<text id="{vid}-tgt" x="{cx+size+22}" y="{cy-8}" fill="#94a3b8" font-size="7.5" text-anchor="start" font-family="Share Tech Mono">Cible: {target:.0f}%</text>'
+    elif orient == "left":
+        actuator = f"""
+        <line x1="{cx-size}" y1="{cy}" x2="{cx-size-10}" y2="{cy}" stroke="{col}" stroke-width="2"/>
+        <path d="M {cx-size-10} {cy-size+2} Q {cx-size-18} {cy} {cx-size-10} {cy+size-2} Z" fill="{col}" opacity="0.3" stroke="{col}" stroke-width="1"/>
+        """
+        tgt_txt = f'<text id="{vid}-tgt" x="{cx-size-22}" y="{cy-8}" fill="#94a3b8" font-size="7.5" text-anchor="end" font-family="Share Tech Mono">Cible: {target:.0f}%</text>'
+    else:
+        actuator = f"""
+        <line x1="{cx}" y1="{cy-size}" x2="{cx}" y2="{cy-size-5}" stroke="{col}" stroke-width="2"/>
+        <path d="M {cx-size+2} {cy-size-5} Q {cx} {cy-size-12} {cx+size-2} {cy-size-5} Z" fill="{col}" opacity="0.3" stroke="{col}" stroke-width="1"/>
+        """
+        tgt_txt = f'<text id="{vid}-tgt" x="{cx}" y="{cy-size-12}" fill="#94a3b8" font-size="7.5" text-anchor="middle" font-family="Share Tech Mono">Cible: {target:.0f}%</text>'
+
     return f"""
+    {tgt_txt}
+    {actuator}
     <circle id="{vid}-circle" cx="{cx}" cy="{cy}" r="{size}" fill="#0a101a" stroke="{col}" stroke-width="2"/>
-    <line x1="{cx-size+4}" y1="{cy-size+4}" x2="{cx+size-4}" y2="{cy+size-4}" stroke="{col}" stroke-width="1.5"/>
-    <line x1="{cx+size-4}" y1="{cy-size+4}" x2="{cx-size+4}" y2="{cy+size-4}" stroke="{col}" stroke-width="1.5"/>
-    <text x="{cx}" y="{cy-4}" fill="{col}" font-size="9" font-weight="700"
-          text-anchor="middle" font-family="Share Tech Mono">{name}</text>
-    <text id="{vid}-pct" x="{cx}" y="{cy+8}" fill="{col}" font-size="8.5" text-anchor="middle"
-          font-family="Share Tech Mono">{pct:.0f}%</text>"""
+    <text x="{cx}" y="{cy-1}" fill="{col}" font-size="9" font-weight="700" text-anchor="middle" font-family="Share Tech Mono">{name}</text>
+    <text id="{vid}-pct" x="{cx}" y="{cy+9}" fill="{col}" font-size="8.5" text-anchor="middle" font-family="Share Tech Mono">{pct:.0f}%</text>"""
 
 
 def _instrument_circle(cx, cy, label, col="#60a5fa", r=11):
@@ -161,10 +178,26 @@ def _build_synoptic_div(data: dict, static_ids: bool) -> html.Div:
     i_a     = data.get("current_a",        2254.0)
 
     v1      = data.get("valve_v1",  100.0)
+    v1_tgt  = data.get("valve_v1_target", v1)
     v2      = data.get("valve_v2",  100.0)
+    v2_tgt  = data.get("valve_v2_target", v2)
     v3      = data.get("valve_v3",  100.0)
+    v3_tgt  = data.get("valve_v3_target", v3)
     v_mp    = data.get("valve_mp",   50.0)
+    v_mp_tgt= data.get("valve_mp_target", v_mp)
     v_bp    = data.get("valve_bp",   80.0)
+    v_bp_tgt= data.get("valve_bp_target", v_bp)
+
+    # ── Meca / Aux
+    freq    = data.get("grid_frequency", 50.00)
+    vib_fwd = data.get("vib_bearing_fwd", 2.1)
+    vib_aft = data.get("vib_bearing_aft", 1.8)
+    temp_fwd= data.get("temp_bearing_fwd", 74.0)
+    temp_aft= data.get("temp_bearing_aft", 76.0)
+    oil_p   = data.get("lube_oil_press", 1.5)
+    oil_t   = data.get("lube_oil_temp", 45.0)
+    axial   = data.get("axial_displacement", 0.2)
+    casing  = data.get("casing_expansion", 5.0)
 
     scenario = data.get("scenario")
 
@@ -205,36 +238,36 @@ def _build_synoptic_div(data: dict, static_ids: bool) -> html.Div:
 
     # ── Construction des tags SCADA ───────────────────────────────────────────
     if static_ids:
-        tag_php  = _tag_static(80,  258, "Pression",    "syn-php",  f"{p_hp:.1f}",  "bar",  alm_php)   # FIX#1 y:270→258
-        tag_thp  = _tag_static(80,  296, "Température", "syn-thp",  f"{t_hp:.0f}",  "°C",   alm_thp)   # FIX#1 y:307→296
-        tag_qhp  = _tag_static(185, 200, "Débit HP",    "syn-qhp",  f"{q_hp:.0f}",  "T/h",  alm_qhp, w=55)
-        tag_spd  = _tag_static(755, 265, "Vit. arbre",  "syn-spd",  f"{speed:.0f}", "RPM",  alm_spd, w=55)  # FIX#2 x:755→768, y:258→264
-        tag_v1   = _tag_static(330, 280, "Adm. HP",     "syn-v1t",  f"{v1:.0f}",    "%", w=60)                    # FIX#4 x:330→368
-        tag_pout = _tag_static(1142,262, "P active",    "syn-pout", f"{power:.1f}","MW",  alm_pow, w=65)            # FIX#5 y:215→256
-        tag_vit2 = _tag_static(915, 264, "Vit.",        "syn-vit2", "1500",          "RPM", w=55)            # FIX#3 y:258→264
+        tag_php  = _tag_static(80,  251, "Pression",    "syn-php",  f"{p_hp:.1f}",  "bar",  alm_php)
+        tag_thp  = _tag_static(80,  289, "Température", "syn-thp",  f"{t_hp:.0f}",  "°C",   alm_thp)
+        tag_qhp  = _tag_static(185, 193, "Débit HP",    "syn-qhp",  f"{q_hp:.0f}",  "T/h",  alm_qhp, w=55)
+        tag_spd  = _tag_static(755, 265, "Vit. arbre",  "syn-spd",  f"{speed:.0f}", "RPM",  alm_spd, w=55)
+        tag_v1   = _tag_static(330, 273, "Adm. HP",     "syn-v1t",  f"{v1:.0f}",    "%", w=60)
+        tag_pout = _tag_static(1142,262, "P active",    "syn-pout", f"{power:.1f}","MW",  alm_pow, w=65)
+        tag_vit2 = _tag_static(915, 264, "Vit.",        "syn-vit2", "1500",          "RPM", w=55)
     else:
-        tag_php  = _tag(80,  258, "Pression",    f"{p_hp:.1f}",  "bar", alm_php)                # FIX#1
-        tag_thp  = _tag(80,  296, "Température", f"{t_hp:.0f}",  "°C",  alm_thp)                # FIX#1
-        tag_qhp  = _tag(185, 200, "Débit HP",    f"{q_hp:.0f}",  "T/h", alm_qhp, w=55)
-        tag_spd  = _tag(755, 265, "Vit. arbre",  f"{speed:.0f}", "RPM", alarm=alm_spd, w=55)   # FIX#2
-        tag_v1   = _tag(330, 280, "Adm. HP",     f"{v1:.0f}",    "%", w=60)                            # FIX#4
-        tag_pout = _tag(1142,262, "P active",     f"{power:.1f}","MW", alarm=alm_pow, w=65)                   # FIX#5
-        tag_vit2 = _tag(915, 264, "Vit.",         "1500",          "RPM", w=55)                  # FIX#3
+        tag_php  = _tag(80,  251, "Pression",    f"{p_hp:.1f}",  "bar", alm_php)
+        tag_thp  = _tag(80,  289, "Température", f"{t_hp:.0f}",  "°C",  alm_thp)
+        tag_qhp  = _tag(185, 193, "Débit HP",    f"{q_hp:.0f}",  "T/h", alm_qhp, w=55)
+        tag_spd  = _tag(755, 265, "Vit. arbre",  f"{speed:.0f}", "RPM", alarm=alm_spd, w=55)
+        tag_v1   = _tag(330, 273, "Adm. HP",     f"{v1:.0f}",    "%", w=60)
+        tag_pout = _tag(1142,262, "P active",     f"{power:.1f}","MW", alarm=alm_pow, w=65)
+        tag_vit2 = _tag(915, 264, "Vit.",         "1500",          "RPM", w=55)
 
     # ── Symboles vannes ───────────────────────────────────────────────────────
     if static_ids:
-        vsym_v1  = _valve_symbol_static(330, 255, v1,  "V1",  vc1,  "syn-v1",  20)
-        vsym_v2  = _valve_symbol_static(280, 175, v2,  "V2",  vc2,  "syn-v2",  13)
-        vsym_v3  = _valve_symbol_static(280, 335, v3,  "V3",  vc3,  "syn-v3",  13)
-        vsym_vmp = _valve_symbol_static(544, 62, v_mp, "VMP", vc_mp, "syn-vmp", 17)
-        vsym_vbp = _valve_symbol_static(656, 415, v_bp,"VBP", vc_bp,"syn-vbp", 18)
+        vsym_v1  = _valve_symbol_static(330, 248, v1, v1_tgt, "V1",  vc1,  "syn-v1",  20)
+        vsym_v2  = _valve_symbol_static(280, 175, v2, v2_tgt, "V2",  vc2,  "syn-v2",  13, orient="left")
+        vsym_v3  = _valve_symbol_static(280, 335, v3, v3_tgt, "V3",  vc3,  "syn-v3",  13, orient="left")
+        vsym_vmp = _valve_symbol_static(544, 62, v_mp, v_mp_tgt,"VMP", vc_mp, "syn-vmp", 17, orient="right")
+        vsym_vbp = _valve_symbol_static(656, 415, v_bp, v_bp_tgt,"VBP", vc_bp,"syn-vbp", 18, orient="right")
     else:
         # Appel direct — _valve_symbol est défini dans ce même module
-        vsym_v1  = _valve_symbol(330, 255, v1,  "V1",  vc1,  20)
-        vsym_v2  = _valve_symbol(280, 175, v2,  "V2",  vc2,  13)
-        vsym_v3  = _valve_symbol(280, 335, v3,  "V3",  vc3,  13)
-        vsym_vmp = _valve_symbol(544, 62, v_mp,"VMP", vc_mp, 17)
-        vsym_vbp = _valve_symbol(656, 415, v_bp,"VBP", vc_bp, 18)
+        vsym_v1  = _valve_symbol(330, 248, v1, v1_tgt, "V1",  vc1,  20)
+        vsym_v2  = _valve_symbol(280, 175, v2, v2_tgt, "V2",  vc2,  13, orient="left")
+        vsym_v3  = _valve_symbol(280, 335, v3, v3_tgt, "V3",  vc3,  13, orient="left")
+        vsym_vmp = _valve_symbol(544, 62, v_mp, v_mp_tgt,"VMP", vc_mp, 17, orient="right")
+        vsym_vbp = _valve_symbol(656, 415, v_bp, v_bp_tgt,"VBP", vc_bp, 18, orient="right")
 
     svg = f"""
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -30 1400 680"
@@ -297,28 +330,28 @@ def _build_synoptic_div(data: dict, static_ids: bool) -> html.Div:
   <text x="326" y="24" fill="#ef4444" font-size="10" font-weight="700">{scenario.upper()}</text>''' if scenario else ''}
 
   <!-- Légende flux -->
-  <line x1="1100" y1="16" x2="1125" y2="16" stroke="#f97316" stroke-width="4"/>
-  <text x="1130" y="20" fill="#94a3b8" font-size="9">Vapeur HP</text>
-  <line x1="1185" y1="16" x2="1210" y2="16" stroke="#3b82f6" stroke-width="4"/>
-  <text x="1215" y="20" fill="#94a3b8" font-size="9">Vapeur BP</text>
-  <line x1="1270" y1="16" x2="1295" y2="16" stroke="#a78bfa" stroke-width="4"/>
-  <text x="1300" y="20" fill="#94a3b8" font-size="9">Extr. MP</text>
-  <line x1="1100" y1="34" x2="1125" y2="34" stroke="#10b981" stroke-width="4"/>
-  <text x="1130" y="38" fill="#94a3b8" font-size="9">Électrique</text>
-  <line x1="1185" y1="34" x2="1210" y2="34" stroke="#60a5fa" stroke-width="2" stroke-dasharray="4,2"/>
-  <text x="1215" y="38" fill="#94a3b8" font-size="9">Équilibrage</text>
+  <line x1="1180" y1="-20" x2="1155" y2="-20" stroke="#f97316" stroke-width="4"/>
+  <text x="1185" y="-17" fill="#94a3b8" font-size="9">Vapeur HP</text>
+  <line x1="1265" y1="-20" x2="1240" y2="-20" stroke="#3b82f6" stroke-width="4"/>
+  <text x="1270" y="-17" fill="#94a3b8" font-size="9">Vapeur BP</text>
+  <line x1="1350" y1="-20" x2="1325" y2="-20" stroke="#a78bfa" stroke-width="4"/>
+  <text x="1355" y="-17" fill="#94a3b8" font-size="9">Extr. MP</text>
+  <line x1="1180" y1="-5" x2="1155" y2="-5" stroke="#10b981" stroke-width="4"/>
+  <text x="1185" y="-2" fill="#94a3b8" font-size="9">Électrique</text>
+  <line x1="1265" y1="-5" x2="1240" y2="-5" stroke="#60a5fa" stroke-width="2" stroke-dasharray="4,2"/>
+  <text x="1270" y="-2" fill="#94a3b8" font-size="9">Équilibrage</text>
 
   <!-- ════ SOURCE VAPEUR HP ════ -->
   <g filter="url(#go)">
-    <rect x="18" y="195" width="125" height="160" rx="10"
+    <rect x="18" y="188" width="125" height="160" rx="10"
           fill="#0a101a" stroke="{hp_col}" stroke-width="1.8"/>
   </g>
-  <text x="80" y="218" fill="#f8fafc" font-size="11" font-weight="600"
+  <text x="80" y="211" fill="#f8fafc" font-size="11" font-weight="600"
         text-anchor="middle" letter-spacing="1">SOURCE HP</text>
-  <text x="80" y="233" fill="#64748b" font-size="8.5" text-anchor="middle">Unité Acide Sulfurique</text>
+  <text x="80" y="226" fill="#64748b" font-size="8.5" text-anchor="middle">Unité Acide Sulfurique</text>
 
   <!-- Flamme animée -->
-  <text{sid("hp-flame")} x="80" y="252" fill="{hp_col}" font-size="22" text-anchor="middle"
+  <text{sid("hp-flame")} x="80" y="245" fill="{hp_col}" font-size="22" text-anchor="middle"
         class="{'pulse' if alm_thp else ''}">{'⚠' if alm_thp else '🔥'}</text>
 
   <!-- Tags source HP -->
@@ -326,34 +359,34 @@ def _build_synoptic_div(data: dict, static_ids: bool) -> html.Div:
   {tag_thp}
 
   <!-- ════ LIGNE HP ════ -->
-  <line x1="143" y1="255" x2="195" y2="255"
+  <line x1="143" y1="248" x2="195" y2="248"
         stroke="#f97316" stroke-width="10" stroke-linecap="round"/>
-  {_instrument_circle(195, 255, "FT", "#f97316")}
+  {_instrument_circle(195, 248, "FT", "#f97316")}
   {tag_qhp}
-  <line x1="206" y1="255" x2="240" y2="255"
+  <line x1="206" y1="248" x2="240" y2="248"
         stroke="#f97316" stroke-width="10" stroke-linecap="round"
         class="flow-hp"/>
 
   <!-- ════ ESV ════ -->
   <g>
-    <rect x="240" y="243" width="30" height="24" rx="4"
+    <rect x="240" y="236" width="30" height="24" rx="4"
           fill="#0a101a" stroke="#94a3b8" stroke-width="1"/>
-    <text x="255" y="257" fill="#94a3b8" font-size="8" font-weight="700"
+    <text x="255" y="250" fill="#94a3b8" font-size="8" font-weight="700"
           text-anchor="middle">ESV</text>
-    <text x="255" y="266" fill="#10b981" font-size="7.5" text-anchor="middle">OPEN</text>
+    <text x="255" y="259" fill="#10b981" font-size="7.5" text-anchor="middle">OPEN</text>
   </g>
-  <line x1="270" y1="255" x2="300" y2="255"
+  <line x1="270" y1="248" x2="300" y2="248"
         stroke="#f97316" stroke-width="10" stroke-linecap="round"
         class="flow-hp"/>
 
   <!-- ════ VANNE V1 ADMISSION HP ════ -->
   {vsym_v1}
   {tag_v1}
-  <line x1="350" y1="255" x2="385" y2="255"
+  <line x1="350" y1="248" x2="385" y2="248"
         stroke="#f97316" stroke-width="10" class="flow-hp"/>
 
   <!-- V2 équilibrage haut -->
-  <line x1="280" y1="245" x2="280" y2="180"
+  <line x1="280" y1="248" x2="280" y2="180"
         stroke="#60a5fa" stroke-width="2.5" stroke-dasharray="5,3"/>
   {vsym_v2}
   <line x1="280" y1="162" x2="390" y2="162"
@@ -361,12 +394,24 @@ def _build_synoptic_div(data: dict, static_ids: bool) -> html.Div:
   <text x="330" y="155" fill="#60a5fa" font-size="8" text-anchor="middle">Équilibrage ~7%</text>
 
   <!-- V3 équilibrage bas -->
-  <line x1="280" y1="265" x2="280" y2="330"
+  <line x1="280" y1="248" x2="280" y2="330"
         stroke="#60a5fa" stroke-width="2.5" stroke-dasharray="5,3"/>
   {vsym_v3}
   <line x1="280" y1="348" x2="390" y2="348"
         stroke="#60a5fa" stroke-width="2.5" stroke-dasharray="5,3"/>
   <text x="330" y="358" fill="#60a5fa" font-size="8" text-anchor="middle">Équilibrage ~7%</text>
+  
+  <!-- ════ BLOC DÉPLACEMENT & DILATATION (Au-dessus Turbine) ════ -->
+  <rect x="385" y="76" width="135" height="42" rx="4"
+        fill="rgba(15,23,42,0.75)" stroke="#64748b" stroke-width="0.8"/>
+  <text x="452" y="88" fill="#94a3b8" font-size="8.5" text-anchor="middle" font-weight="700">DILATATION THERMIQUE</text>
+  <text x="420" y="100" fill="#64748b" font-size="7" text-anchor="middle">Déplac. Axial</text>
+  <text{sid("axial-val")} x="420" y="112" fill="#38bdf8" font-size="11" font-weight="700" text-anchor="middle">+{axial:.2f}</text>
+  <text x="440" y="112" fill="#64748b" font-size="7">mm</text>
+  <text x="485" y="100" fill="#64748b" font-size="7" text-anchor="middle">Corps</text>
+  <text{sid("casing-val")} x="485" y="112" fill="#38bdf8" font-size="11" font-weight="700" text-anchor="middle">{casing:.1f}</text>
+  <text x="505" y="112" fill="#64748b" font-size="7">mm</text>
+
   <!-- ════ BLOC TURBINE HP/MP/BP ════ -->
   <g class="{turb_cls}">
     <rect x="385" y="130" width="340" height="260" rx="12"
@@ -428,6 +473,23 @@ def _build_synoptic_div(data: dict, static_ids: bool) -> html.Div:
     <circle cx="656" cy="300" r="5" fill="#38bdf8"/>
     <text x="664" y="310" fill="#38bdf8" font-size="8">Ext. BP</text>
 
+    <!-- PALIERS AVANT / ARRIÈRE (Supervision Mécanique) -->
+    <!-- Palier Avant -->
+    <rect x="735" y="178" width="40" height="58" rx="4" fill="rgba(15,23,42,0.85)" stroke="#64748b" stroke-width="0.8"/>
+    <text x="755" y="188" fill="#cbd5e1" font-size="7" font-weight="700" text-anchor="middle">P. AV</text>
+    <text{sid("vibfwd-val")} x="755" y="202" fill="{'#ef4444' if vib_fwd > 4.5 else '#fbbf24'}" font-size="10" font-weight="700" text-anchor="middle">{vib_fwd:.1f}</text>
+    <text x="755" y="210" fill="#64748b" font-size="6" text-anchor="middle">mm/s</text>
+    <text{sid("tempfwd-val")} x="755" y="222" fill="#38bdf8" font-size="9" text-anchor="middle">{temp_fwd:.0f}</text>
+    <text x="755" y="230" fill="#64748b" font-size="6" text-anchor="middle">°C</text>
+
+    <!-- Palier Arrière -->
+    <rect x="895" y="178" width="40" height="58" rx="4" fill="rgba(15,23,42,0.85)" stroke="#64748b" stroke-width="0.8"/>
+    <text x="915" y="188" fill="#cbd5e1" font-size="7" font-weight="700" text-anchor="middle">P. AR</text>
+    <text{sid("vibaft-val")} x="915" y="202" fill="{'#ef4444' if vib_aft > 4.5 else '#fbbf24'}" font-size="10" font-weight="700" text-anchor="middle">{vib_aft:.1f}</text>
+    <text x="915" y="210" fill="#64748b" font-size="6" text-anchor="middle">mm/s</text>
+    <text{sid("tempaft-val")} x="915" y="222" fill="#38bdf8" font-size="9" text-anchor="middle">{temp_aft:.0f}</text>
+    <text x="915" y="230" fill="#64748b" font-size="6" text-anchor="middle">°C</text>
+
     <!-- Arbre commun -->
     <line x1="395" y1="248" x2="720" y2="248"
           stroke="#1d4ed8" stroke-width="4" stroke-dasharray="8,5" class="flow-hp" opacity="0.5"/>
@@ -469,26 +531,26 @@ def _build_synoptic_div(data: dict, static_ids: bool) -> html.Div:
   </g>
 
   <!-- ════ EXTRACTION MP → VANNE_MP → BARILLET [SHIFT -20px] ════ -->
-  <line x1="544" y1="130" x2="544" y2="40"
+  <line x1="544" y1="130" x2="544" y2="0"
       stroke="#a78bfa" stroke-width="6" stroke-linecap="round" class="flow-bp"/>
   {_instrument_circle(544, 105, "PT", "#a78bfa")}
   {vsym_vmp}
 
 <!-- Barillet MP -->
-<rect id="syn-barillet-rect" x="480" y="-10" width="130" height="50" rx="8"
+<rect id="syn-barillet-rect" x="480" y="-20" width="130" height="50" rx="8"
       fill="#0a101a" stroke="{bar_col}" stroke-width="1.8"/>
-<text x="545" y="10" fill="#f8fafc" font-size="10" font-weight="600"
+<text x="545" y="0" fill="#f8fafc" font-size="10" font-weight="600"
       text-anchor="middle" letter-spacing="1">BARILLET MP</text>
-<text{sid("pbar-val")} x="545" y="25" fill="{bar_col}" font-size="11" font-weight="700"
+<text{sid("pbar-val")} x="545" y="15" fill="{bar_col}" font-size="11" font-weight="700"
       text-anchor="middle">{p_bar:.2f} <tspan fill="#64748b" font-size="8" font-weight="400">bar</tspan></text>
-{'<rect x="590" y="-8" width="18" height="18" rx="9" fill="#ef4444" class="blink"/><text x="599" y="4" fill="white" font-size="9" text-anchor="middle" font-weight="700">!</text>' if alm_pbar else ''}
+{'<rect x="590" y="-48" width="18" height="18" rx="9" fill="#ef4444" class="blink"/><text x="599" y="-36" fill="white" font-size="9" text-anchor="middle" font-weight="700">!</text>' if alm_pbar else ''}
 
-<!-- Sorties barillet [centre y = -10 + 50/2 = 15] -->
-<line x1="480" y1="15" x2="380" y2="15" stroke="#a78bfa" stroke-width="3"/>
-<text x="378" y="11" fill="#94a3b8" font-size="8" text-anchor="end">→ Acid. Sulf.</text>
-<text x="378" y="23" fill="#94a3b8" font-size="8" text-anchor="end">→ Surchauffeur</text>
-<line x1="610" y1="15" x2="635" y2="15" stroke="#a78bfa" stroke-width="3"/>
-<text x="638" y="19" fill="#94a3b8" font-size="8">→ Réseau vapeur</text>
+<!-- Sorties barillet [centre y = -50 + 50/2 = -25] -->
+<line x1="480" y1="5" x2="455" y2="5" stroke="#a78bfa" stroke-width="3"/>
+<text x="450" y="4" fill="#94a3b8" font-size="8" text-anchor="end">→ Acid. Sulf.</text>
+<text x="450" y="11" fill="#94a3b8" font-size="8" text-anchor="end">→ Surchauffeur</text>
+<line x1="610" y1="5" x2="635" y2="5" stroke="#a78bfa" stroke-width="3"/>
+<text x="638" y="8" fill="#94a3b8" font-size="8">→ Réseau vapeur</text>
 
   <!-- ════ SORTIE BP → VANNE_BP → CONDENSEUR ════ -->
   <line x1="656" y1="390" x2="656" y2="410"
@@ -497,13 +559,26 @@ def _build_synoptic_div(data: dict, static_ids: bool) -> html.Div:
   <line x1="656" y1="433" x2="656" y2="490"
         stroke="#38bdf8" stroke-width="8" class="flow-bp"/>
 
+  <!-- Centrale Huile LUBRIFICATION -->
+  <rect x="350" y="490" width="130" height="60" rx="6"
+        fill="rgba(10,16,26,0.9)" stroke="#eab308" stroke-width="1.2"/>
+  <text x="415" y="500" fill="#fde047" font-size="8.5" font-weight="700" text-anchor="middle" letter-spacing="1">HUILE GRAISSAGE</text>
+  <text x="415" y="508" fill="#64748b" font-size="6" text-anchor="middle">Refroidie par Eau de Norya</text>
+  <text x="380" y="520" fill="#64748b" font-size="7" text-anchor="middle">Pression</text>
+  <text{sid("oilp-val")} x="380" y="534" fill="#eab308" font-size="12" font-weight="700" text-anchor="middle">{oil_p:.2f}</text>
+  <text x="402" y="534" fill="#64748b" font-size="7">bar</text>
+  <text x="450" y="520" fill="#64748b" font-size="7" text-anchor="middle">Temp.</text>
+  <text{sid("oilt-val")} x="450" y="534" fill="#eab308" font-size="12" font-weight="700" text-anchor="middle">{oil_t:.1f}</text>
+  <text x="470" y="534" fill="#64748b" font-size="7">°C</text>
+  <line x1="415" y1="514" x2="415" y2="542" stroke="#1e3a5f" stroke-width="1"/>
+
   <!-- Condenseur -->
   <rect x="570" y="490" width="175" height="90" rx="10"
         fill="#060d1a" stroke="#38bdf8" stroke-width="1.8" filter="url(#gb)"/>
   <text x="657" y="513" fill="#f8fafc" font-size="11" font-weight="600"
         text-anchor="middle" letter-spacing="1">CONDENSEUR</text>
   <text x="657" y="527" fill="#64748b" font-size="8.5"
-        text-anchor="middle">Système à vide — Eau de Norya</text>
+        text-anchor="middle">Pression quasi nulle (absolue)</text>
   <text x="585" y="547" fill="#64748b" font-size="8">P vide</text>
   <text{sid("pcond-val")} x="585" y="560" fill="#38bdf8" font-size="11" font-weight="700">{p_cond:.4f}</text>
   <text x="585" y="572" fill="#64748b" font-size="7.5">bar</text>
@@ -544,7 +619,7 @@ def _build_synoptic_div(data: dict, static_ids: bool) -> html.Div:
   <text x="835" y="283" fill="#34d399" font-size="9" text-anchor="middle">÷ 4.29</text>
   <text x="835" y="296" fill="#10b981" font-size="10" font-weight="700"
         text-anchor="middle">→ 1500 RPM</text>
-  <text x="835" y="306" fill="#064e3b" font-size="8.5" text-anchor="middle">50 Hz · 2 pôles</text>
+  <text{sid("freq-val")} x="835" y="308" fill="#34d399" font-size="9" font-weight="700" text-anchor="middle">{freq:.2f} <tspan fill="#064e3b" font-size="8">Hz · 2 pôles</tspan></text>
 
   <!-- Arbre Réducteur → Alternateur -->
   <line x1="885" y1="248" x2="945" y2="248"
@@ -688,13 +763,30 @@ def _tag(x, y, label, value, unit, alarm=False, anchor="middle", w=90):
     </g>"""
 
 
-def _valve_symbol(cx, cy, pct, name, col, size=18):
+def _valve_symbol(cx, cy, pct, target, name, col, size=18, orient="top"):
     """Version dynamique sans ID — pour la page Simulation."""
+    if orient == "right":
+        actuator = f"""
+        <line x1="{cx+size}" y1="{cy}" x2="{cx+size+10}" y2="{cy}" stroke="{col}" stroke-width="2"/>
+        <path d="M {cx+size+10} {cy-size+2} Q {cx+size+18} {cy} {cx+size+10} {cy+size-2} Z" fill="{col}" opacity="0.3" stroke="{col}" stroke-width="1"/>
+        """
+        tgt_txt = f'<text x="{cx+size+22}" y="{cy-8}" fill="#94a3b8" font-size="7.5" text-anchor="start" font-family="Share Tech Mono">Cible: {target:.0f}%</text>'
+    elif orient == "left":
+        actuator = f"""
+        <line x1="{cx-size}" y1="{cy}" x2="{cx-size-10}" y2="{cy}" stroke="{col}" stroke-width="2"/>
+        <path d="M {cx-size-10} {cy-size+2} Q {cx-size-18} {cy} {cx-size-10} {cy+size-2} Z" fill="{col}" opacity="0.3" stroke="{col}" stroke-width="1"/>
+        """
+        tgt_txt = f'<text x="{cx-size-22}" y="{cy-8}" fill="#94a3b8" font-size="7.5" text-anchor="end" font-family="Share Tech Mono">Cible: {target:.0f}%</text>'
+    else:
+        actuator = f"""
+        <line x1="{cx}" y1="{cy-size}" x2="{cx}" y2="{cy-size-5}" stroke="{col}" stroke-width="2"/>
+        <path d="M {cx-size+2} {cy-size-5} Q {cx} {cy-size-12} {cx+size-2} {cy-size-5} Z" fill="{col}" opacity="0.3" stroke="{col}" stroke-width="1"/>
+        """
+        tgt_txt = f'<text x="{cx}" y="{cy-size-12}" fill="#94a3b8" font-size="7.5" text-anchor="middle" font-family="Share Tech Mono">Cible: {target:.0f}%</text>'
+
     return f"""
+    {tgt_txt}
+    {actuator}
     <circle cx="{cx}" cy="{cy}" r="{size}" fill="#0a101a" stroke="{col}" stroke-width="2"/>
-    <line x1="{cx-size+4}" y1="{cy-size+4}" x2="{cx+size-4}" y2="{cy+size-4}" stroke="{col}" stroke-width="1.5"/>
-    <line x1="{cx+size-4}" y1="{cy-size+4}" x2="{cx-size+4}" y2="{cy+size-4}" stroke="{col}" stroke-width="1.5"/>
-    <text x="{cx}" y="{cy-4}" fill="{col}" font-size="9" font-weight="700"
-          text-anchor="middle" font-family="Share Tech Mono">{name}</text>
-    <text x="{cx}" y="{cy+8}" fill="{col}" font-size="8.5" text-anchor="middle"
-          font-family="Share Tech Mono">{pct:.0f}%</text>"""
+    <text x="{cx}" y="{cy-1}" fill="{col}" font-size="9" font-weight="700" text-anchor="middle" font-family="Share Tech Mono">{name}</text>
+    <text x="{cx}" y="{cy+9}" fill="{col}" font-size="8.5" text-anchor="middle" font-family="Share Tech Mono">{pct:.0f}%</text>"""

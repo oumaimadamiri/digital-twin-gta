@@ -170,6 +170,13 @@ class FakeAPI:
         
         try:
             computed_nom = self.physics.compute_all(**state_nom_noisy)
+            # Ajout des targets vannes nominaux
+            computed_nom["valve_v1_target"] = state_nom["valve_v1"]
+            computed_nom["valve_v2_target"] = state_nom["valve_v2"]
+            computed_nom["valve_v3_target"] = state_nom["valve_v3"]
+            computed_nom["valve_mp_target"] = state_nom["valve_mp"]
+            computed_nom["valve_bp_target"] = state_nom["valve_bp"]
+
             params_nom = GTAParameters(
                 timestamp = datetime.utcnow(),
                 scenario  = None,
@@ -198,6 +205,13 @@ class FakeAPI:
                 valve_mp       = state_sim["valve_mp"],
                 valve_bp       = state_sim["valve_bp"],
             )
+            # Ajout des targets vannes (avant application du bruit d'actuation)
+            computed_sim["valve_v1_target"] = self._state["valve_v1"]
+            computed_sim["valve_v2_target"] = self._state["valve_v2"]
+            computed_sim["valve_v3_target"] = self._state["valve_v3"]
+            computed_sim["valve_mp_target"] = self._state["valve_mp"]
+            computed_sim["valve_bp_target"] = self._state["valve_bp"]
+
             if self._power_factor_offset != 0:
                 computed_sim["power_factor"] = round(
                     max(PF_MIN_CLAMP, computed_sim["power_factor"] + self._power_factor_offset), 3

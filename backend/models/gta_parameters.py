@@ -58,13 +58,29 @@ class GTAParameters(BaseModel):
     # ── Vannes ──
     # V1 : admission HP principale (80% débit)
     valve_v1: float = Field(..., ge=0, le=100, description="Vanne V1 admission HP (%)")
+    valve_v1_target: float = Field(100.0, ge=0, le=100, description="Consigne Vanne V1 (%)")
     # V2, V3 : équilibrage mécanique pur (ne modifient pas le bilan thermo)
     valve_v2: float = Field(..., ge=0, le=100, description="Vanne V2 équilibrage (%)")
+    valve_v2_target: float = Field(100.0, ge=0, le=100, description="Consigne Vanne V2 (%)")
     valve_v3: float = Field(..., ge=0, le=100, description="Vanne V3 équilibrage (%)")
+    valve_v3_target: float = Field(100.0, ge=0, le=100, description="Consigne Vanne V3 (%)")
     # Vanne extraction MP → barillet
     valve_mp: float = Field(..., ge=0, le=100, description="Vanne extraction MP (%)")
+    valve_mp_target: float = Field(50.0, ge=0, le=100, description="Consigne Vanne MP (%)")
     # Vanne sortie BP → condenseur
     valve_bp: float = Field(..., ge=0, le=100, description="Vanne sortie BP condenseur (%)")
+    valve_bp_target: float = Field(80.0, ge=0, le=100, description="Consigne Vanne BP (%)")
+
+    # ── Auxiliaires & Mécanique ──
+    vib_bearing_fwd: float = Field(2.1, description="Vibration Palier Avant (mm/s)")
+    vib_bearing_aft: float = Field(1.8, description="Vibration Palier Arrière (mm/s)")
+    temp_bearing_fwd: float = Field(74.0, description="Temp. Palier Avant (°C)")
+    temp_bearing_aft: float = Field(76.0, description="Temp. Palier Arrière (°C)")
+    lube_oil_press: float = Field(1.5, description="Pression Huile de Graissage (bar)")
+    lube_oil_temp: float = Field(45.0, description="Température Huile de Graissage (°C)")
+    axial_displacement: float = Field(0.2, description="Déplacement Axial Rotor (mm)")
+    casing_expansion: float = Field(5.0, description="Dilatation Corps (mm)")
+    grid_frequency: float = Field(50.00, description="Fréquence Réseau (Hz)")
 
     # ── Débits hydrauliques par vanne (informatifs) ──
     flow_v1_th:  float = Field(96.0,  description="Débit hydraulique V1 (T/h) = 80% de 120")
