@@ -1000,3 +1000,103 @@ input[type="date"].custom-input::-webkit-calendar-picker-indicator {
   filter: invert(0.6);         /* Icône calendrier adaptée au fond sombre */
   cursor: pointer;
 }
+
+/* ═══════════════════════════════════════════════════════════ */
+/* SECTIONS COLLAPSIBLES (simulation)                          */
+/* ═══════════════════════════════════════════════════════════ */
+
+/* Card sans padding interne — le header et le body gèrent leur propre espacement */
+.section-card {
+  padding: 0 !important;
+  overflow: hidden;
+}
+
+/* ── En-tête cliquable ── */
+.collapse-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 11px 16px;
+  cursor: pointer;
+  user-select: none;
+  background: var(--bg-card-alt);
+  border-bottom: 1px solid transparent;
+  transition: background 0.18s ease, border-color 0.18s ease;
+}
+
+.collapse-header:hover {
+  background: var(--bg-hover);
+  border-bottom-color: var(--border);
+}
+
+/* ── Titre : barre couleur + texte ── */
+.collapse-title {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font-family: var(--ui);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  color: var(--text2);
+}
+
+/* ── Flèche / chevron ── */
+.collapse-arrow {
+  font-size: 11px;
+  color: var(--text3);
+  transition: transform 0.25s ease, color 0.18s ease;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+.collapse-header:hover .collapse-arrow {
+  color: var(--text2);
+}
+
+/* ── Corps de la section ── */
+.collapse-body {
+  padding: 16px;
+  border-top: 1px solid var(--border);
+}
+
+/* ═══════════════════════════════════════════════════════════ */
+/* ACCORDÉON HORIZONTAL (simulation)                           */
+/* ═══════════════════════════════════════════════════════════ */
+
+/* Conteneur : 3 sections côte à côte */
+.accordion-row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  width: 100%;
+}
+
+/* Chaque section : réduite par défaut (largeur auto = header seulement) */
+.accordion-section {
+  flex: 0 0 auto;
+  min-width: 0;
+  transition: flex 0.28s ease;
+}
+
+/* Quand étendue via le callback (flex:1 override) */
+.accordion-section .section-card {
+  height: 100%;
+}
+
+/* Titre du header : empêche le texte de se couper dans l'état réduit */
+.accordion-section .collapse-title {
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+/* Quand la section est réduite, le header reste compact et cliquable */
+.accordion-section .collapse-header {
+  border-radius: var(--r);   /* coins arrondis visibles quand le body est caché */
+}
+
+/* Quand le corps est visible, le header perd les coins bas pour fusionner avec le body */
+.accordion-section .collapse-header:has(+ .collapse-body[style*="block"]) {
+  border-radius: var(--r) var(--r) 0 0;
+}

@@ -210,7 +210,7 @@ def _build_synoptic_div(data: dict, static_ids: bool) -> html.Div:
         tag_qhp  = _tag_static(185, 200, "Débit HP",    "syn-qhp",  f"{q_hp:.0f}",  "T/h",  alm_qhp, w=55)
         tag_spd  = _tag_static(755, 265, "Vit. arbre",  "syn-spd",  f"{speed:.0f}", "RPM",  alm_spd, w=55)  # FIX#2 x:755→768, y:258→264
         tag_v1   = _tag_static(330, 280, "Adm. HP",     "syn-v1t",  f"{v1:.0f}",    "%", w=60)                    # FIX#4 x:330→368
-        tag_uout = _tag_static(1142,262, "U out",       "syn-uout", f"{voltage:.1f}","kV",  w=60)            # FIX#5 y:215→256
+        tag_pout = _tag_static(1142,262, "P active",    "syn-pout", f"{power:.1f}","MW",  alm_pow, w=65)            # FIX#5 y:215→256
         tag_vit2 = _tag_static(915, 264, "Vit.",        "syn-vit2", "1500",          "RPM", w=55)            # FIX#3 y:258→264
     else:
         tag_php  = _tag(80,  258, "Pression",    f"{p_hp:.1f}",  "bar", alm_php)                # FIX#1
@@ -218,7 +218,7 @@ def _build_synoptic_div(data: dict, static_ids: bool) -> html.Div:
         tag_qhp  = _tag(185, 200, "Débit HP",    f"{q_hp:.0f}",  "T/h", alm_qhp, w=55)
         tag_spd  = _tag(755, 265, "Vit. arbre",  f"{speed:.0f}", "RPM", alarm=alm_spd, w=55)   # FIX#2
         tag_v1   = _tag(330, 280, "Adm. HP",     f"{v1:.0f}",    "%", w=60)                            # FIX#4
-        tag_uout = _tag(1142,262, "U out",        f"{voltage:.1f}","kV", w=60)                   # FIX#5
+        tag_pout = _tag(1142,262, "P active",     f"{power:.1f}","MW", alarm=alm_pow, w=65)                   # FIX#5
         tag_vit2 = _tag(915, 264, "Vit.",         "1500",          "RPM", w=55)                  # FIX#3
 
     # ── Symboles vannes ───────────────────────────────────────────────────────
@@ -590,7 +590,7 @@ def _build_synoptic_div(data: dict, static_ids: bool) -> html.Div:
   <!-- ════ BUS BARRES ÉLECTRIQUE ════ -->
   <line x1="1110" y1="248" x2="1175" y2="248"
         stroke="#10b981" stroke-width="10" class="flow-el"/>
-  {tag_uout}
+  {tag_pout}
   <rect x="1175" y="180" width="20" height="160" rx="3"
         fill="#0a101a" stroke="#10b981" stroke-width="2"/>
   <text x="1185" y="175" fill="#10b981" font-size="8" text-anchor="middle">BB</text>

@@ -21,25 +21,69 @@ _session = requests.Session()
 # Ordre de tri pour l'affichage des scénarios
 _CRIT_ORDER = {"CRITIQUE": 0, "MAJEUR": 1, "MODÉRÉ": 2}
 
-def _make_toggle(app, toggle_id, collapse_id):
+# Styles réutilisables pour l'accordéon
+_WRAP_EXPANDED  = {"flex": "1",        "minWidth": "0",    "transition": "flex 0.25s ease"}
+_WRAP_COLLAPSED = {"flex": "0 0 auto",  "minWidth": "auto", "transition": "flex 0.25s ease"}
+_SHOW = {"display": "block"}
+_HIDE = {"display": "none"}
+
+def register(app):
+    # ── Accordéon horizontal : 1 seul callback pour les 3 sections ──────────
     @app.callback(
-        Output(collapse_id, "style"),
-        Output(toggle_id, "children"),
-        Input(f"{toggle_id}-btn", "n_clicks"),
-        State(collapse_id, "style"),
+        # Corps (show/hide)
+        Output("collapse-valves",    "style"),
+        Output("collapse-scenarios", "style"),
+        Output("collapse-history",   "style"),
+        # Flèches
+        Output("toggle-valves",    "children"),
+        Output("toggle-scenarios", "children"),
+        Output("toggle-history",   "children"),
+        # Wrappers flex
+        Output("section-valves-wrap",    "style"),
+        Output("section-scenarios-wrap", "style"),
+        Output("section-history-wrap",   "style"),
+        # Déclencheurs
+        Input("toggle-valves-btn",    "n_clicks"),
+        Input("toggle-scenarios-btn", "n_clicks"),
+        Input("toggle-history-btn",   "n_clicks"),
+        # État courant des corps
+        State("collapse-valves",    "style"),
+        State("collapse-scenarios", "style"),
+        State("collapse-history",   "style"),
         prevent_initial_call=True,
     )
-    def toggle(n, current_style):
-        is_open = (current_style or {}).get("display") != "none"
-        if is_open:
-            return {"display": "none"}, "▼"
+    def accordion_toggle(n_v, n_s, n_h, s_v, s_s, s_h):
+        triggered = dash.callback_context.triggered_id
+
+        # Quel panneau était ouvert ?
+        was_open = {
+            "toggle-valves-btn":    (s_v or {}).get("display") != "none",
+            "toggle-scenarios-btn": (s_s or {}).get("display") != "none",
+            "toggle-history-btn":   (s_h or {}).get("display") != "none",
+        }
+        keys = ["toggle-valves-btn", "toggle-scenarios-btn", "toggle-history-btn"]
+
+        if triggered not in keys:
+            return no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update, no_update
+
+        # Comportement accordéon :
+        # - si la section cliquée était OUVERTE → tout fermer
+        # - sinon → ouvrir celle-ci, fermer les deux autres
+        if was_open[triggered]:
+            new_open = {k: False for k in keys}
         else:
-            return {"display": "block"}, "▲"
-        
-def register(app):
-    _make_toggle(app, "toggle-valves",    "collapse-valves")
-    _make_toggle(app, "toggle-scenarios", "collapse-scenarios")
-    _make_toggle(app, "toggle-history",   "collapse-history")
+            new_open = {k: (k == triggered) for k in keys}
+
+        def body(k):    return _SHOW if new_open[k] else _HIDE
+        def wrap(k):    return _WRAP_EXPANDED if new_open[k] else _WRAP_COLLAPSED
+        def arrow(k):   return "▼" if new_open[k] else "▶"
+
+        v, s, h = "toggle-valves-btn", "toggle-scenarios-btn", "toggle-history-btn"
+        return (
+            body(v), body(s), body(h),
+            arrow(v), arrow(s), arrow(h),
+            wrap(v), wrap(s), wrap(h),
+        )
     # ── Affichage valeurs sliders ────────────────────────────────────
     @app.callback(
         Output("val-v1", "children"),
@@ -297,25 +341,45 @@ def register(app):
 
                 # ── Colonne droite : scénario + params ──
                 html.Div([
+                    # ── Nom du scénario ──
                     html.Div([
-                        html.Span("Scénario: ", style={"color": "#475569", "flexShrink": "0"}),
-                        html.Span(d.get("scenario") or "Nominal",
-                                style={
-                                    "color": "#818cf8", "fontWeight": "700",
-                                    "whiteSpace": "normal", "wordBreak": "break-word",
-                                    "lineHeight": "1.3",
-                                }),
-                    ], style={"fontFamily": "Share Tech Mono", "fontSize": "11px",
-                            "height": "22px", "display": "flex", "alignItems": "flex-start",
-                            "marginBottom": "6px"}),
+                        html.Span("Scénario: ", style={
+                            "color": "#475569",
+                            "flexShrink": "0",
+                            "fontFamily": "Share Tech Mono",
+                            "fontSize": "11px",
+                        }),
+                        html.Span(
+                            d.get("scenario") or "Nominal",
+                            title=d.get("scenario") or "",
+                            style={
+                                "color": "#818cf8" if d.get("scenario") else "#64748b",
+                                "fontWeight": "700",
+                                "fontFamily": "Share Tech Mono",
+                                "fontSize": "11px",
+                                "whiteSpace": "normal",
+                                "wordBreak": "break-word",
+                                "lineHeight": "1.45",
+                            },
+                        ),
+                    ], style={
+                        "display": "flex",
+                        "alignItems": "flex-start",
+                        "minHeight": "22px",
+                        "marginBottom": "6px",
+                    }),
                     html.Hr(style={"borderColor": "#2c5ea0", "margin": "10px 5"}),
 
                     *[html.Div([
-                        html.Span(f"{label}:", style={"color": "#475569", "width": "60px",
-                                                    "display": "inline-block"}),
+                        html.Span(f"{label}:", style={
+                            "color": "#475569",
+                            "width": "76px",
+                            "flexShrink": "0",
+                            "display": "inline-block",
+                        }),
                         html.Span(val, style={"color": col, "fontWeight": "700"}),
                     ], style={"fontFamily": "Share Tech Mono", "fontSize": "11px",
-                            "height": "22px", "display": "flex", "alignItems": "center"})
+                            "minHeight": "22px", "display": "flex", "alignItems": "center"})
                     for label, val, col in [
                         ("P active",   f"{d.get('active_power', 0):.1f} MW",   "#10b981"),
                         ("Vitesse",    f"{d.get('turbine_speed', 0):.0f} RPM", "#60a5fa"),

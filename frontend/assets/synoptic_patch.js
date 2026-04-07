@@ -191,12 +191,18 @@ window.patchGtaSynoptic = function(data) {
 
     _setText("syn-volt-val", voltage.toFixed(1));
 
-    /* ── Tag U sortie ── */
-    const uoutEl = document.getElementById("syn-uout-val");
-    if (uoutEl) {
-        const tspan = uoutEl.querySelector("tspan");
-        uoutEl.childNodes[0].textContent = voltage.toFixed(1) + " ";
-        if (tspan) tspan.textContent = "kV";
+    /* ── Tag P sortie ── */
+    const poutValEl = document.getElementById("syn-pout-val");
+    if (poutValEl) {
+        const tspan = poutValEl.querySelector("tspan");
+        poutValEl.childNodes[0].textContent = power.toFixed(1) + " ";
+        if (tspan) tspan.textContent = "MW";
+        poutValEl.setAttribute("fill", alm_pow ? "#ef4444" : "#e2e8f0");
+    }
+    const poutRect = document.getElementById("syn-pout-rect");
+    if (poutRect) {
+        poutRect.setAttribute("fill",   alm_pow ? "rgba(239,68,68,0.12)" : "rgba(15,23,42,0.75)");
+        poutRect.setAttribute("stroke", alm_pow ? "#ef4444" : "#1e3a5f");
     }
 
     /* ── Réseau MT : excédent ── */
