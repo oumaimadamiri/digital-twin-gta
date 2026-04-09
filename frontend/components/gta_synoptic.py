@@ -203,6 +203,13 @@ def _build_synoptic_div(data: dict, static_ids: bool) -> html.Div:
 
     scenario = data.get("scenario")
 
+    # ── Distribution flux BP (calculé depuis données disponibles) ──
+    _q_hp_eff          = q_hp * (v1 / 100.0)
+    _q_extract_mp      = _q_hp_eff * 0.20 * (v_mp / 100.0)
+    flow_barillet_val    = round(_q_extract_mp * 0.50, 1)
+    flow_chauffage_val   = round(_q_extract_mp * 0.30, 1)
+    flow_surchauffeur_val = round(_q_extract_mp * 0.20, 1)
+
     # ── Alarmes ──────────────────────────────────────────────────────────────
     alm_php  = _alarm(p_hp,  55, 65)
     alm_thp  = _alarm(t_hp, 420, 500)
@@ -263,14 +270,14 @@ def _build_synoptic_div(data: dict, static_ids: bool) -> html.Div:
         vsym_v2  = _valve_symbol_static(280, 175, v2, v2_tgt, "V2",  vc2,  "syn-v2",  13, orient="left")
         vsym_v3  = _valve_symbol_static(280, 335, v3, v3_tgt, "V3",  vc3,  "syn-v3",  13, orient="left")
         vsym_vmp = _valve_symbol_static(544, 62, v_mp, v_mp_tgt,"VMP", vc_mp, "syn-vmp", 17, orient="right")
-        vsym_vbp = _valve_symbol_static(656, 415, v_bp, v_bp_tgt,"VBP", vc_bp,"syn-vbp", 18, orient="right")
+        vsym_vbp = _valve_symbol_static(656, 415, v_bp, v_bp_tgt,"VBP", vc_bp,"syn-vbp", 18, orient="top")
     else:
         # Appel direct — _valve_symbol est défini dans ce même module
         vsym_v1  = _valve_symbol(330, 248, v1, v1_tgt, "V1",  vc1,  20)
         vsym_v2  = _valve_symbol(280, 175, v2, v2_tgt, "V2",  vc2,  13, orient="left")
         vsym_v3  = _valve_symbol(280, 335, v3, v3_tgt, "V3",  vc3,  13, orient="left")
         vsym_vmp = _valve_symbol(544, 62, v_mp, v_mp_tgt,"VMP", vc_mp, 17, orient="right")
-        vsym_vbp = _valve_symbol(656, 415, v_bp, v_bp_tgt,"VBP", vc_bp, 18, orient="right")
+        vsym_vbp = _valve_symbol(656, 415, v_bp, v_bp_tgt,"VBP", vc_bp, 18, orient="top")
 
     svg = f"""
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="-20 -38 1430 643"
@@ -547,14 +554,7 @@ def _build_synoptic_div(data: dict, static_ids: bool) -> html.Div:
 <text{sid("pbar-mp-val")} x="545" y="15" fill="{bar_col}" font-size="11" font-weight="700"
       text-anchor="middle">{p_bar_mp:.2f} <tspan fill="#64748b" font-size="8" font-weight="400">bar</tspan></text>
 
-<!-- ════ BARILLET BP (~3 bar) ════ -->
-<rect id="syn-barillet-bp-rect" x="480" y="440" width="130" height="50" rx="8"
-      fill="#0a101a" stroke="#38bdf8" stroke-width="1.8"/>
-<text x="545" y="460" fill="#f8fafc" font-size="10" font-weight="600"
-      text-anchor="middle" letter-spacing="1">BARILLET BP</text>
-<text{sid("pbar-bp-val")} x="545" y="475" fill="#38bdf8" font-size="11" font-weight="700"
-      text-anchor="middle">{p_bar_bp:.2f} <tspan fill="#64748b" font-size="8" font-weight="400">bar</tspan></text>
-{'<rect x="590" y="432" width="18" height="18" rx="9" fill="#ef4444" class="blink"/>' if p_bar_bp > 3.5 else ''}
+<!-- [BARILLET BP déplacé — voir section DISTRIBUTION BP ci-dessous] -->
 
 
 <!-- Sorties barillet [centre y = -50 + 50/2 = -25] -->
@@ -564,14 +564,63 @@ def _build_synoptic_div(data: dict, static_ids: bool) -> html.Div:
 <line x1="610" y1="5" x2="635" y2="5" stroke="#a78bfa" stroke-width="3"/>
 <text x="638" y="8" fill="#94a3b8" font-size="8">→ Réseau vapeur</text>
 
-  <!-- ════ SORTIE BP → VANNE_BP → CONDENSEUR ════ -->
+  <!-- ════ DISTRIBUTION BP ════ -->
+  <!-- Tuyau BP sortie turbine → VBP (actuateur vers le haut) -->
   <line x1="656" y1="390" x2="656" y2="410"
         stroke="#38bdf8" stroke-width="8" stroke-linecap="round" class="flow-bp"/>
   {vsym_vbp}
-  <line x1="656" y1="433" x2="656" y2="490"
-        stroke="#38bdf8" stroke-width="8" class="flow-bp"/>
 
-  <!-- Centrale Huile LUBRIFICATION -->
+  <!-- Ligne VBP → Nœud de distribution -->
+  <line x1="656" y1="433" x2="656" y2="468"
+        stroke="#38bdf8" stroke-width="8" class="flow-bp"/>
+  <!-- Nœud de distribution (T-junction) -->
+  <circle cx="656" cy="468" r="7" fill="#38bdf8" opacity="0.85"/>
+  <!-- Bras vertical ↓ : nœud → BARILLET BP -->
+  <line x1="656" y1="468" x2="656" y2="490"
+        stroke="#38bdf8" stroke-width="8" class="flow-bp"/>
+  <!-- Bras horizontal → : nœud → CONDENSEUR -->
+  <line x1="656" y1="468" x2="762" y2="468"
+        stroke="#38bdf8" stroke-width="6" class="flow-bp"/>
+
+  <!-- ════ BARILLET BP — Position principale ════ -->
+  <rect id="syn-barillet-bp-rect" x="555" y="490" width="200" height="100" rx="8"
+        fill="#0a101a" stroke="#38bdf8" stroke-width="1.8" filter="url(#gb)"/>
+  <text x="655" y="507" fill="#f8fafc" font-size="10" font-weight="600"
+        text-anchor="middle" letter-spacing="1">BARILLET BP</text>
+
+  <!-- Pression barillet BP -->
+  <text{sid("pbar-bp-val")} x="655" y="523" fill="#38bdf8" font-size="14" font-weight="700"
+        text-anchor="middle">{p_bar_bp:.2f} <tspan fill="#64748b" font-size="9" font-weight="400">bar</tspan></text>
+
+  <!-- Alarme barillet BP -->
+  <rect id="syn-barillet-bp-blink" x="736" y="484" width="16" height="16" rx="8"
+        fill="#ef4444" class="blink"
+        {'display="block"' if p_bar_bp > 3.5 else 'display="none"'}/>
+
+  <!-- Séparateur + 4 destinations VP BP -->
+  <line x1="560" y1="534" x2="750" y2="534" stroke="#1e3a5f" stroke-width="0.8"/>
+
+  <!-- 1. VP HP → Condenseur (flux principal, affiché dans le condenseur) -->
+  <text x="560" y="548" fill="#10b981" font-size="8" font-weight="600">① VP HP → Condenseur</text>
+  <text{sid("q-barillet-hp")} x="750" y="548" fill="#10b981" font-size="8" font-weight="700"
+        text-anchor="end">{q_cond:.0f} T/h</text>
+
+  <!-- 2. VP BP 3 bar → Barillet -->
+  <text x="560" y="560" fill="#38bdf8" font-size="7.5">② 3 bar → Barillet</text>
+  <text id="syn-q-barillet" x="750" y="560" fill="#38bdf8" font-size="8" font-weight="700"
+        text-anchor="end">{flow_barillet_val:.1f} T/h</text>
+
+  <!-- 3. VP BP Chauffage eau AS -->
+  <text x="560" y="571" fill="#a78bfa" font-size="7.5">③ Chauffage Eau AS</text>
+  <text id="syn-q-chauffage" x="750" y="571" fill="#a78bfa" font-size="8" font-weight="700"
+        text-anchor="end">{flow_chauffage_val:.1f} T/h</text>
+
+  <!-- 4. VP BP Surchauffeur AS -->
+  <text x="560" y="582" fill="#a78bfa" font-size="7.5">④ Surchauffeur AS</text>
+  <text id="syn-q-surchauffeur" x="750" y="582" fill="#a78bfa" font-size="8" font-weight="700"
+        text-anchor="end">{flow_surchauffeur_val:.1f} T/h</text>
+
+  <!-- ════ CENTRALE HUILE LUBRIFICATION ════ -->
   <rect x="350" y="490" width="130" height="60" rx="6"
         fill="rgba(10,16,26,0.9)" stroke="#eab308" stroke-width="1.2"/>
   <text x="415" y="500" fill="#fde047" font-size="8.5" font-weight="700" text-anchor="middle" letter-spacing="1">HUILE GRAISSAGE</text>
@@ -584,24 +633,31 @@ def _build_synoptic_div(data: dict, static_ids: bool) -> html.Div:
   <text x="470" y="534" fill="#64748b" font-size="7">°C</text>
   <line x1="415" y1="514" x2="415" y2="542" stroke="#1e3a5f" stroke-width="1"/>
 
-  <!-- Condenseur -->
-  <rect x="570" y="490" width="175" height="90" rx="10"
+  <!-- ════ CONDENSEUR — À droite du BARILLET BP ════ -->
+  <rect x="762" y="455" width="195" height="125" rx="10"
         fill="#060d1a" stroke="#38bdf8" stroke-width="1.8" filter="url(#gb)"/>
-  <text x="657" y="513" fill="#f8fafc" font-size="11" font-weight="600"
+  <text x="859" y="472" fill="#f8fafc" font-size="11" font-weight="600"
         text-anchor="middle" letter-spacing="1">CONDENSEUR</text>
-  <text x="657" y="527" fill="#64748b" font-size="8.5"
-        text-anchor="middle">Pression quasi nulle (absolue)</text>
-  <text x="585" y="547" fill="#64748b" font-size="8">P vide</text>
-  <text{sid("pcond-val")} x="585" y="560" fill="#38bdf8" font-size="11" font-weight="700">{p_cond:.4f}</text>
-  <text x="585" y="572" fill="#64748b" font-size="7.5">bar</text>
-  <line x1="634" y1="538" x2="634" y2="578" stroke="#1e3a5f" stroke-width="0.8"/>
-  <text x="645" y="547" fill="#64748b" font-size="8">T bp sortie</text>
-  <text{sid("tbp-val")} x="645" y="560" fill="#38bdf8" font-size="11" font-weight="700">{t_bp:.0f}</text>
-  <text x="645" y="572" fill="#64748b" font-size="7.5">°C</text>
-  <line x1="695" y1="538" x2="695" y2="578" stroke="#1e3a5f" stroke-width="0.8"/>
-  <text x="706" y="547" fill="#64748b" font-size="8">Q eau</text>
-  <text{sid("qcond2-val")} x="706" y="560" fill="#38bdf8" font-size="11" font-weight="700">{q_cond:.0f}</text>
-  <text x="706" y="572" fill="#64748b" font-size="7.5">T/h</text>
+  <text x="859" y="484" fill="#64748b" font-size="8" text-anchor="middle">Pression quasi nulle (absolue)</text>
+  <!-- Label flux principal -->
+  <text x="859" y="495" fill="#10b981" font-size="8" font-weight="600"
+        text-anchor="middle">① VP HP → Condenseur</text>
+  <!-- Colonnes P vide / T sortie / Q eau -->
+  <rect x="764" y="500" width="192" height="74" rx="4"
+        fill="rgba(15,23,42,0.75)" stroke="#0f2744" stroke-width="0.8"/>
+  <text x="790" y="515" fill="#64748b" font-size="8">P vide</text>
+  <text{sid("pcond-val")} x="790" y="530" fill="#38bdf8" font-size="11" font-weight="700">{p_cond:.4f}</text>
+  <text x="790" y="542" fill="#64748b" font-size="7.5">bar</text>
+  <line x1="835" y1="502" x2="835" y2="572" stroke="#0f2744" stroke-width="0.8"/>
+  <text x="848" y="515" fill="#64748b" font-size="8">T BP sortie</text>
+  <text{sid("tbp-val")} x="848" y="530" fill="#38bdf8" font-size="11" font-weight="700">{t_bp:.0f}</text>
+  <text x="848" y="542" fill="#64748b" font-size="7.5">°C</text>
+  <line x1="896" y1="502" x2="896" y2="572" stroke="#0f2744" stroke-width="0.8"/>
+  <text x="910" y="515" fill="#64748b" font-size="8">Q eau</text>
+  <text{sid("qcond2-val")} x="910" y="530" fill="#38bdf8" font-size="11" font-weight="700">{q_cond:.0f}</text>
+  <text x="910" y="542" fill="#64748b" font-size="7.5">T/h</text>
+  <text x="859" y="570" fill="#1e3a5f" font-size="7"
+        text-anchor="middle">Δh = ṁ × (h_in − h_out) → Eau chaude recyclée</text>
 
   <!-- ════ ARBRE TURBINE → RÉDUCTEUR ════ -->
   <line x1="725" y1="248" x2="785" y2="248"

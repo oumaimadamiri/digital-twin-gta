@@ -1,15 +1,17 @@
 /**
- * assets/synoptic_patch.js  [FIX-5b]
+ * assets/synoptic_patch.js  [FIX-BP-LAYOUT]
  *
  * Patch ciblé du SVG synoptique GTA à chaque push WebSocket.
  * Appelé par le clientside_callback dans cb_dashboard.py.
  *
- * Principe :
- *   - Le SVG est rendu statiquement une seule fois (create_gta_synoptic_static).
- *   - Ici, seuls les nœuds <text id="syn-*"> sont mis à jour via
- *     getElementById + textContent / setAttribute fill.
- *   - Zéro aller-retour réseau Python, zéro sérialisation JSON→DOM.
- *   - Coût CPU : O(nb_champs) = O(20) au lieu de O(nb_lignes_SVG) = O(500).
+ * CHANGEMENTS BP LAYOUT :
+ *   - BARILLET BP positionné en position principale (sous VBP)
+ *   - CONDENSEUR à droite du BARILLET BP
+ *   - 4 flux BP affichés :
+ *       1. VP HP → Condenseur (74 T/h)
+ *       2. VP BP 3 bar → Barillet
+ *       3. VP BP Chauffage eau AS
+ *       4. VP BP Surchauffeur AS
  */
 
 /* ── Helpers ──────────────────────────────────────────────────────────── */
@@ -55,6 +57,16 @@ window.patchGtaSynoptic = function(data) {
     const voltage = data.voltage              ?? 10.5;
     const i_a     = data.current_a            ?? 2254.0;
     const status  = data.status               ?? "NORMAL";
+    const v_mp    = data.valve_mp             ?? 50.0;
+    const v_v1    = data.valve_v1             ?? 100.0;
+    const v_bp    = data.valve_bp             ?? 80.0;
+
+    /* ── Distribution flux BP — calculée localement ── */
+    const q_hp_eff      = q_hp * (v_v1 / 100.0);
+    const q_extract_mp  = q_hp_eff * 0.20 * (v_mp / 100.0);
+    const q_barillet    = q_extract_mp * 0.50;
+    const q_chauffage   = q_extract_mp * 0.30;
+    const q_surchauffeur = q_extract_mp * 0.20;
 
     /* ── Mécanique & Auxiliaires ── */
     const freq    = data.grid_frequency       ?? 50.0;
@@ -97,7 +109,6 @@ window.patchGtaSynoptic = function(data) {
     _setFill("syn-status", sc);
 
     /* ── Tags source HP ── */
-    // Tag pression HP  (syn-php-val contient "valeur <tspan>unité</tspan>")
     const phpValEl = document.getElementById("syn-php-val");
     if (phpValEl) {
         const tspan = phpValEl.querySelector("tspan");
@@ -105,14 +116,12 @@ window.patchGtaSynoptic = function(data) {
         if (tspan) tspan.textContent = "bar";
         phpValEl.setAttribute("fill", alm_php ? "#ef4444" : "#e2e8f0");
     }
-    // Rect alarme
     const phpRect = document.getElementById("syn-php-rect");
     if (phpRect) {
         phpRect.setAttribute("fill",   alm_php ? "rgba(239,68,68,0.12)" : "rgba(15,23,42,0.75)");
         phpRect.setAttribute("stroke", alm_php ? "#ef4444" : "#1e3a5f");
     }
 
-    // Tag température HP
     const thpValEl = document.getElementById("syn-thp-val");
     if (thpValEl) {
         const tspan = thpValEl.querySelector("tspan");
@@ -126,7 +135,6 @@ window.patchGtaSynoptic = function(data) {
         thpRect.setAttribute("stroke", alm_thp ? "#ef4444" : "#1e3a5f");
     }
 
-    // Tag débit HP
     const qhpValEl = document.getElementById("syn-qhp-val");
     if (qhpValEl) {
         const tspan = qhpValEl.querySelector("tspan");
@@ -155,10 +163,8 @@ window.patchGtaSynoptic = function(data) {
     /* ── Footer turbine ── */
     _setText("syn-speed-val", speed.toFixed(0));
     _setFill("syn-speed-val", alm_spd ? "#ef4444" : "#60a5fa");
-
     _setText("syn-eff-val", eff.toFixed(1));
     _setFill("syn-eff-val", alm_eff ? "#ef4444" : "#10b981");
-
     _setText("syn-pbp-val",   p_bp_in.toFixed(2));
     _setText("syn-qcond-val", q_cond.toFixed(0));
 
@@ -182,10 +188,23 @@ window.patchGtaSynoptic = function(data) {
     const mpRect = document.getElementById("syn-barillet-mp-rect");
     if (mpRect) mpRect.setAttribute("stroke", bar_col);
 
+    /* ── Barillet BP ── */
     _setText("syn-pbar-bp-val", `${p_bar_bp.toFixed(2)} `);
     const bpBarRect = document.getElementById("syn-barillet-bp-rect");
-    if (bpBarRect) bpBarRect.setAttribute("stroke", alm_pbar_bp ? "#ef4444" : "#38bdf8");
-    
+    if (bpBarRect) {
+        const col = alm_pbar_bp ? "#ef4444" : "#38bdf8";
+        bpBarRect.setAttribute("stroke", col);
+        bpBarRect.setAttribute("filter", alm_pbar_bp ? "url(#gr)" : "url(#gb)");
+    }
+    /* Blink alarme barillet BP */
+    const bpBlink = document.getElementById("syn-barillet-bp-blink");
+    if (bpBlink) bpBlink.setAttribute("display", alm_pbar_bp ? "block" : "none");
+
+    /* ── 4 Flux BP distribution ── */
+    _setText("syn-q-barillet",     q_barillet.toFixed(1));
+    _setText("syn-q-chauffage",    q_chauffage.toFixed(1));
+    _setText("syn-q-surchauffeur", q_surchauffeur.toFixed(1));
+
     /* ── Condenseur ── */
     _setText("syn-pcond-val",  p_cond.toFixed(4));
     _setText("syn-tbp-val",    t_bp.toFixed(0));
@@ -199,19 +218,14 @@ window.patchGtaSynoptic = function(data) {
     }
     _setFill("syn-alt-tilde", alt_col);
 
-    /* ── Valeurs alternateur ── */
     _setText("syn-power-val", power.toFixed(1));
     _setFill("syn-power-val", alm_pow ? "#ef4444" : alt_col);
-
     _setText("syn-qmvar-val", q_mvar.toFixed(1));
     _setText("syn-smva-val",  s_mva.toFixed(1));
-
     _setText("syn-pf-val", pf.toFixed(3));
     _setFill("syn-pf-val", alm_pf ? "#ef4444" : "#fbbf24");
-
     _setText("syn-ia-val", i_a.toFixed(0));
     _setFill("syn-ia-val", alm_ia ? "#ef4444" : "#10b981");
-
     _setText("syn-volt-val", voltage.toFixed(1));
 
     /* ── Tag P sortie ── */
@@ -239,7 +253,7 @@ window.patchGtaSynoptic = function(data) {
         if (tspan) tspan.textContent = "bar";
     }
 
-    /* ── Application Ajouts SCADA (Mécanique/Auxiliaires) ── */
+    /* ── Auxiliaires mécaniques ── */
     const freqEl = document.getElementById("syn-freq-val");
     if (freqEl) {
         const tspan = freqEl.querySelector("tspan");
@@ -251,27 +265,22 @@ window.patchGtaSynoptic = function(data) {
     _setFill("syn-vibfwd-val", vib_fwd > 4.5 ? "#ef4444" : "#fbbf24");
     _setText("syn-vibaft-val", vib_aft.toFixed(1));
     _setFill("syn-vibaft-val", vib_aft > 4.5 ? "#ef4444" : "#fbbf24");
-
     _setText("syn-tempfwd-val", temp_fwd.toFixed(0));
     _setText("syn-tempaft-val", temp_aft.toFixed(0));
-    
     _setText("syn-oilp-val", oil_p.toFixed(2));
     _setText("syn-oilt-val", oil_t.toFixed(1));
-    
     _setText("syn-axial-val", "+" + axial.toFixed(2));
     _setText("syn-casing-val", casing.toFixed(1));
-    
-    /* Vannes cibles (et actuel) */
+
+    /* ── Vannes ── */
     _setText("syn-v1-tgt", "Cible:" + v1_tgt.toFixed(0) + "%");
     _setText("syn-v2-tgt", "Cible:" + v2_tgt.toFixed(0) + "%");
     _setText("syn-v3-tgt", "Cible:" + v3_tgt.toFixed(0) + "%");
     _setText("syn-vmp-tgt", "Cible:" + vmp_tgt.toFixed(0) + "%");
     _setText("syn-vbp-tgt", "Cible:" + vbp_tgt.toFixed(0) + "%");
-    
-    _setText("syn-v1-pct", (data.valve_v1 ?? 100).toFixed(0) + "%");
-    _setText("syn-v2-pct", (data.valve_v2 ?? 100).toFixed(0) + "%");
-    _setText("syn-v3-pct", (data.valve_v3 ?? 100).toFixed(0) + "%");
+    _setText("syn-v1-pct",  (data.valve_v1 ?? 100).toFixed(0) + "%");
+    _setText("syn-v2-pct",  (data.valve_v2 ?? 100).toFixed(0) + "%");
+    _setText("syn-v3-pct",  (data.valve_v3 ?? 100).toFixed(0) + "%");
     _setText("syn-vmp-pct", (data.valve_mp ?? 50).toFixed(0) + "%");
     _setText("syn-vbp-pct", (data.valve_bp ?? 80).toFixed(0) + "%");
-
 };
