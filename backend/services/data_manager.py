@@ -61,26 +61,30 @@ class DataManager:
     # ──────────────────────────────────────────
 
     def save_to_db(self, params: GTAParameters):
-        """Insère un snapshot en base SQLite."""
         with get_db() as conn:
             conn.execute("""
                 INSERT INTO gta_history (
                     timestamp, pressure_hp, temperature_hp, steam_flow_hp,
                     pressure_bp_in, temperature_bp, steam_flow_bp_in,
-                    steam_flow_condenser, pressure_bp_barillet, pressure_condenser,
+                    steam_flow_condenser, pressure_bp_barillet, pressure_mp_barillet,
+                    pressure_condenser,
                     turbine_speed, active_power, reactive_power, apparent_power,
                     power_factor, voltage, current_a, efficiency,
                     valve_v1, valve_v2, valve_v3, valve_mp, valve_bp,
                     status, scenario
-                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             """, (
                 params.timestamp.isoformat(),
                 params.pressure_hp, params.temperature_hp, params.steam_flow_hp,
                 params.pressure_bp_in, params.temperature_bp, params.steam_flow_bp_in,
-                params.steam_flow_condenser, params.pressure_bp_barillet, params.pressure_condenser,
-                params.turbine_speed, params.active_power, params.reactive_power, params.apparent_power,
+                params.steam_flow_condenser, params.pressure_bp_barillet,
+                params.pressure_mp_barillet,
+                params.pressure_condenser,
+                params.turbine_speed, params.active_power, params.reactive_power,
+                params.apparent_power,
                 params.power_factor, params.voltage, params.current_a, params.efficiency,
-                params.valve_v1, params.valve_v2, params.valve_v3, params.valve_mp, params.valve_bp,
+                params.valve_v1, params.valve_v2, params.valve_v3,
+                params.valve_mp, params.valve_bp,
                 params.status, params.scenario,
             ))
             conn.commit()
@@ -116,7 +120,7 @@ class DataManager:
         numeric_cols = [
             "pressure_hp", "temperature_hp", "steam_flow_hp",
             "pressure_bp_in", "temperature_bp", "steam_flow_bp_in",
-            "steam_flow_condenser", "pressure_bp_barillet", "pressure_condenser",
+            "steam_flow_condenser", "pressure_bp_barillet", "pressure_mp_barillet", "pressure_condenser",
             "turbine_speed", "active_power", "reactive_power", "apparent_power",
             "power_factor", "voltage", "current_a", "efficiency"
         ]

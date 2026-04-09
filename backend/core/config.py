@@ -72,6 +72,7 @@ NOMINAL = {
 
     # ── Sorties vapeur ──
     "steam_flow_condenser": 74.0,   # T/h  VP HP détendue vers condenseur (≠ bp_in)
+    "pressure_mp_barillet": 9.5,    # bar — soutirage turbine HP
     "pressure_bp_barillet": 3.0,    # bar  VP BP sortie vers barillet
     "pressure_condenser":   0.0064, # bar  vide condenseur (système à vide)
 
@@ -141,6 +142,7 @@ THRESHOLDS = {
     "temperature_bp":   {"min": 180.0,   "max": 280.0},
     "voltage":          {"min": 9.975,   "max": 11.025},   # ±5% de 10.5 kV
     "current_a":        {"min": 0.0,     "max": 3500.0},
+    "pressure_mp_barillet": {"min": 8.0, "max": 11.0},  # bar barillet MP
     "pressure_bp_barillet": {"min": 2.5, "max": 3.5},    # bar — déclenchement si dépassé (specs)
 }
 

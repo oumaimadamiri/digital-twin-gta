@@ -39,6 +39,7 @@ _DEFAULTS = {
     "steam_flow_hp":        120.0,
     "pressure_bp_in":       4.5,
     "temperature_bp":       226.0,
+    "pressure_mp_barillet": 9.5,
     "pressure_bp_barillet": 3.0,
     "steam_flow_condenser": 74.0,
     "pressure_condenser":   0.0064,
@@ -163,7 +164,8 @@ def _build_synoptic_div(data: dict, static_ids: bool) -> html.Div:
 
     p_bp_in  = data.get("pressure_bp_in",       4.5)
     t_bp     = data.get("temperature_bp",      226.0)
-    p_bar    = data.get("pressure_bp_barillet",  3.0)
+    p_bar_mp = data.get("pressure_mp_barillet", 9.5)   # barillet MP soutirage HP
+    p_bar_bp = data.get("pressure_bp_barillet", 3.0)   # barillet BP distribution    q_cond   = data.get("steam_flow_condenser",  74.0)
     q_cond   = data.get("steam_flow_condenser",  74.0)
     p_cond   = data.get("pressure_condenser",  0.0064)
 
@@ -209,14 +211,15 @@ def _build_synoptic_div(data: dict, static_ids: bool) -> html.Div:
     alm_pow  = power > 30.0
     alm_pf   = _alarm(pf, 0.82, 0.86)
     alm_eff  = eff < 85.0
-    alm_pbar = p_bar > 3.5
+    alm_pbar_mp = _alarm(p_bar_mp, 8.0, 11.0)
+    alm_pbar_bp = p_bar_bp > 3.5
     alm_ia   = i_a > 3000
 
     # ── Couleurs dynamiques ───────────────────────────────────────────────────
     sc       = STATUS_COLORS.get(status, STATUS_COLORS["NORMAL"])["stroke"]
     hp_col   = "#ef4444" if alm_thp else "#f97316"
     alt_col  = "#ef4444" if alm_pow else ("#f59e0b" if power > 24 else "#10b981")
-    bar_col  = "#ef4444" if alm_pbar else "#a78bfa"
+    bar_col  = "#ef4444" if alm_pbar_mp else "#a78bfa"
     vc1      = _vc(v1,  "#f97316")
     vc2      = _vc(v2,  "#60a5fa")
     vc3      = _vc(v3,  "#60a5fa")
@@ -536,14 +539,23 @@ def _build_synoptic_div(data: dict, static_ids: bool) -> html.Div:
   {_instrument_circle(544, 105, "PT", "#a78bfa")}
   {vsym_vmp}
 
-<!-- Barillet MP -->
-<rect id="syn-barillet-rect" x="480" y="-20" width="130" height="50" rx="8"
+<!-- ════ BARILLET MP (~9.5 bar) ════ -->
+<rect id="syn-barillet-mp-rect" x="480" y="-20" width="130" height="50" rx="8"
       fill="#0a101a" stroke="{bar_col}" stroke-width="1.8"/>
 <text x="545" y="0" fill="#f8fafc" font-size="10" font-weight="600"
       text-anchor="middle" letter-spacing="1">BARILLET MP</text>
-<text{sid("pbar-val")} x="545" y="15" fill="{bar_col}" font-size="11" font-weight="700"
-      text-anchor="middle">{p_bar:.2f} <tspan fill="#64748b" font-size="8" font-weight="400">bar</tspan></text>
-{'<rect x="590" y="-48" width="18" height="18" rx="9" fill="#ef4444" class="blink"/><text x="599" y="-36" fill="white" font-size="9" text-anchor="middle" font-weight="700">!</text>' if alm_pbar else ''}
+<text{sid("pbar-mp-val")} x="545" y="15" fill="{bar_col}" font-size="11" font-weight="700"
+      text-anchor="middle">{p_bar_mp:.2f} <tspan fill="#64748b" font-size="8" font-weight="400">bar</tspan></text>
+
+<!-- ════ BARILLET BP (~3 bar) ════ -->
+<rect id="syn-barillet-bp-rect" x="480" y="440" width="130" height="50" rx="8"
+      fill="#0a101a" stroke="#38bdf8" stroke-width="1.8"/>
+<text x="545" y="460" fill="#f8fafc" font-size="10" font-weight="600"
+      text-anchor="middle" letter-spacing="1">BARILLET BP</text>
+<text{sid("pbar-bp-val")} x="545" y="475" fill="#38bdf8" font-size="11" font-weight="700"
+      text-anchor="middle">{p_bar_bp:.2f} <tspan fill="#64748b" font-size="8" font-weight="400">bar</tspan></text>
+{'<rect x="590" y="432" width="18" height="18" rx="9" fill="#ef4444" class="blink"/>' if p_bar_bp > 3.5 else ''}
+
 
 <!-- Sorties barillet [centre y = -50 + 50/2 = -25] -->
 <line x1="480" y1="5" x2="455" y2="5" stroke="#a78bfa" stroke-width="3"/>

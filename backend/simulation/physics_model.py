@@ -301,20 +301,31 @@ class PhysicsModel:
         return round(max(0.0, flow_to_cond), 1)
 
     # ──────────────────────────────────────────
-    # PRESSION BP BARILLET (sortie process)
+    # PRESSION MP/BP BARILLET (sortie process)
     # ──────────────────────────────────────────
+    def compute_mp_barillet_pressure(self, pressure_hp: float, valve_mp: float) -> float:
+        """
+        Pression barillet MP (bar) — soutirage intermédiaire turbine HP.
+        Nominalement ~9.5 bar à P_hp=60 bar (ratio ~0.158).
+        valve_mp contrôle le débit extrait → légère influence sur pression.
+        """
+        base_ratio = 9.5 / 60.0   # ratio nominal
+        p_mp = pressure_hp * base_ratio
+        # valve_mp ouverte → plus d'extraction → légère chute de pression
+        valve_effect = (1.0 - (valve_mp / 100.0) * 0.05)
+        return round(max(7.0, min(12.0, p_mp * valve_effect)), 3)
 
     def compute_bp_barillet_pressure(self, pressure_bp: float,
-                                      valve_mp: float) -> float:
+                                    valve_mp: float) -> float:
         """
-        Pression BP vers barillet (bar).
-        En régime permanent ≈ 3 bar.
-        Augmente si valve_mp s'ouvre davantage (plus d'extraction MP).
-        Attention : dépasse 3.5 bar → risque déclenchement (spec encadrant).
+        Pression barillet BP (bar) — distribution basse pression aval turbine BP.
+        Nominalement ~3 bar.
+        Augmente si valve_mp s'ouvre (plus de vapeur vers réseau BP).
+        Déclenchement si > 3.5 bar (spec encadrant).
         """
         base = 3.0
-        mp_boost = (valve_mp / 100.0) * 0.8   # jusqu'à +0.8 bar si valve_mp=100%
-        return round(base + mp_boost, 3)
+        mp_boost = (valve_mp / 100.0) * 0.8
+        return round(max(2.0, min(4.0, base + mp_boost)), 3)
 
     # ──────────────────────────────────────────
     # DISTRIBUTION DÉBIT BP COMPLÈTE
@@ -503,7 +514,8 @@ class PhysicsModel:
         flow_condenser = self.compute_condenser_flow(
             steam_flow_hp, valve_mp, valve_bp, valve_v1
         )
-        p_bp_barillet  = self.compute_bp_barillet_pressure(pressure_bp, valve_mp)
+        p_mp_barillet = self.compute_mp_barillet_pressure(pressure_hp, valve_mp)
+        p_bp_barillet = self.compute_bp_barillet_pressure(pressure_bp, valve_mp)        
         efficiency     = self.compute_efficiency(
             active_power, steam_flow_hp, temperature_hp, pressure_hp
         )
@@ -540,6 +552,7 @@ class PhysicsModel:
             "steam_flow_bp_in":     0.0,   # nul en régime permanent (démarrage uniquement)
             # Sorties vapeur
             "steam_flow_condenser": flow_condenser,
+            "pressure_mp_barillet": p_mp_barillet,
             "pressure_bp_barillet": p_bp_barillet,
             "pressure_condenser":   self.nominal["pressure_condenser"],  # 0.0064 bar fixe
             # Turbine

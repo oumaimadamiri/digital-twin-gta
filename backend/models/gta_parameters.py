@@ -42,6 +42,7 @@ class GTAParameters(BaseModel):
     # ── Sorties vapeur ──
     steam_flow_condenser:   float = Field(..., description="Débit vapeur vers condenseur (T/h)")
     pressure_bp_barillet:   float = Field(..., description="Pression VP BP vers barillet (bar)")
+    pressure_mp_barillet: float = Field(..., description="Pression barillet MP soutirage HP (bar)")
     pressure_condenser:     float = Field(..., description="Pression condenseur / vide (bar)")
 
     # ── Turbine ──

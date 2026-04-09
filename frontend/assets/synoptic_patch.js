@@ -42,7 +42,8 @@ window.patchGtaSynoptic = function(data) {
     const q_hp    = data.steam_flow_hp        ?? 120.0;
     const p_bp_in = data.pressure_bp_in       ?? 4.5;
     const t_bp    = data.temperature_bp       ?? 226.0;
-    const p_bar   = data.pressure_bp_barillet ?? 3.0;
+    const p_bar_mp = data.pressure_mp_barillet ?? 9.5;
+    const p_bar_bp = data.pressure_bp_barillet ?? 3.0;
     const q_cond  = data.steam_flow_condenser ?? 74.0;
     const p_cond  = data.pressure_condenser   ?? 0.0064;
     const speed   = data.turbine_speed        ?? 6435.0;
@@ -84,11 +85,12 @@ window.patchGtaSynoptic = function(data) {
     const alm_pow  = power > 30.0;
     const alm_pf   = _alarm(pf, 0.82, 0.86);
     const alm_eff  = eff < 85.0;
-    const alm_pbar = p_bar > 3.5;
+    const alm_pbar_mp = p_bar_mp < 8.0 || p_bar_mp > 11.0;
+    const alm_pbar_bp = p_bar_bp > 3.5;
     const alm_ia   = i_a > 3000;
 
     const alt_col  = alm_pow ? "#ef4444" : (power > 24 ? "#f59e0b" : "#10b981");
-    const bar_col  = alm_pbar ? "#ef4444" : "#a78bfa";
+    const bar_col  = alm_pbar_mp ? "#ef4444" : "#a78bfa";
 
     /* ── Statut global ── */
     _setText("syn-status", status);
@@ -175,11 +177,15 @@ window.patchGtaSynoptic = function(data) {
     }
 
     /* ── Barillet MP ── */
-    _setText("syn-pbar-val",  `${p_bar.toFixed(2)} `);
-    _setFill("syn-pbar-val",  bar_col);
-    const barilletRect = document.getElementById("syn-barillet-rect");
-    if (barilletRect) barilletRect.setAttribute("stroke", bar_col);
+    _setText("syn-pbar-mp-val", `${p_bar_mp.toFixed(2)} `);
+    _setFill("syn-pbar-mp-val", bar_col);
+    const mpRect = document.getElementById("syn-barillet-mp-rect");
+    if (mpRect) mpRect.setAttribute("stroke", bar_col);
 
+    _setText("syn-pbar-bp-val", `${p_bar_bp.toFixed(2)} `);
+    const bpBarRect = document.getElementById("syn-barillet-bp-rect");
+    if (bpBarRect) bpBarRect.setAttribute("stroke", alm_pbar_bp ? "#ef4444" : "#38bdf8");
+    
     /* ── Condenseur ── */
     _setText("syn-pcond-val",  p_cond.toFixed(4));
     _setText("syn-tbp-val",    t_bp.toFixed(0));

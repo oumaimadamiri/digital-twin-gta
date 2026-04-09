@@ -1,12 +1,18 @@
 """
 callbacks/cb_analysis.py — Callbacks page Analyse & Historique
 
-CORRECTIONS :
-  1. Filtres rapides (1h, 6h, 24h, 7j, Tout) → remplissent automatiquement
-     date-start et date-end sans saisie manuelle
-  2. Le callback principal lit date-start/date-end (dcc.Input)
-     au lieu de DatePickerRange supprimé
-  3. Mise en évidence du bouton filtre actif
+Ajouts :
+  1. Callback update_kpis : calcule les 6 KPIs résumant la période filtrée.
+     - Puissance moy / max
+     - Rendement moyen vs nominal (92%)
+     - Vitesse moyenne
+     - Nombre d'alertes (seuil + IA)
+     - % temps en état DEGRADED ou CRITICAL
+     - Nombre de points enregistrés
+  2. Callbacks jauges (fast/slow) déplacés ici depuis cb_dashboard
+     avec guard pathname="/analysis".
+  3. Filtres rapides (1h, 6h, 24h, 7j, Tout) → remplissent date-start/date-end.
+  4. Mise en évidence du bouton filtre actif.
 """
 import requests
 import plotly.graph_objects as go
@@ -14,6 +20,7 @@ from dash import Input, Output, State, html, no_update, ctx
 import pandas as pd
 from datetime import datetime, timedelta
 from config import BACKEND
+from components.gauges import make_gauge, GAUGE_CONFIGS
 
 _session = requests.Session()
 
@@ -49,6 +56,16 @@ _DARK_LAYOUT = dict(
     uirevision="analysis",
 )
 
+# Jauges critiques (live, mises à jour sur WS via store-current-data)
+_GAUGES_FAST = ["pressure_hp", "temperature_hp", "active_power",
+                "turbine_speed", "efficiency"]
+
+# Jauges secondaires (5s)
+_GAUGES_SLOW = ["reactive_power", "apparent_power", "power_factor",
+                "current_a", "voltage",
+                "steam_flow_hp", "pressure_bp_in",
+                "pressure_bp_barillet", "pressure_mp_barillet", "steam_flow_condenser"]
+
 
 def register(app):
 
@@ -66,23 +83,18 @@ def register(app):
     def apply_quick_filter(*_):
         now = datetime.utcnow()
         end_str = now.strftime("%Y-%m-%d")
-
         mapping = {
             "qf-1h":  timedelta(hours=1),
             "qf-6h":  timedelta(hours=6),
             "qf-24h": timedelta(hours=24),
             "qf-7j":  timedelta(days=7),
         }
-
         triggered = ctx.triggered_id
         if triggered == "qf-all":
             return None, end_str
-
         delta = mapping.get(triggered)
         if delta:
-            start = now - delta
-            return start.strftime("%Y-%m-%d"), end_str
-
+            return (now - delta).strftime("%Y-%m-%d"), end_str
         return no_update, no_update
 
     # ── Mise en valeur du bouton actif ────────────────────────────────
@@ -107,6 +119,144 @@ def register(app):
             for btn_id in order
         ]
 
+    # ── KPIs période ──────────────────────────────────────────────────
+    @app.callback(
+        Output("kpi-power-avg-val",     "children"),
+        Output("kpi-power-max-sub",     "children"),
+        Output("kpi-eff-avg-val",       "children"),
+        Output("kpi-eff-vs-nom-sub",    "children"),
+        Output("kpi-speed-avg-val",     "children"),
+        Output("kpi-speed-sub",         "children"),
+        Output("kpi-alerts-cnt-val",    "children"),
+        Output("kpi-alerts-crit-sub",   "children"),
+        Output("kpi-degraded-val",      "children"),
+        Output("kpi-degraded-sub",      "children"),
+        Output("kpi-points-val",        "children"),
+        Output("kpi-period-sub",        "children"),
+        Input("btn-refresh-history",    "n_clicks"),
+        Input("interval-analysis",      "n_intervals"),
+        Input("url",                    "pathname"),
+        State("date-start",             "value"),
+        State("date-end",               "value"),
+        prevent_initial_call=False,
+    )
+    def update_kpis(_, __, pathname, date_start, date_end):
+        if pathname != "/analysis":
+            return [no_update] * 12
+
+        # Récupération historique
+        url = f"{BACKEND}/data/history?limit=2000"
+        if date_start:
+            url += f"&start={date_start}T00:00:00"
+        if date_end:
+            url += f"&end={date_end}T23:59:59"
+
+        try:
+            data = _session.get(url, timeout=3).json()
+        except Exception:
+            data = []
+
+        if not data:
+            na = "—"
+            return (na, "Pas de données", na, "", na, "", na, "", na, "", na, "")
+
+        df = pd.DataFrame(data)
+
+        # ── Puissance ──
+        p_avg = df["active_power"].mean() if "active_power" in df.columns else 0
+        p_max = df["active_power"].max()  if "active_power" in df.columns else 0
+        power_avg_txt = f"{p_avg:.1f}"
+        power_sub_txt = f"Max : {p_max:.1f} MW"
+
+        # ── Rendement ──
+        eff_nom = 92.0
+        eff_avg = df["efficiency"].mean() if "efficiency" in df.columns else 0
+        eff_delta = eff_avg - eff_nom
+        eff_avg_txt = f"{eff_avg:.1f}"
+        eff_sub_txt = f"vs nominal : {'▲' if eff_delta >= 0 else '▼'} {abs(eff_delta):.1f}%"
+
+        # ── Vitesse ──
+        spd_avg = df["turbine_speed"].mean() if "turbine_speed" in df.columns else 0
+        spd_std = df["turbine_speed"].std()  if "turbine_speed" in df.columns else 0
+        spd_avg_txt = f"{spd_avg:.0f}"
+        spd_sub_txt = f"σ = {spd_std:.0f} RPM"
+
+        # ── Alertes (depuis l'API settings) ──
+        try:
+            alerts_url = f"{BACKEND}/settings/alerts?limit=500"
+            alerts_data = _session.get(alerts_url, timeout=2).json()
+            n_alerts = len(alerts_data)
+            n_crit   = sum(1 for a in alerts_data if a.get("severity") == "CRITICAL")
+        except Exception:
+            n_alerts, n_crit = 0, 0
+        alerts_txt     = str(n_alerts)
+        alerts_sub_txt = f"{n_crit} critique(s)"
+
+        # ── Temps dégradé ──
+        n_total = len(df)
+        if "status" in df.columns and n_total > 0:
+            n_deg = df["status"].isin(["DEGRADED", "CRITICAL"]).sum()
+            pct_deg = n_deg / n_total * 100
+        else:
+            pct_deg = 0.0
+        deg_txt     = f"{pct_deg:.1f}"
+        deg_sub_txt = "NORMAL" if pct_deg < 5 else ("⚠ Surveiller" if pct_deg < 20 else "🔴 Critique")
+
+        # ── Points ──
+        points_txt = str(n_total)
+        if date_start:
+            period_sub = f"Du {date_start}"
+            if date_end:
+                period_sub += f" au {date_end}"
+        else:
+            period_sub = "Toute la base"
+
+        return (
+            power_avg_txt, power_sub_txt,
+            eff_avg_txt,   eff_sub_txt,
+            spd_avg_txt,   spd_sub_txt,
+            alerts_txt,    alerts_sub_txt,
+            deg_txt,       deg_sub_txt,
+            points_txt,    period_sub,
+        )
+
+    # ── Jauges CRITIQUES — live sur chaque push WS ────────────────────
+    @app.callback(
+        [Output(f"gauge-{k}", "figure") for k in _GAUGES_FAST],
+        Input("store-current-data", "data"),
+        State("url", "pathname"),
+        prevent_initial_call=True,
+    )
+    def update_gauges_fast(d, pathname):
+        if pathname != "/analysis":
+            return [no_update] * len(_GAUGES_FAST)
+        d = d or {}
+        return [
+            make_gauge(d.get(k, GAUGE_CONFIGS[k]["min"] +
+                             (GAUGE_CONFIGS[k]["max"] - GAUGE_CONFIGS[k]["min"]) * 0.5),
+                       GAUGE_CONFIGS[k])
+            for k in _GAUGES_FAST
+        ]
+
+    # ── Jauges SECONDAIRES — 5s ───────────────────────────────────────
+    @app.callback(
+        [Output(f"gauge-{k}", "figure") for k in _GAUGES_SLOW],
+        Input("interval-slow", "n_intervals"),
+        State("store-current-data", "data"),
+        State("url", "pathname"),
+        prevent_initial_call=True,
+    )
+    def update_gauges_slow(_, d, pathname):
+        if pathname != "/analysis":
+            return [no_update] * len(_GAUGES_SLOW)
+        d = d or {}
+        return [
+            make_gauge(d.get(k, GAUGE_CONFIGS[k]["min"] +
+                             (GAUGE_CONFIGS[k]["max"] - GAUGE_CONFIGS[k]["min"]) * 0.5),
+                       GAUGE_CONFIGS[k])
+            for k in _GAUGES_SLOW
+        ]
+
     # ── Graphique + statistiques + tableaux ───────────────────────────
     @app.callback(
         Output("history-chart",      "figure"),
@@ -115,17 +265,15 @@ def register(app):
         Output("history-data-table", "children"),
         Input("btn-refresh-history", "n_clicks"),
         Input("interval-analysis",   "n_intervals"),
-        # FIX : dcc.Input(type="date") au lieu de DatePickerRange
-        Input("url",            "pathname"),
-        State("date-start",     "value"),
-        State("date-end",       "value"),
-        State("param-selector", "value"),
+        Input("url",                 "pathname"),
+        State("date-start",          "value"),
+        State("date-end",            "value"),
+        State("param-selector",      "value"),
     )
     def update_analysis(_, __, pathname, date_start, date_end, params):
         if pathname != "/analysis":
             return [no_update] * 4
 
-        # Construction de l'URL avec filtres de date optionnels
         url = f"{BACKEND}/data/history?limit=500"
         if date_start:
             url += f"&start={date_start}T00:00:00"
@@ -133,8 +281,7 @@ def register(app):
             url += f"&end={date_end}T23:59:59"
 
         try:
-            r    = _session.get(url, timeout=3)
-            data = r.json()
+            data = _session.get(url, timeout=3).json()
         except Exception:
             data = []
 

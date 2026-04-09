@@ -64,6 +64,10 @@ GAUGE_CONFIGS = {
         "title": "Pression BP Barillet", "unit": "bar",
         "min": 0.0, "max": 5.0, "warn_low": None, "warn_high": 3.5, "color": "#a78bfa",
     },
+    "pressure_mp_barillet": {
+        "title": "Pression MP Barillet", "unit": "bar",
+        "min": 6.0, "max": 13.0, "warn_low": 8.0, "warn_high": 11.0, "color": "#a78bfa",
+    },
     "steam_flow_condenser": {
         "title": "Débit Condenseur", "unit": "T/h",
         "min": 30, "max": 100, "warn_low": 50, "warn_high": 85, "color": "#38bdf8",

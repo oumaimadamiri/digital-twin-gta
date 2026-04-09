@@ -1,30 +1,13 @@
-"""
-callbacks/cb_dashboard.py — Patches ciblés pour cb_dashboard.py existant
-
-CORRECTIONS À APPLIQUER (remplacement de sections dans cb_dashboard.py) :
-
-  1. Jauges : split en FAST (5 critiques, sur WS) + SLOW (9 secondaires, sur interval-slow 5s)
-     → réduction de 14 → 5 graphiques mis à jour à 500ms
-  2. Graphique RT : figure initialisée dans le layout (plus de reconstruction)
-
-════════════════════════════════════════════════════════════════
-INSTRUCTIONS D'APPLICATION :
-  Remplacer dans cb_dashboard.py le callback update_gauges unique
-  par les deux callbacks ci-dessous : update_gauges_fast + update_gauges_slow
-════════════════════════════════════════════════════════════════
-"""
 import json
 from datetime import datetime
 import requests
 import plotly.graph_objects as go
 from dash import Input, Output, State, html, no_update, Patch
-from components.gauges import make_gauge, GAUGE_CONFIGS
 from components.alert_banner import alerts_panel
 from config import BACKEND
 
 _session = requests.Session()
 
-# ── Paramètres du graphique RT ────────────────────────────────────────────
 _RT_PARAMS = {
     "active_power":   {"label": "P active (MW)",      "color": "#10b981", "scale": 1.0},
     "pressure_hp":    {"label": "P HP (bar)",         "color": "#f97316", "scale": 1.0},
@@ -48,19 +31,9 @@ _BASE_RT_LAYOUT = dict(
     uirevision="realtime",
 )
 
-# ── 5 jauges critiques → mis à jour sur chaque push WS (500ms) ────────────
-_GAUGES_FAST = ["pressure_hp", "temperature_hp", "active_power",
-                "turbine_speed", "efficiency"]
-
-# ── 9 jauges secondaires → mis à jour sur interval-slow (5s) ─────────────
-_GAUGES_SLOW = ["steam_flow_hp", "reactive_power", "apparent_power",
-                "power_factor", "current_a", "voltage",
-                "pressure_bp_in", "pressure_bp_barillet", "steam_flow_condenser"]
-
 
 def make_empty_rt_figure():
-    """Figure RT vide initialisée avec toutes les traces.
-    Appeler depuis dashboard.layout() pour éviter la reconstruction."""
+    """Figure RT vide initialisée avec toutes les traces."""
     fig = go.Figure()
     for param, cfg in _RT_PARAMS.items():
         fig.add_trace(go.Scatter(
@@ -75,8 +48,7 @@ def make_empty_rt_figure():
 def _figure_has_traces(fig) -> bool:
     if fig is None:
         return False
-    data = fig.get("data", [])
-    return len(data) == len(_RT_PARAMS)
+    return len(fig.get("data", [])) == len(_RT_PARAMS)
 
 
 def register(app):
@@ -87,7 +59,7 @@ def register(app):
         Input("interval-fast", "n_intervals"),
         Input("interval-slow",  "n_intervals"),
     )
-    def update_clock(_):
+    def update_clock(_a, _b):
         return datetime.now().strftime("%d/%m/%Y  %H:%M:%S")
 
     # ── Status Pill ───────────────────────────────────────────────────
@@ -106,6 +78,7 @@ def register(app):
             "fontFamily": "var(--ui)", "fontSize": "11px", "letterSpacing": "1px",
         })
 
+    # ── Panneau état système ──────────────────────────────────────────
     @app.callback(
         Output("dash-state-panel", "children"),
         Input("store-current-data", "data"),
@@ -119,7 +92,7 @@ def register(app):
 
         status  = d.get("status", "NORMAL")
         s_color = {"NORMAL": "#10b981", "DEGRADED": "#f59e0b",
-                "CRITICAL": "#ef4444"}.get(status, "#10b981")
+                   "CRITICAL": "#ef4444"}.get(status, "#10b981")
 
         valves = [
             ("V1",  "valve_v1",  "#f97316"),
@@ -128,139 +101,56 @@ def register(app):
             ("MP",  "valve_mp",  "#a78bfa"),
             ("BP",  "valve_bp",  "#38bdf8"),
         ]
-        valve_rows = [
-            html.Div([
-                html.Span(f"{name}:", style={"color": "#475569", "width": "28px",
-                                            "display": "inline-block"}),
-                html.Span(f"{d.get(key, 0):.0f}%", style={
-                    "color": col if d.get(key, 0) > 30 else "#ef4444",
-                    "fontWeight": "700", "width": "38px", "display": "inline-block",
-                }),
-            ], style={"fontFamily": "Share Tech Mono", "fontSize": "11px",
-                    "marginBottom": "2px"})
-            for name, key, col in valves
-        ]
-
-        params_grid = html.Div([
-            html.Div([
-                html.Span("P active: ", style={"color": "#475569"}),
-                html.Span(f"{d.get('active_power', 0):.1f} MW",
-                        style={"color": "#10b981", "fontWeight": "700"}),
-            ]),
-            html.Div([
-                html.Span("Vitesse: ", style={"color": "#475569"}),
-                html.Span(f"{d.get('turbine_speed', 0):.0f} RPM",
-                        style={"color": "#60a5fa", "fontWeight": "700"}),
-            ]),
-            html.Div([
-                html.Span("Rendement: ", style={"color": "#475569"}),
-                html.Span(f"{d.get('efficiency', 0):.1f}%",
-                        style={"color": "#38bdf8", "fontWeight": "700"}),
-            ]),
-            html.Div([
-                html.Span("P barillet: ", style={"color": "#475569"}),
-                html.Span(
-                    f"{d.get('pressure_bp_barillet', 3.0):.2f} bar",
-                    style={"color": "#ef4444"
-                        if d.get("pressure_bp_barillet", 3.0) > 3.5
-                        else "#a78bfa", "fontWeight": "700"},
-                ),
-            ]),
-        ], style={"display": "grid", "gridTemplateColumns": "1fr 1fr",
-                "gap": "4px", "marginTop": "8px",
-                "fontFamily": "Share Tech Mono", "fontSize": "11px"})
 
         return [
             html.Div([
-                # html.Span("ÉTAT SYSTÈME", style={
-                #     "color": "#334155", "fontSize": "9px",
-                #     "letterSpacing": "1.5px", "fontFamily": "Share Tech Mono",
-                # }),
-                html.Div("État Système", className="card-title", style={"marginBottom": "0"}),
-                # html.Span("Statut: ", style={"color": "#475569"}),
+                html.Div("État Système", className="card-title",
+                         style={"marginBottom": "0"}),
                 html.Span(status, style={"color": s_color, "fontWeight": "700",
                              "fontFamily": "Share Tech Mono", "fontSize": "11px"}),
-                ], style={
-                    "display": "flex", "justifyContent": "space-between", "alignItems": "center",
-                    "marginBottom": "8px", "borderBottom": "1px solid #1e3a5f", "paddingBottom": "6px",
-                }),
+            ], style={
+                "display": "flex", "justifyContent": "space-between",
+                "alignItems": "center", "marginBottom": "8px",
+                "borderBottom": "1px solid #1e3a5f", "paddingBottom": "6px",
+            }),
 
-            # Vannes à gauche, params à droite
             html.Div([
-                # Colonne vannes
+                # Vannes
                 html.Div([
                     html.Div([
                         html.Span(f"{name}:", style={"color": "#475569", "width": "28px",
-                                                    "display": "inline-block"}),
+                                                     "display": "inline-block"}),
                         html.Span(f"{d.get(key, 0):.0f}%", style={
                             "color": col if d.get(key, 0) > 30 else "#ef4444",
                             "fontWeight": "700",
                         }),
                     ], style={"fontFamily": "Share Tech Mono", "fontSize": "11px",
-                            "height": "22px", "display": "flex", "alignItems": "center"})
+                              "height": "22px", "display": "flex", "alignItems": "center"})
                     for name, key, col in valves
                 ]),
 
-                # Colonne params — même hauteur de ligne que les vannes
+                # Params
                 html.Div([
                     html.Div([
                         html.Span(f"{label}:", style={"color": "#475569", "width": "70px",
-                                                    "display": "inline-block"}),
+                                                      "display": "inline-block"}),
                         html.Span(f"{val}", style={"color": col, "fontWeight": "700"}),
                     ], style={"fontFamily": "Share Tech Mono", "fontSize": "11px",
-                            "height": "22px", "display": "flex", "alignItems": "center"})
+                              "height": "22px", "display": "flex", "alignItems": "center"})
                     for label, val, col in [
-                        ("P active",  f"{d.get('active_power', 0):.1f} MW",   "#10b981"),
-                        ("Vitesse",   f"{d.get('turbine_speed', 0):.0f} RPM", "#60a5fa"),
-                        ("Rendement", f"{d.get('efficiency', 0):.1f} %",      "#38bdf8"),
-                        ("P barillet",f"{d.get('pressure_bp_barillet', 3.0):.2f} bar",
-                                    "#ef4444" if d.get("pressure_bp_barillet", 3.0) > 3.5 else "#a78bfa"),
-                        ("cos φ",     f"{d.get('power_factor', 0):.3f}",      "#fbbf24"),
+                        ("P active",   f"{d.get('active_power', 0):.1f} MW",   "#10b981"),
+                        ("Vitesse",    f"{d.get('turbine_speed', 0):.0f} RPM", "#60a5fa"),
+                        ("Rendement",  f"{d.get('efficiency', 0):.1f} %",      "#38bdf8"),
+                        ("P barillet", f"{d.get('pressure_bp_barillet', 3.0):.2f} bar",
+                                       "#ef4444" if d.get("pressure_bp_barillet", 3.0) > 3.5
+                                       else "#a78bfa"),
+                        ("cos φ",      f"{d.get('power_factor', 0):.3f}",      "#fbbf24"),
                     ]
                 ]),
-
             ], style={"display": "flex", "justifyContent": "space-between", "gap": "12px"}),
         ]
-    # ── FIX : 5 jauges CRITIQUES — sur chaque push WS ────────────────
-    # (était 14 jauges toutes ensemble = 28 figures/s)
-    @app.callback(
-        [Output(f"gauge-{k}", "figure") for k in _GAUGES_FAST],
-        Input("store-current-data", "data"),
-        State("url", "pathname"),
-        prevent_initial_call=True,
-    )
-    def update_gauges_fast(d, pathname):
-        if pathname != "/":
-            return [no_update] * len(_GAUGES_FAST)
-        d = d or {}
-        return [
-            make_gauge(d.get(k, GAUGE_CONFIGS[k]["min"] +
-                             (GAUGE_CONFIGS[k]["max"] - GAUGE_CONFIGS[k]["min"]) * 0.5),
-                       GAUGE_CONFIGS[k])
-            for k in _GAUGES_FAST
-        ]
 
-    # ── FIX : 9 jauges SECONDAIRES — sur interval-slow (5s) ──────────
-    # Réduit la charge CPU de ~72% (9/14 × moins fréquent × 10)
-    @app.callback(
-        [Output(f"gauge-{k}", "figure") for k in _GAUGES_SLOW],
-        Input("interval-slow", "n_intervals"),
-        State("store-current-data", "data"),
-        State("url", "pathname"),
-        prevent_initial_call=True,
-    )
-    def update_gauges_slow(_, d, pathname):
-        if pathname != "/":
-            return [no_update] * len(_GAUGES_SLOW)
-        d = d or {}
-        return [
-            make_gauge(d.get(k, GAUGE_CONFIGS[k]["min"] +
-                             (GAUGE_CONFIGS[k]["max"] - GAUGE_CONFIGS[k]["min"]) * 0.5),
-                       GAUGE_CONFIGS[k])
-            for k in _GAUGES_SLOW
-        ]
-
-    # ── Graphique temps réel (FIX : Patch() sécurisé) ─────────────────
+    # ── Graphique temps réel (Patch ciblé) ────────────────────────────
     @app.callback(
         Output("realtime-chart", "figure"),
         Input("store-current-data", "data"),
@@ -311,7 +201,7 @@ def register(app):
             return alerts_panel([])
 
     # ── Acquittement alertes ──────────────────────────────────────────
-    from dash import MATCH, callback_context as ctx
+    from dash import MATCH, callback_context as ctx_cb
 
     @app.callback(
         Output({"type": "ack-btn", "index": MATCH}, "children"),
@@ -322,10 +212,10 @@ def register(app):
     def acknowledge_alert(n_clicks):
         if not n_clicks:
             return no_update, no_update
-        if not ctx.triggered:
+        if not ctx_cb.triggered:
             return no_update, no_update
         try:
-            btn_id   = json.loads(ctx.triggered[0]["prop_id"].split(".")[0])
+            btn_id   = json.loads(ctx_cb.triggered[0]["prop_id"].split(".")[0])
             alert_id = btn_id["index"]
             r = _session.post(
                 f"{BACKEND}/settings/alerts/{alert_id}/acknowledge", timeout=1
