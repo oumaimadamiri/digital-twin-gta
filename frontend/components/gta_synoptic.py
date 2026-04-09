@@ -340,16 +340,16 @@ def _build_synoptic_div(data: dict, static_ids: bool) -> html.Div:
   <text x="326" y="24" fill="#ef4444" font-size="10" font-weight="700">{scenario.upper()}</text>''' if scenario else ''}
 
   <!-- Légende flux -->
-  <line x1="1180" y1="-20" x2="1155" y2="-20" stroke="#f97316" stroke-width="4"/>
-  <text x="1185" y="-17" fill="#94a3b8" font-size="9">Vapeur HP</text>
-  <line x1="1265" y1="-20" x2="1240" y2="-20" stroke="#3b82f6" stroke-width="4"/>
-  <text x="1270" y="-17" fill="#94a3b8" font-size="9">Vapeur BP</text>
-  <line x1="1350" y1="-20" x2="1325" y2="-20" stroke="#a78bfa" stroke-width="4"/>
-  <text x="1355" y="-17" fill="#94a3b8" font-size="9">Extr. MP</text>
-  <line x1="1180" y1="-5" x2="1155" y2="-5" stroke="#10b981" stroke-width="4"/>
-  <text x="1185" y="-2" fill="#94a3b8" font-size="9">Électrique</text>
-  <line x1="1265" y1="-5" x2="1240" y2="-5" stroke="#60a5fa" stroke-width="2" stroke-dasharray="4,2"/>
-  <text x="1270" y="-2" fill="#94a3b8" font-size="9">Équilibrage</text>
+  <line x1="1180" y1="-30" x2="1155" y2="-30" stroke="#f97316" stroke-width="4"/>
+  <text x="1185" y="-27" fill="#94a3b8" font-size="9">Vapeur HP</text>
+  <line x1="1265" y1="-30" x2="1240" y2="-30" stroke="#3b82f6" stroke-width="4"/>
+  <text x="1270" y="-27" fill="#94a3b8" font-size="9">Vapeur BP</text>
+  <line x1="1350" y1="-30" x2="1325" y2="-30" stroke="#a78bfa" stroke-width="4"/>
+  <text x="1355" y="-27" fill="#94a3b8" font-size="9">Extr. MP</text>
+  <line x1="1180" y1="-15" x2="1155" y2="-15" stroke="#10b981" stroke-width="4"/>
+  <text x="1185" y="-12" fill="#94a3b8" font-size="9">Électrique</text>
+  <line x1="1265" y1="-15" x2="1240" y2="-15" stroke="#60a5fa" stroke-width="2" stroke-dasharray="4,2"/>
+  <text x="1270" y="-12" fill="#94a3b8" font-size="9">Équilibrage</text>
 
   <!-- ════ SOURCE VAPEUR HP ════ -->
   <g filter="url(#go)">

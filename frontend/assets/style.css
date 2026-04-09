@@ -234,7 +234,7 @@ body {
 /* PAGE CONTENT & CARDS                                      */
 /* ───────────────────────────────────────────────────────── */
 .page-content {
-  padding: 8px 32px;
+  padding: 0 32px 8px 32px;
   flex: 1;
 }
 
@@ -764,7 +764,7 @@ body {
   display: flex;
   flex-direction: column;
   min-height: 100vh;
-  padding-top: 64px; /* hauteur de la topbar */
+  padding-top: 50px; /* hauteur de la topbar */
 }
  
 .main-content {
