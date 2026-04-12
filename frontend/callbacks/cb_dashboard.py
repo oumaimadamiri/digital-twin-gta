@@ -83,7 +83,6 @@ def register(app):
         Output("dash-state-panel", "children"),
         Input("store-current-data", "data"),
         State("url", "pathname"),
-        prevent_initial_call=True,
     )
     def update_dash_state_panel(d, pathname):
         if pathname != "/":

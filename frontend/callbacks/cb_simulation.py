@@ -298,7 +298,8 @@ def register(app):
         status  = d.get("status", "NORMAL")
         s_color = {"NORMAL": "#10b981", "DEGRADED": "#f59e0b",
                    "CRITICAL": "#ef4444"}.get(status, "#10b981")
-
+        _scen = d.get("scenario") or "Nominal"
+        _scen_short = (_scen[:26] + "…") if len(_scen) > 28 else _scen
         valves = [
             ("V1", "valve_v1", "#f97316", "Adm. HP"),
             ("V2", "valve_v2", "#60a5fa", "Équil."),
@@ -349,17 +350,18 @@ def register(app):
                             "fontFamily": "Share Tech Mono",
                             "fontSize": "11px",
                         }),
+                        # APRÈS — tronqué à 28 chars + tooltip complet                       
                         html.Span(
-                            d.get("scenario") or "Nominal",
-                            title=d.get("scenario") or "",
+                            _scen_short,
+                            title=_scen,          # tooltip natif au survol
                             style={
                                 "color": "#818cf8" if d.get("scenario") else "#64748b",
                                 "fontWeight": "700",
                                 "fontFamily": "Share Tech Mono",
                                 "fontSize": "11px",
-                                "whiteSpace": "normal",
-                                "wordBreak": "break-word",
-                                "lineHeight": "1.45",
+                                "whiteSpace": "nowrap",
+                                "overflow": "hidden",
+                                "textOverflow": "ellipsis",
                             },
                         ),
                     ], style={
@@ -394,8 +396,14 @@ def register(app):
         ])
 
         has_scenario = d.get("scenario") is not None
-        stop_style = ({"marginTop": "14px", "width": "100%", "display": "block"}
-                      if has_scenario else {"display": "none"})
+        stop_style = ({
+            "marginTop": "10px",
+            "width": "100%",
+            "display": "block",
+            "fontSize": "11px",
+            "padding": "6px 12px",    # moins de rembourrage
+            "opacity": "0.85",
+        } if has_scenario else {"display": "none"})
 
         return state_panel, stop_style  # ← 2 valeurs au lieu de 3
 

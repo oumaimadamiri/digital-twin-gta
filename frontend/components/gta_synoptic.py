@@ -1,26 +1,3 @@
-"""
-components/gta_synoptic.py  [FIX-5a]
-Schéma synoptique SCADA du GTA — niveau industriel.
-
-REFACTORING PERFORMANCE :
-  - create_gta_synoptic(data) → create_gta_synoptic_static()
-    La structure SVG est générée UNE SEULE FOIS avec des valeurs par défaut.
-    Chaque élément dynamique porte un id="syn-*" stable.
-  - La mise à jour des valeurs numériques et des couleurs est déléguée
-    à la fonction JS patchGtaSynoptic(data) dans assets/synoptic_patch.js.
-  - create_gta_synoptic(data) est conservée pour la page Simulation
-    (update_sim_ui) qui l'appelle avec les données simulées — ce callback
-    est moins fréquent (triggered par store-simulation-data, 1s, guard page).
-
-Nouveautés vs version initiale :
-  - 5 vannes : V1 (HP), V2/V3 (équilibrage), valve_mp (extraction MP), valve_bp (condenseur)
-  - Tous les nouveaux paramètres : I(A), Q(MVAR), S(MVA), pressure_bp_barillet,
-    steam_flow_condenser, pressure_condenser, reactive_power, apparent_power
-  - Bus barres électrique triphasé
-  - Tags SCADA sur chaque mesure (étiquette + valeur + unité)
-  - Indicateurs d'alarme sur chaque point de mesure
-"""
-
 from dash import html
 import dash_dangerously_set_inner_html
 
@@ -788,7 +765,7 @@ def _build_synoptic_div(data: dict, static_ids: bool) -> html.Div:
         [dash_dangerously_set_inner_html.DangerouslySetInnerHTML(svg)],
         style={
             "width":        "100%",
-            "height":       "600px",
+            "height":       "635px",
             "background":   "#060d1a",
             "overflowX":    "hidden",
             "overflowY":    "hidden",

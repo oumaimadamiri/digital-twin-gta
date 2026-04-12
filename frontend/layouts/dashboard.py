@@ -33,7 +33,7 @@ def layout():
                             id="dash-state-panel",
                             style={
                                 "position":       "absolute",
-                                "bottom":         "25px",
+                                "top":         "410px",
                                 "right":          "12px",
                                 "width":          "220px",
                                 "background":     "rgba(10,16,26,0.92)",
@@ -43,7 +43,11 @@ def layout():
                                 "zIndex":         "10",
                                 "backdropFilter": "blur(4px)",
                             },
-                        ),
+                             children=[
+                                html.Div("État Système", className="card-title",
+                                        style={"color": "#64748b", "fontSize": "11px",
+                                                "fontFamily": "Share Tech Mono", "marginBottom": "6px"}),
+                    ]),
                     ],
                 ),
 
