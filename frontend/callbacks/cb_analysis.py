@@ -220,12 +220,12 @@ def register(app):
             points_txt,    period_sub,
         )
 
-    # ── Jauges CRITIQUES — live sur chaque push WS ────────────────────
+    # ── Jauges CRITIQUES (Fast) — live sur push WS ────────────────────
     @app.callback(
         [Output(f"gauge-{k}", "figure") for k in _GAUGES_FAST],
         Input("store-current-data", "data"),
         State("url", "pathname"),
-        prevent_initial_call=True,
+        prevent_initial_call=False,
     )
     def update_gauges_fast(d, pathname):
         if pathname != "/analysis":
@@ -238,15 +238,14 @@ def register(app):
             for k in _GAUGES_FAST
         ]
 
-    # ── Jauges SECONDAIRES — 5s ───────────────────────────────────────
+    # ── Jauges SECONDAIRES (Slow) — live sur push WS ──────────────────
     @app.callback(
         [Output(f"gauge-{k}", "figure") for k in _GAUGES_SLOW],
-        Input("interval-slow", "n_intervals"),
-        State("store-current-data", "data"),
+        Input("store-current-data", "data"),
         State("url", "pathname"),
-        prevent_initial_call=True,
+        prevent_initial_call=False,
     )
-    def update_gauges_slow(_, d, pathname):
+    def update_gauges_slow(d, pathname):
         if pathname != "/analysis":
             return [no_update] * len(_GAUGES_SLOW)
         d = d or {}

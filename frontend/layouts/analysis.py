@@ -23,7 +23,7 @@ _GAUGES_SLOW_ELEC = ["reactive_power", "apparent_power", "power_factor",
                      "current_a", "voltage"]
 
 _GAUGES_SLOW_BP   = ["steam_flow_hp", "pressure_bp_in", "pressure_bp_barillet",
-                     "steam_flow_condenser"]
+                     "pressure_mp_barillet", "steam_flow_condenser"]
 
 
 def _gauge_section(title, gauge_keys, color):
@@ -224,30 +224,23 @@ def layout():
                 html.Div([
                     html.Div("Évolution temporelle multi-paramètres",
                              className="card-title"),
-                    dcc.Loading(
-                        dcc.Graph(id="history-chart",
-                                  config={"displayModeBar": True},
-                                  style={"height": "320px"}),
-                        type="circle", color="#38bdf8"
-                    ),
+                    dcc.Graph(id="history-chart",
+                              config={"displayModeBar": True},
+                              style={"height": "320px"}),
                 ], className="card", style={"marginBottom": "16px"}),
 
                 # ── Stats + Distribution ──────────────────────────────────
                 html.Div([
                     html.Div([
                         html.Div("Statistiques descriptives", className="card-title"),
-                        dcc.Loading(html.Div(id="stats-table"),
-                                    type="circle", color="#38bdf8"),
+                        html.Div(id="stats-table"),
                     ], className="card", style={"flex": "3"}),
 
                     html.Div([
                         html.Div("Répartition des états", className="card-title"),
-                        dcc.Loading(
-                            dcc.Graph(id="status-pie",
-                                      config={"displayModeBar": False},
-                                      style={"height": "220px"}),
-                            type="circle", color="#38bdf8"
-                        ),
+                        dcc.Graph(id="status-pie",
+                                  config={"displayModeBar": False},
+                                  style={"height": "220px"}),
                     ], className="card", style={"flex": "2"}),
 
                 ], style={"display": "flex", "gap": "16px", "marginBottom": "16px"}),
@@ -255,10 +248,7 @@ def layout():
                 # ── Tableau détaillé ──────────────────────────────────────
                 html.Div([
                     html.Div("Journal de données détaillé", className="card-title"),
-                    dcc.Loading(
-                        html.Div(id="history-data-table", style={"overflowX": "auto"}),
-                        type="circle", color="#38bdf8"
-                    ),
+                    html.Div(id="history-data-table", style={"overflowX": "auto"}),
                 ], className="card"),
 
             ], className="page-content"),
