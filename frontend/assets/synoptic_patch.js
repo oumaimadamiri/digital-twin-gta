@@ -283,4 +283,37 @@ window.patchGtaSynoptic = function(data) {
     _setText("syn-v3-pct",  (data.valve_v3 ?? 100).toFixed(0) + "%");
     _setText("syn-vmp-pct", (data.valve_mp ?? 50).toFixed(0) + "%");
     _setText("syn-vbp-pct", (data.valve_bp ?? 80).toFixed(0) + "%");
+
+    // ── Animations dynamiques — turbine / réducteur / flux ────────────────────
+
+    /* Condition d'arrêt : débit < 5 T/h OU vanne V1 < 5% OU vitesse < 100 RPM */
+    const v1_pct   = data.valve_v1 ?? 100;
+    const isTurning = q_hp > 5 && v1_pct > 5 && speed > 100;
+
+    /* Durée de rotation : ralentit avec la vitesse, s'arrête si isTurning=false */
+    const rpm_norm = Math.min(Math.max((speed - 5500) / 1500, 0), 1);
+    const spinDur  = isTurning
+        ? (Math.max(0.4, 2.0 - rpm_norm * 1.6)).toFixed(2) + 's'
+        : '9999s';   // durée infinie = quasi-arrêt visuel
+
+    document.querySelectorAll('.spin').forEach(el => {
+        el.style.animationDuration  = spinDur;
+        el.style.animationPlayState = isTurning ? 'running' : 'paused';
+    });
+
+    /* Flux vapeur HP / BP : lié au débit */
+    const flowDur = (q_hp > 5 && v1_pct > 5)
+        ? (Math.max(0.3, 120.0 / Math.max(1, q_hp))).toFixed(2) + 's'
+        : '9999s';
+
+    document.querySelectorAll('.flow-hp, .flow-bp').forEach(el => {
+        el.style.animationDuration  = flowDur;
+        el.style.animationPlayState = (q_hp > 5 && v1_pct > 5) ? 'running' : 'paused';
+    });
+
+    /* Flux électrique : lié à la puissance active */
+    document.querySelectorAll('.flow-el').forEach(el => {
+        el.style.animationPlayState = power > 0.5 ? 'running' : 'paused';
+        el.style.animationDuration  = power > 0.5 ? '0.8s' : '9999s';
+    });
 };

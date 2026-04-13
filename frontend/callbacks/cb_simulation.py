@@ -164,6 +164,11 @@ def register(app):
     # ── Reset nominal ─────────────────────────────────────────────────
     @app.callback(
         Output("valve-feedback", "children", allow_duplicate=True),
+        Output("slider-v1", "value"),
+        Output("slider-v2", "value"),
+        Output("slider-v3", "value"),
+        Output("slider-mp", "value"),
+        Output("slider-bp", "value"),
         Input("btn-reset", "n_clicks"),
         prevent_initial_call=True,
     )
@@ -172,9 +177,9 @@ def register(app):
             _session.post(f"{BACKEND}/simulation/reset",
                           json={"confirm": True}, timeout=2)
             ts = datetime.now().strftime("%H:%M:%S")
-            return f"[{ts}] Système réinitialisé à l'état nominal"
+            return f"[{ts}] Système réinitialisé à l'état nominal", 100, 100, 100, 50, 80
         except Exception as e:
-            return f"Erreur reset : {e}"
+            return f"Erreur reset : {e}", no_update, no_update, no_update, no_update, no_update
 
     # ── Déclenchement scénario (Pattern Matching) ─────────────────────
     @app.callback(
