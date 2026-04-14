@@ -60,7 +60,7 @@ def _tag_static(x, y, label, elem_id, default_value, default_unit,
     xi = x - w//2 if anchor == "middle" else x
     xt = x if anchor == "middle" else x + w//2
     return f"""
-    <g id="{elem_id}-g">
+    <g id="{elem_id}-g" class="{'blink' if alarm else ''}">
       <rect id="{elem_id}-rect" x="{xi}" y="{y}" width="{w}" height="34"
             rx="4" fill="{bkg}" stroke="{border}" stroke-width="0.8"/>
       <text x="{xt}" y="{y+11}"
@@ -362,31 +362,37 @@ def _build_synoptic_div(data: dict, static_ids: bool) -> html.Div:
           text-anchor="middle">ESV</text>
     <text x="255" y="259" fill="#10b981" font-size="7.5" text-anchor="middle">OPEN</text>
   </g>
-  <line x1="270" y1="248" x2="300" y2="248"
-        stroke="#f97316" stroke-width="10" stroke-linecap="round"
+  <line x1="270" y1="248" x2="280" y2="248"
+        stroke="#f97316" stroke-width="12" stroke-linecap="round"
         class="flow-hp"/>
+  <!-- Nœud de distribution (T-junction) -->
+  <circle cx="280" cy="248" r="7" fill="#f97316" opacity="0.85"/>
+  <text x="270" y="235" fill="#f97316" font-size="7" opacity="0.8">Diffusion Vapeur</text>
+  <!-- Bras central → : nœud → V1 -->
+  <line x1="280" y1="248" x2="310" y2="248"
+        stroke="#f97316" stroke-width="9" class="flow-hp"/>
 
   <!-- ════ VANNE V1 ADMISSION HP ════ -->
   {vsym_v1}
   {tag_v1}
-  <line x1="350" y1="248" x2="385" y2="248"
-        stroke="#f97316" stroke-width="10" class="flow-hp"/>
+  <line x1="340" y1="248" x2="385" y2="248"
+        stroke="#f97316" stroke-width="9" class="flow-hp"/>
 
-  <!-- V2 équilibrage haut -->
+  <!-- Bras vertical ↑ : nœud → V2 équilibrage haut -->
   <line x1="280" y1="248" x2="280" y2="180"
-        stroke="#60a5fa" stroke-width="2.5" stroke-dasharray="5,3"/>
+        stroke="#f97316" stroke-width="6" class="flow-hp"/>
   {vsym_v2}
   <line x1="280" y1="162" x2="390" y2="162"
-        stroke="#60a5fa" stroke-width="2.5" stroke-dasharray="5,3"/>
-  <text x="330" y="155" fill="#60a5fa" font-size="8" text-anchor="middle">Équilibrage ~7%</text>
+        stroke="#f97316" stroke-width="6" class="flow-hp"/>
+  <text x="340" y="155" fill="#f97316" font-size="8" text-anchor="middle" font-weight="700">Vanne Eq. Haut (~7%)</text>
 
-  <!-- V3 équilibrage bas -->
+  <!-- Bras vertical ↓ : nœud → V3 équilibrage bas -->
   <line x1="280" y1="248" x2="280" y2="330"
-        stroke="#60a5fa" stroke-width="2.5" stroke-dasharray="5,3"/>
+        stroke="#f97316" stroke-width="6" class="flow-hp"/>
   {vsym_v3}
   <line x1="280" y1="348" x2="390" y2="348"
-        stroke="#60a5fa" stroke-width="2.5" stroke-dasharray="5,3"/>
-  <text x="330" y="358" fill="#60a5fa" font-size="8" text-anchor="middle">Équilibrage ~7%</text>
+        stroke="#f97316" stroke-width="6" class="flow-hp"/>
+  <text x="340" y="358" fill="#f97316" font-size="8" text-anchor="middle" font-weight="700">Vanne Eq. Bas (~7%)</text>
   
   <!-- ════ BLOC DÉPLACEMENT & DILATATION (Au-dessus Turbine) ════ -->
   <rect x="385" y="76" width="135" height="42" rx="4"
@@ -786,7 +792,7 @@ def _tag(x, y, label, value, unit, alarm=False, anchor="middle", w=90):
     xi = x - w//2 if anchor == "middle" else x
     xt = x if anchor == "middle" else x + w//2
     return f"""
-    <g>
+    <g class="{'blink' if alarm else ''}">
       <rect x="{xi}" y="{y}" width="{w}" height="34"
             rx="4" fill="{bkg}" stroke="{border}" stroke-width="0.8"/>
       <text x="{xt}" y="{y+11}"

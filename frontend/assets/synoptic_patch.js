@@ -241,6 +241,11 @@ window.patchGtaSynoptic = function(data) {
         poutRect.setAttribute("fill",   alm_pow ? "rgba(239,68,68,0.12)" : "rgba(15,23,42,0.75)");
         poutRect.setAttribute("stroke", alm_pow ? "#ef4444" : "#1e3a5f");
     }
+    const poutGroup = document.getElementById("syn-pout-g");
+    if (poutGroup) {
+        if (alm_pow) poutGroup.classList.add("blink");
+        else poutGroup.classList.remove("blink");
+    }
 
     /* ── Réseau MT : excédent ── */
     _setText("syn-excess-val", Math.max(0, power - 14).toFixed(1));

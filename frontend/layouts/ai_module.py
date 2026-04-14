@@ -32,10 +32,7 @@ def layout():
                             html.Div(id="ae-error-value"),
                             html.Div(id="ae-status-label", style={"marginTop": "6px"}),
                         ], style={"marginBottom": "12px"}),
-                        dcc.Loading(
-                            dcc.Graph(id="ae-gauge", config={"displayModeBar": False}, style={"height": "190px"}),
-                            type="circle", color="#00e676"
-                        )
+                        dcc.Graph(id="ae-gauge", config={"displayModeBar": False}, style={"height": "190px"})
                     ], className="card"),
 
                     # Carte LSTM
@@ -50,10 +47,7 @@ def layout():
                                 "color": "var(--green)", "marginLeft": "4px",
                             }),
                         ], style={"marginBottom": "6px"}),
-                        dcc.Loading(
-                            dcc.Graph(id="lstm-prediction-chart", config={"displayModeBar": False}, style={"height": "260px"}),
-                            type="circle", color="#00e676"
-                        )
+                        dcc.Graph(id="lstm-prediction-chart", config={"displayModeBar": False}, style={"height": "260px"})
                     ], className="card"),
 
                     # Carte RUL
@@ -86,10 +80,7 @@ def layout():
                 html.Div([
                     html.Div([
                         html.Div("Alertes IA récentes", className="card-title"),
-                        dcc.Loading(
-                            html.Div(id="ai-alerts-table"),
-                            type="circle", color="#00e676"
-                        ),
+                        html.Div(id="ai-alerts-table")
                     ], className="card", style={"flex": "3"}),
 
                     html.Div([

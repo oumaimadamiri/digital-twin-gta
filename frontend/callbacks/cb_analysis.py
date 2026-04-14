@@ -47,7 +47,7 @@ PARAM_LABELS = {
 _DARK_LAYOUT = dict(
     paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
     legend={"font": {"family": "Inter, sans-serif", "color": "#94a3b8", "size": 10},
-            "bgcolor": "rgba(0,0,0,0)"},
+            "bgcolor": "rgba(0,0,0,0)", "itemclick": "toggleothers", "itemdoubleclick": "toggle"},
     xaxis={"tickfont": {"family": "Share Tech Mono, monospace", "color": "#64748b", "size": 9},
            "gridcolor": "#1e293b", "color": "#334155"},
     yaxis={"tickfont": {"family": "Share Tech Mono, monospace", "color": "#64748b", "size": 9},
