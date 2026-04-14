@@ -3,10 +3,10 @@ services/alert_manager.py — Vérification des seuils et création d'alertes.
 Première ligne de défense avant le module IA.
 """
 
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List
 
-from core.config import THRESHOLDS
+from core.config import THRESHOLDS, TIMEZONE_OFFSET
 from models.gta_parameters import GTAParameters
 from models.alert import Alert, AlertType, SeverityLevel, AlertSource
 
@@ -77,7 +77,7 @@ class AlertManager:
 
         label = "en dessous" if direction == "below" else "au-dessus"
         return Alert(
-            timestamp  = datetime.utcnow(),
+            timestamp  = datetime.utcnow() + timedelta(hours=TIMEZONE_OFFSET),
             alert_type = AlertType.THRESHOLD_EXCEEDED,
             parameter  = param,
             value      = round(value, 3),
@@ -95,7 +95,7 @@ class AlertManager:
                      threshold: float, message: str = "") -> Alert:
         """Crée une alerte issue du module IA."""
         alert = Alert(
-            timestamp  = datetime.utcnow(),
+            timestamp  = datetime.utcnow() + timedelta(hours=TIMEZONE_OFFSET),
             alert_type = AlertType.ANOMALY_DETECTED,
             parameter  = param,
             value      = round(value, 4),

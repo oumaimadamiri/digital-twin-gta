@@ -43,6 +43,10 @@ NOISE_LEVEL          = float(os.getenv("NOISE_LEVEL", 0.002))
 WARNING_MARGIN  = 0.03   # ±3 % autour du seuil = DEGRADED
 CRITICAL_MARGIN = 0.10   # ±10 % autour du seuil = CRITICAL
 
+# TIMEZONE (Ajoute x heures aux horodatages système)
+# Défaut : 1 (UTC+1 pour l'Algérie, France hiver, etc.)
+TIMEZONE_OFFSET = int(os.getenv("TIMEZONE_OFFSET", 1))
+
 # Paramètres dynamiques oscillations
 OSCILLATION_PERIOD_S = 10.0
 PF_MIN_CLAMP         = 0.70
@@ -143,7 +147,7 @@ THRESHOLDS = {
     "voltage":          {"min": 9.975,   "max": 11.025},   # ±5% de 10.5 kV
     "current_a":        {"min": 0.0,     "max": 3500.0},
     "pressure_mp_barillet": {"min": 8.0, "max": 11.0},  # bar barillet MP
-    "pressure_bp_barillet": {"min": 2.5, "max": 3.5},    # bar — déclenchement si dépassé (specs)
+    "pressure_bp_barillet": {"min": 2.5, "max": 5.0},    # bar — recalibré à 5.0 pour éviter fausses alertes synchro
 }
 
 # ─────────────────────────────────────────────

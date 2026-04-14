@@ -392,7 +392,7 @@ def register(app):
                         ("Vitesse",    f"{d.get('turbine_speed', 0):.0f} RPM", "#60a5fa"),
                         ("Rendement",  f"{d.get('efficiency', 0):.1f} %",      "#38bdf8"),
                         ("P barillet", f"{d.get('pressure_bp_barillet', 3.0):.2f} bar",
-                                    "#ef4444" if d.get("pressure_bp_barillet", 3.0) > 3.5 else "#a78bfa"),
+                                    "#ef4444" if d.get("pressure_bp_barillet", 3.0) > 5.0 else "#a78bfa"),
                         ("cos φ",      f"{d.get('power_factor', 0):.3f}",      "#fbbf24"),
                     ]],
                 ]),

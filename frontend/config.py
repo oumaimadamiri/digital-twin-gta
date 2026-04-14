@@ -15,3 +15,7 @@ BACKEND = os.getenv("BACKEND_URL", "http://localhost:8000").rstrip("/")
 # Sous Docker : http://localhost:8000 (car le navigateur accède via l'hôte)
 # En local : http://localhost:8000
 PUBLIC_BACKEND = os.getenv("PUBLIC_BACKEND_URL", "http://localhost:8000").rstrip("/")
+
+# TIMEZONE (Ajoute x heures aux horodatages système)
+# Doit être synchronisé avec le Backend
+TIMEZONE_OFFSET = int(os.getenv("TIMEZONE_OFFSET", 1))

@@ -9,6 +9,25 @@ CORRECTIONS :
 from dash import html, dcc
 import plotly.graph_objects as go
 
+def create_empty_fig(height=200, message="Chargement..."):
+    fig = go.Figure()
+    fig.update_layout(
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        xaxis={"visible": False},
+        yaxis={"visible": False},
+        annotations=[{
+            "text": message,
+            "xref": "paper", "yref": "paper",
+            "showarrow": False,
+            "font": {"size": 12, "color": "#64748b", "family": "Share Tech Mono"}
+        }],
+        height=height,
+        margin={"t": 10, "b": 10, "l": 10, "r": 10}
+    )
+    return fig
+
+
 GAUGE_CONFIGS = {
     # ── Thermodynamique ──
     "pressure_hp": {
@@ -80,7 +99,7 @@ GAUGE_CONFIGS = {
 }
 
 
-def make_gauge(value, cfg):
+def get_gauge_color(value, cfg):
     color = cfg["color"]
     wl, wh = cfg.get("warn_low"), cfg.get("warn_high")
     mn, mx = cfg["min"], cfg["max"]
@@ -92,6 +111,13 @@ def make_gauge(value, cfg):
         color = "#f59e0b"
     if value < mn * 0.88 or (mx > 0 and value > mx * 1.08):
         color = "#ef4444"
+    return color
+
+
+def make_gauge(value, cfg):
+    color = get_gauge_color(value, cfg)
+    wl, wh = cfg.get("warn_low"), cfg.get("warn_high")
+    mn, mx = cfg["min"], cfg["max"]
 
     # Zones colorées
     steps = []
@@ -161,10 +187,11 @@ def make_gauge(value, cfg):
     return fig
 
 
-def gauge_card(gauge_id):
+def gauge_card(gauge_id, initial_fig=None):
     return html.Div(
         [dcc.Graph(
             id=gauge_id,
+            figure=initial_fig if initial_fig is not None else go.Figure(),
             config={"displayModeBar": False},
             # CORRECTION 3 : hauteur du conteneur alignée avec make_gauge
             style={"height": "180px"},

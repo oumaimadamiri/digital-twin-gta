@@ -7,7 +7,7 @@ CORRECTIONS :
 """
 import requests
 import plotly.graph_objects as go
-from dash import Input, Output, State, html, no_update
+from dash import Input, Output, State, html, no_update, ctx, Patch
 from config import BACKEND
 
 _session = requests.Session()
@@ -39,7 +39,7 @@ def register(app):
         Input("interval-ai", "n_intervals"),
         Input("url", "pathname"),
     )
-    def update_ai(_, pathname):
+    def update_ai(n_intervals, pathname):
         if pathname != "/ai":
             return [no_update] * 9
 
@@ -57,6 +57,8 @@ def register(app):
         lstm    = results.get("lstm_prediction",   {})
         rul     = results.get("rul_estimation",    {})
 
+        is_initial = (not n_intervals) or (ctx.triggered_id == "url")
+
         # ── Autoencodeur ──────────────────────────────────────────────
         err      = anomaly.get("reconstruction_error", 0.0)
         is_anom  = anomaly.get("is_anomaly", False)
@@ -65,27 +67,36 @@ def register(app):
                     "fontWeight": "700", "color": ae_color}
 
         thresh = anomaly.get("threshold", 0.05)
-        ae_gauge = go.Figure(go.Indicator(
-            mode="gauge+number", value=err,
-            number={"font": {"size": 24, "color": ae_color,
-                             "family": "Share Tech Mono, monospace"}, "valueformat": ".4f"},
-            gauge={
-                "axis": {"range": [0, thresh * 3], "tickcolor": "#1e293b",
-                         "tickfont": {"size": 8, "color": "#64748b"}},
-                "bar":  {"color": ae_color, "thickness": 0.25},
-                "bgcolor": "rgba(0,0,0,0)", "bordercolor": "#1e293b", "borderwidth": 1,
-                "steps": [
-                    {"range": [0, thresh],        "color": "rgba(16,185,129,0.1)"},
-                    {"range": [thresh, thresh*3],  "color": "rgba(239,68,68,0.1)"},
-                ],
-                "threshold": {"line": {"color": "#f59e0b", "width": 2},
-                              "value": thresh, "thickness": 0.8},
-            },
-        ))
-        ae_gauge.update_layout(margin={"t": 20, "b": 5, "l": 10, "r": 10}, height=180,
-                               font={"family": "Share Tech Mono, monospace"},
-                               **{k: v for k, v in _AI_LAYOUT_BASE.items()
-                                  if k not in ("xaxis", "yaxis", "legend", "uirevision")})
+        
+        if is_initial:
+            ae_gauge = go.Figure(go.Indicator(
+                mode="gauge+number", value=err,
+                number={"font": {"size": 24, "color": ae_color,
+                                 "family": "Share Tech Mono, monospace"}, "valueformat": ".4f"},
+                gauge={
+                    "axis": {"range": [0, thresh * 3], "tickcolor": "#1e293b",
+                             "tickfont": {"size": 8, "color": "#64748b"}},
+                    "bar":  {"color": ae_color, "thickness": 0.25},
+                    "bgcolor": "rgba(0,0,0,0)", "bordercolor": "#1e293b", "borderwidth": 1,
+                    "steps": [
+                        {"range": [0, thresh],        "color": "rgba(16,185,129,0.1)"},
+                        {"range": [thresh, thresh*3],  "color": "rgba(239,68,68,0.1)"},
+                    ],
+                    "threshold": {"line": {"color": "#f59e0b", "width": 2},
+                                  "value": thresh, "thickness": 0.8},
+                },
+            ))
+            ae_gauge.update_layout(margin={"t": 20, "b": 5, "l": 10, "r": 10}, height=180,
+                                   font={"family": "Share Tech Mono, monospace"},
+                                   **{k: v for k, v in _AI_LAYOUT_BASE.items()
+                                      if k not in ("xaxis", "yaxis", "legend", "uirevision")})
+        else:
+            ae_gauge = Patch()
+            ae_gauge["data"][0]["value"] = err
+            ae_gauge["data"][0]["number"]["font"]["color"] = ae_color
+            ae_gauge["data"][0]["gauge"]["axis"]["range"] = [0, thresh * 3]
+            ae_gauge["data"][0]["gauge"]["bar"]["color"] = ae_color
+            ae_gauge["data"][0]["gauge"]["threshold"]["value"] = thresh
 
         ae_status = html.Span(
             "⚠ ANOMALIE DÉTECTÉE" if is_anom else "✓ État nominal",

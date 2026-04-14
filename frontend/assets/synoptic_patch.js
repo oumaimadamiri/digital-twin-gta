@@ -98,7 +98,7 @@ window.patchGtaSynoptic = function(data) {
     const alm_pf   = _alarm(pf, 0.82, 0.86);
     const alm_eff  = eff < 85.0;
     const alm_pbar_mp = p_bar_mp < 8.0 || p_bar_mp > 11.0;
-    const alm_pbar_bp = p_bar_bp > 3.5;
+    const alm_pbar_bp = p_bar_bp > 5.0;
     const alm_ia   = i_a > 3000;
 
     const alt_col  = alm_pow ? "#ef4444" : (power > 24 ? "#f59e0b" : "#10b981");

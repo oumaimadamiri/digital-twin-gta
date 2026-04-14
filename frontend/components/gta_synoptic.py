@@ -196,7 +196,7 @@ def _build_synoptic_div(data: dict, static_ids: bool) -> html.Div:
     alm_pf   = _alarm(pf, 0.82, 0.86)
     alm_eff  = eff < 85.0
     alm_pbar_mp = _alarm(p_bar_mp, 8.0, 11.0)
-    alm_pbar_bp = p_bar_bp > 3.5
+    alm_pbar_bp = p_bar_bp > 5.0
     alm_ia   = i_a > 3000
 
     # ── Couleurs dynamiques ───────────────────────────────────────────────────
@@ -348,26 +348,24 @@ def _build_synoptic_div(data: dict, static_ids: bool) -> html.Div:
   <!-- ════ LIGNE HP ════ -->
   <line x1="143" y1="248" x2="195" y2="248"
         stroke="#f97316" stroke-width="10" stroke-linecap="round"/>
-  {_instrument_circle(195, 248, "FT", "#f97316")}
+  {_instrument_circle(175, 248, "FT", "#f97316")}
   {tag_qhp}
-  <line x1="206" y1="248" x2="240" y2="248"
+  <line x1="186" y1="248" x2="220" y2="248"
         stroke="#f97316" stroke-width="10" stroke-linecap="round"
         class="flow-hp"/>
 
   <!-- ════ ESV ════ -->
   <g>
-    <rect x="240" y="236" width="30" height="24" rx="4"
+    <rect x="220" y="236" width="30" height="24" rx="4"
           fill="#0a101a" stroke="#94a3b8" stroke-width="1"/>
-    <text x="255" y="250" fill="#94a3b8" font-size="8" font-weight="700"
+    <text x="235" y="250" fill="#94a3b8" font-size="8" font-weight="700"
           text-anchor="middle">ESV</text>
-    <text x="255" y="259" fill="#10b981" font-size="7.5" text-anchor="middle">OPEN</text>
+    <text x="235" y="259" fill="#10b981" font-size="7.5" text-anchor="middle">OPEN</text>
   </g>
-  <line x1="270" y1="248" x2="280" y2="248"
-        stroke="#f97316" stroke-width="12" stroke-linecap="round"
-        class="flow-hp"/>
+  <line x1="250" y1="248" x2="272" y2="248"
+        stroke="#f97316" stroke-width="9" class="flow-hp"/>
   <!-- Nœud de distribution (T-junction) -->
   <circle cx="280" cy="248" r="7" fill="#f97316" opacity="0.85"/>
-  <text x="270" y="235" fill="#f97316" font-size="7" opacity="0.8">Diffusion Vapeur</text>
   <!-- Bras central → : nœud → V1 -->
   <line x1="280" y1="248" x2="310" y2="248"
         stroke="#f97316" stroke-width="9" class="flow-hp"/>
@@ -375,7 +373,7 @@ def _build_synoptic_div(data: dict, static_ids: bool) -> html.Div:
   <!-- ════ VANNE V1 ADMISSION HP ════ -->
   {vsym_v1}
   {tag_v1}
-  <line x1="340" y1="248" x2="385" y2="248"
+  <line x1="350" y1="248" x2="385" y2="248"
         stroke="#f97316" stroke-width="9" class="flow-hp"/>
 
   <!-- Bras vertical ↑ : nœud → V2 équilibrage haut -->
@@ -578,7 +576,7 @@ def _build_synoptic_div(data: dict, static_ids: bool) -> html.Div:
   <!-- Alarme barillet BP -->
   <rect id="syn-barillet-bp-blink" x="736" y="449" width="16" height="16" rx="8"
         fill="#ef4444" class="blink"
-        {'display="block"' if p_bar_bp > 3.5 else 'display="none"'}/>
+        {'display="block"' if p_bar_bp > 5.0 else 'display="none"'}/>
 
   <!-- Séparateur + 4 destinations VP BP -->
   <line x1="360" y1="490" x2="540" y2="490" stroke="#1e3a5f" stroke-width="0.8"/>

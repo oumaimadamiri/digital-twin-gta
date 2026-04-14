@@ -3,11 +3,12 @@ import math
 import random
 import time
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from core.config import (
     NOMINAL, NOISE_LEVEL, FAKE_API_INTERVAL_MS,
-    WARNING_MARGIN, CRITICAL_MARGIN, OSCILLATION_PERIOD_S, PF_MIN_CLAMP
+    WARNING_MARGIN, CRITICAL_MARGIN, OSCILLATION_PERIOD_S, PF_MIN_CLAMP,
+    TIMEZONE_OFFSET
 )
 from models.gta_parameters import GTAParameters, StatusEnum
 from simulation.physics_model import PhysicsModel
@@ -88,7 +89,7 @@ class FakeAPI:
             self._scenario_history.append({
                 "id": scenario.id,
                 "name": scenario.name,
-                "timestamp": datetime.now().strftime("%H:%M:%S")
+                "timestamp": (datetime.now() + timedelta(hours=TIMEZONE_OFFSET)).strftime("%H:%M:%S")
             })
             # Limiter l'historique aux 10 derniers
             if len(self._scenario_history) > 10:
@@ -178,7 +179,7 @@ class FakeAPI:
             computed_nom["valve_bp_target"] = state_nom["valve_bp"]
 
             params_nom = GTAParameters(
-                timestamp = datetime.utcnow(),
+                timestamp = datetime.utcnow() + timedelta(hours=TIMEZONE_OFFSET),
                 scenario  = None,
                 status    = StatusEnum.NORMAL,
                 **computed_nom
@@ -219,7 +220,7 @@ class FakeAPI:
             status_sim = self._compute_status(computed_sim)
             
             params_sim = GTAParameters(
-                timestamp = datetime.utcnow(),
+                timestamp = datetime.utcnow() + timedelta(hours=TIMEZONE_OFFSET),
                 scenario  = scenario_name,
                 status    = status_sim,
                 **computed_sim

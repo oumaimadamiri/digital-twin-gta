@@ -10,6 +10,7 @@ CORRECTIONS :
 """
 from dash import html, dcc
 from components.sidebar import create_sidebar
+from components.gauges import create_empty_fig
 
 
 def layout():
@@ -32,7 +33,9 @@ def layout():
                             html.Div(id="ae-error-value"),
                             html.Div(id="ae-status-label", style={"marginTop": "6px"}),
                         ], style={"marginBottom": "12px"}),
-                        dcc.Graph(id="ae-gauge", config={"displayModeBar": False}, style={"height": "190px"})
+                        dcc.Graph(id="ae-gauge",
+                                  figure=create_empty_fig(190, "Initialisation AE..."),
+                                  config={"displayModeBar": False}, style={"height": "190px"})
                     ], className="card"),
 
                     # Carte LSTM
@@ -47,7 +50,9 @@ def layout():
                                 "color": "var(--green)", "marginLeft": "4px",
                             }),
                         ], style={"marginBottom": "6px"}),
-                        dcc.Graph(id="lstm-prediction-chart", config={"displayModeBar": False}, style={"height": "260px"})
+                        dcc.Graph(id="lstm-prediction-chart",
+                                  figure=create_empty_fig(260, "Calcul prédictions..."),
+                                  config={"displayModeBar": False}, style={"height": "260px"})
                     ], className="card"),
 
                     # Carte RUL

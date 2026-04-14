@@ -315,17 +315,14 @@ class PhysicsModel:
         valve_effect = (1.0 - (valve_mp / 100.0) * 0.05)
         return round(max(7.0, min(12.0, p_mp * valve_effect)), 3)
 
-    def compute_bp_barillet_pressure(self, pressure_bp: float,
-                                    valve_mp: float) -> float:
+    def compute_bp_barillet_pressure(self, pressure_bp: float) -> float:
         """
-        Pression barillet BP (bar) — distribution basse pression aval turbine BP.
-        Nominalement ~3 bar.
-        Augmente si valve_mp s'ouvre (plus de vapeur vers réseau BP).
-        Déclenchement si > 3.5 bar (spec encadrant).
+        Pression barillet BP (bar).
+        Physiquement couplée à la pression d'échappement turbine BP.
         """
-        base = 3.0
-        mp_boost = (valve_mp / 100.0) * 0.8
-        return round(max(2.0, min(4.0, base + mp_boost)), 3)
+        # Synchronisation stricte demandée par l'utilisateur
+        p_bar = pressure_bp
+        return round(max(2.0, min(7.0, p_bar)), 3)
 
     # ──────────────────────────────────────────
     # DISTRIBUTION DÉBIT BP COMPLÈTE
@@ -515,7 +512,7 @@ class PhysicsModel:
             steam_flow_hp, valve_mp, valve_bp, valve_v1
         )
         p_mp_barillet = self.compute_mp_barillet_pressure(pressure_hp, valve_mp)
-        p_bp_barillet = self.compute_bp_barillet_pressure(pressure_bp, valve_mp)        
+        p_bp_barillet = self.compute_bp_barillet_pressure(pressure_bp)        
         efficiency     = self.compute_efficiency(
             active_power, steam_flow_hp, temperature_hp, pressure_hp
         )

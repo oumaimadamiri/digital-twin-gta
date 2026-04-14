@@ -10,7 +10,7 @@ Ajouts :
 """
 from dash import html, dcc
 from components.sidebar import create_sidebar
-from components.gauges import gauge_card, GAUGE_CONFIGS
+from components.gauges import gauge_card, make_gauge, create_empty_fig, GAUGE_CONFIGS
 from config import BACKEND
 from datetime import date
 
@@ -41,7 +41,10 @@ def _gauge_section(title, gauge_keys, color):
             }),
         ], style={"marginBottom": "8px", "paddingLeft": "4px"}),
         html.Div(
-            [gauge_card(f"gauge-{k}") for k in gauge_keys],
+            [gauge_card(f"gauge-{k}", make_gauge(
+                 GAUGE_CONFIGS[k]["min"] + (GAUGE_CONFIGS[k]["max"] - GAUGE_CONFIGS[k]["min"]) * 0.5,
+                 GAUGE_CONFIGS[k]
+             )) for k in gauge_keys],
             style={
                 "display": "grid",
                 "gridTemplateColumns": f"repeat({len(gauge_keys)}, 1fr)",
@@ -225,6 +228,7 @@ def layout():
                     html.Div("Évolution temporelle multi-paramètres",
                              className="card-title"),
                     dcc.Graph(id="history-chart",
+                              figure=create_empty_fig(320, "Chargement de l'historique..."),
                               config={"displayModeBar": True},
                               style={"height": "320px"}),
                 ], className="card", style={"marginBottom": "16px"}),
@@ -239,6 +243,7 @@ def layout():
                     html.Div([
                         html.Div("Répartition des états", className="card-title"),
                         dcc.Graph(id="status-pie",
+                                  figure=create_empty_fig(220, "Calcul des statuts..."),
                                   config={"displayModeBar": False},
                                   style={"height": "220px"}),
                     ], className="card", style={"flex": "2"}),
