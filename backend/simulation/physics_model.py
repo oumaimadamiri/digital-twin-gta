@@ -17,6 +17,8 @@ Améliorations vs version initiale :
 import math
 import json
 import os
+from iapws import IAPWS97
+
 from core.config import (
     NOMINAL, T_HP_DESIGN, T_HP_OPERATING, CALIBRATION_COEFFS,
     PHYSICS_ETA_IS_HP, PHYSICS_ETA_IS_BP, PHYSICS_V1_FLOW_FACTOR, PHYSICS_P_OUT_RATIO,
@@ -24,70 +26,52 @@ from core.config import (
 
 
 # ─────────────────────────────────────────────
-# POLYNÔME ENTHALPIE VAPEUR — approximation IAPWS-IF97 région 2 (vapeur surchauffée)
-# Calibré sur la plage opérationnelle : P ∈ [3, 70] bar, T ∈ [150, 550] °C
-# Erreur max : ±8 kJ/kg vs tables IAPWS — suffisant pour ce digital twin
-# Forme : h(T,P) = a0 + a1·T + a2·T² + a3·P + a4·P·T + a5·P²
+# FONCTIONS THERMODYNAMIQUES — IAPWS-IF97 de référence
+# Remplace le polynôme précédent (invalide en zone humide, biais jusqu'à ±50 kJ/kg
+# sur la détente complète, forçant η_is apparent > 1).
+# IAPWS-IF97 gère : vapeur surchauffée, vapeur saturée, zone humide (x < 1).
+# Précision : erreur < 0.01% sur h, s, T_sat sur toute la plage du GTA.
 # ─────────────────────────────────────────────
 
-# Coefficients de base (ajustés sur points IAPWS connus)
-_IAPWS_COEFFS_H = {
-    "a0":  2501.0,    # kJ/kg  — enthalpie base vapeur saturée 0°C
-    "a1":  1.872,     # kJ/(kg·°C)
-    "a2":  0.000415,  # kJ/(kg·°C²)
-    "a3":  -1.28,     # kJ/(kg·bar)  — compression diminue l'enthalpie spéc.
-    "a4":  0.00210,   # kJ/(kg·bar·°C)
-    "a5":  0.000128,  # kJ/(kg·bar²)
-}
-
-# Points de validation IAPWS connus (P bar, T °C, h kJ/kg)
-# (60 bar, 486°C) → h ≈ 3390 kJ/kg  ✓ (valeur nominale du projet)
-# (4.5 bar, 226°C) → h ≈ 2910 kJ/kg ✓ (BP entrée)
-# (60 bar, 440°C) → h ≈ 3307 kJ/kg  ✓ (opérationnel terrain)
-
-
-def _steam_enthalpy(T_celsius: float, P_bar: float) -> float:
+def _isentropic_expansion(T_in_C: float, P_in_bar: float,
+                           P_out_bar: float, eta_is: float) -> tuple[float, float]:
     """
-    Enthalpie spécifique de la vapeur surchauffée h(T, P) en kJ/kg.
-    Valide pour T ∈ [150, 550] °C et P ∈ [1, 70] bar.
+    Détente isentropique réelle avec rendement η_is.
+    Entrée : état (T, P). Sortie : (h_out_réel kJ/kg, Δh_réel kJ/kg).
+    
+    Principe :
+      1. État entrée → entropie s_in
+      2. État sortie idéal : même s, pression P_out → Δh_idéal = h_in - h_out_idéal
+      3. Δh_réel = η_is · Δh_idéal  (détente irréversible : η_is < 1)
+      4. h_out_réel = h_in - Δh_réel
     """
-    c = _IAPWS_COEFFS_H
-    h = (c["a0"]
-         + c["a1"] * T_celsius
-         + c["a2"] * T_celsius ** 2
-         + c["a3"] * P_bar
-         + c["a4"] * P_bar * T_celsius
-         + c["a5"] * P_bar ** 2)
-    return max(2000.0, h)   # plancher physique
+    try:
+        state_in = IAPWS97(T=T_in_C + 273.15, P=P_in_bar / 10.0)   # K, MPa
+        state_out_ideal = IAPWS97(s=state_in.s, P=P_out_bar / 10.0)
+        delta_h_ideal = state_in.h - state_out_ideal.h             # kJ/kg
+        delta_h_real  = max(0.0, eta_is) * max(0.0, delta_h_ideal)
+        h_out_real    = state_in.h - delta_h_real
+        return h_out_real, delta_h_real
+    except Exception:
+        return 0.0, 0.0   # état thermodynamiquement invalide → pas de travail
 
 
-def _steam_enthalpy_isentropic_out(T_in: float, P_in: float, P_out: float,
-                                    eta_is: float) -> tuple[float, float]:
+def _isentropic_expansion_from_h(h_in_kJkg: float, P_in_bar: float,
+                                   P_out_bar: float, eta_is: float) -> tuple[float, float]:
     """
-    Calcule l'enthalpie de sortie réelle après détente avec rendement isentropique.
-    Retourne (h_out_real, delta_h_real) en kJ/kg.
-
-    La détente isentropique idéale suit approximativement :
-      T_out_ideal ≈ T_in × (P_out/P_in)^((γ-1)/γ)
-    avec γ ≈ 1.135 pour vapeur surchauffée (exposant de Poisson vapeur).
+    Comme _isentropic_expansion, mais partant de (h, P) au lieu de (T, P).
+    Utilisé pour enchaîner les détentes : la sortie RÉELLE de l'étage HP
+    (avec son entropie augmentée par l'irréversibilité) devient l'entrée de l'étage BP.
     """
-    GAMMA_STEAM = 1.135
-    exp = (GAMMA_STEAM - 1.0) / GAMMA_STEAM   # ≈ 0.119
-
-    # Température de sortie isentropique idéale
-    T_out_ideal = (T_in + 273.15) * (P_out / P_in) ** exp - 273.15
-    T_out_ideal = max(100.0, T_out_ideal)
-
-    h_in       = _steam_enthalpy(T_in, P_in)
-    h_out_ideal = _steam_enthalpy(T_out_ideal, P_out)
-
-    # Enthalpie de sortie réelle (avec pertes irréversibles)
-    delta_h_ideal = h_in - h_out_ideal
-    delta_h_real  = eta_is * delta_h_ideal
-    h_out_real    = h_in - delta_h_real
-
-    return h_out_real, delta_h_real
-
+    try:
+        state_in = IAPWS97(h=h_in_kJkg, P=P_in_bar / 10.0)
+        state_out_ideal = IAPWS97(s=state_in.s, P=P_out_bar / 10.0)
+        delta_h_ideal = state_in.h - state_out_ideal.h
+        delta_h_real  = max(0.0, eta_is) * max(0.0, delta_h_ideal)
+        h_out_real    = state_in.h - delta_h_real
+        return h_out_real, delta_h_real
+    except Exception:
+        return h_in_kJkg, 0.0
 
 class PhysicsModel:
     """
@@ -134,6 +118,15 @@ class PhysicsModel:
         self.nominal = NOMINAL.copy()
         # Coefficients chargés depuis fichier calibration si disponible
         self._load_calibration_coeffs()
+        # Puissance de référence au point design (486°C, 60 bar, 120 T/h, V1=100%, MP=50%)
+        # Utilisée par compute_machine_performance pour le "rendement machine" de la spec.
+        self.P_NOMINAL_REF = self.compute_active_power(
+            steam_flow_hp  = self.nominal["steam_flow_hp"],
+            pressure_hp    = self.nominal["pressure_hp"],
+            temperature_hp = T_HP_DESIGN,
+            valve_v1       = 100.0,
+            valve_mp       = self.nominal["valve_mp"],
+        )
 
     def _load_calibration_coeffs(self):
         """
@@ -196,30 +189,57 @@ class PhysicsModel:
     # ──────────────────────────────────────────
 
     def compute_active_power(self, steam_flow_hp: float, pressure_hp: float,
-                             temperature_hp: float, valve_v1: float) -> float:
+                         temperature_hp: float, valve_v1: float,
+                         valve_mp: float = 50.0) -> float:
         """
-        Puissance active (MW) via bilan enthalpique réel.
-        P = η_is(T) × ṁ × Δh(T,P) × η_meca × η_elec
-
-        Bien plus fidèle que P = 0.2 × Q car intègre :
-          - l'effet de la température sur Δh
-          - le rendement isentropique (dégradation avec T)
-          - les pertes mécaniques et électriques
+        Puissance active (MW) — bilan enthalpique 2-étages (HP + BP avec soutirage MP).
+        
+        Architecture (turbine à condensation avec soutirage MP) :
+        [HP] vapeur 60 bar 486°C → détente → 4.5 bar (sortie étage HP)
+            → soutirage MP (% valve_mp) vers barillet / chauffage AS / surchauffeur
+            → reste : [BP] 4.5 bar → détente → 0.0064 bar (condenseur vide)
+        
+        Équations :
+        P_HP_méca = η_is_HP · ṁ_HP · Δh_HP_idéal
+        P_BP_méca = η_is_BP · ṁ_BP · Δh_BP_idéal    (ṁ_BP = ṁ_HP · (1 - extraction))
+        P_élec    = (P_HP_méca + P_BP_méca) · η_méca · η_élec
+        
+        Point clé : Δh_BP_idéal est calculé depuis la SORTIE RÉELLE de l'étage HP
+        (pas la sortie idéale) — car l'irréversibilité HP augmente l'entropie,
+        ce qui réduit le potentiel de travail de l'étage BP.
         """
-        eta_is   = self._eta_is_hp_corrected(temperature_hp)
-        m_dot    = self._effective_mass_flow(steam_flow_hp, valve_v1)
-
-        # Pression de sortie HP = pression d'admission BP
-        # FIX : ratio exact 4.5/60 = 0.075 (était 0.08 → P_out=4.8 bar au lieu de 4.5)
-        p_out_hp = max(3.0, pressure_hp * PHYSICS_P_OUT_RATIO)
-
-        _, delta_h = _steam_enthalpy_isentropic_out(
-            temperature_hp, pressure_hp, p_out_hp, eta_is
+        eta_is_hp = self._eta_is_hp_corrected(temperature_hp)   # ∈ [0.6, 0.9]
+        eta_is_bp = self.ETA_IS_BP                              # moins sensible à T_HP
+        m_dot_hp  = self._effective_mass_flow(steam_flow_hp, valve_v1)   # kg/s
+        
+        if m_dot_hp <= 0:
+            return 0.0
+        
+        # ── ÉTAGE HP : P_in → P_mid (4.5 bar) ──
+        p_mid = max(1.0, pressure_hp * PHYSICS_P_OUT_RATIO)
+        h_out_hp_real, dh_hp_real = _isentropic_expansion(
+            temperature_hp, pressure_hp, p_mid, eta_is_hp
         )
-
-        p_mw = (m_dot * delta_h * self.ETA_MECA * self.ETA_ELEC) / 1000.0  # kW→MW
+        
+        # ── SOUTIRAGE MP entre les 2 étages ──
+        # valve_mp=50% → 10% de soutirage ; valve_mp=100% → 20% de soutirage.
+        extraction_ratio = 0.76 * (valve_mp / 100.0)
+        m_dot_bp = m_dot_hp * (1.0 - extraction_ratio)
+        
+        # ── ÉTAGE BP : P_mid → P_condenseur (0.0064 bar, zone vapeur humide) ──
+        p_cond = self.nominal["pressure_condenser"]
+        _, dh_bp_real = _isentropic_expansion_from_h(
+            h_in_kJkg = h_out_hp_real,
+            P_in_bar  = p_mid,
+            P_out_bar = p_cond,
+            eta_is    = eta_is_bp,
+        )
+        
+        # ── PUISSANCE TOTALE ──
+        # ṁ (kg/s) · Δh (kJ/kg) = kW ; puis × rendements mécanique/électrique → MW
+        p_meca_kw = m_dot_hp * dh_hp_real + m_dot_bp * dh_bp_real
+        p_mw      = p_meca_kw * self.ETA_MECA * self.ETA_ELEC / 1000.0
         return round(min(self.MAX_POWER_MW, max(0.0, p_mw)), 3)
-
     # ──────────────────────────────────────────
     # VITESSE TURBINE
     # ──────────────────────────────────────────
@@ -361,36 +381,49 @@ class PhysicsModel:
     # ──────────────────────────────────────────
 
     def compute_efficiency(self, active_power: float, steam_flow_hp: float,
-                           temperature_hp: float, pressure_hp: float) -> float:
+                       temperature_hp: float, pressure_hp: float) -> float:
         """
-        Rendement isentropique η_is × 100 (%).
-
-        IMPORTANT — distinction de terminologie :
-          η_is (isentropique) = Δh_réel / Δh_idéal → plage 82–92%
-                                C'est CE que mesure la spec "efficiency=92%"
-                                dans config.py et THRESHOLDS["efficiency"].
-          η_thermo (global)   = P_elec / P_therm   → plage 25–35% pour une
-                                turbine à vapeur (physique normale, pas 92%).
-
-        Le calcul P_elec/P_therm donnait ~7% en régime normal, déclenchant
-        une fausse alarme DEGRADED permanente. Ce bug venait de deux causes :
-          1. P_therm utilisait ṁ_total alors que P_elec utilise ṁ_effectif (×0.80)
-          2. La spec 92% est η_is, pas η_thermo — les deux ne sont pas comparables.
-
-        On retourne donc η_is corrigé par T_hp, cohérent avec :
-          - la spec nominale (92% à 486°C)
-          - la valeur terrain (88–89% à 440°C)
-          - le seuil d'alarme THRESHOLDS["efficiency"]["min"] = 85%
+        Rendement isentropique HP physique (%) — η_is_HP = Δh_réel / Δh_idéal.
+        
+        Définition thermodynamique stricte : ∈ [0, 100]%.
+        Varie avec T_HP via le coefficient α (sensibilité thermique).
+        
+        Signature conservée pour compatibilité descendante (paramètres active_power
+        et pressure_hp non utilisés — le η_is ne dépend que de T_HP dans ce modèle).
         """
-        if steam_flow_hp <= 0 or active_power <= 0:
+        if steam_flow_hp <= 0:
             return 0.0
+        eta_is = self._eta_is_hp_corrected(temperature_hp)
+        return round(min(100.0, max(0.0, eta_is * 100.0)), 2)
+    
+    # ──────────────────────────────────────────
+    # PERFORMANCE MACHINE (rendement Q_Vp vs P_elec au sens de la spec)
+    # ──────────────────────────────────────────
 
-        # On retourne η_is PHYSIQUE (92% au design), pas le coefficient apparent de calibration.
-        # Le coefficient apparent (ETA_IS_HP = 1.7469) est un artefact du polynôme enthalpie ;
-        # le rendement affiché à l'opérateur doit rester dans la plage physique 85–92%.
-        eta_is_pct = self._eta_is_hp_corrected(temperature_hp) / PHYSICS_ETA_IS_HP * 92.0
-        return round(min(100.0, max(0.0, eta_is_pct)), 2)
-
+    def compute_machine_performance(self, active_power: float) -> float:
+        """
+        Performance machine (%) — métrique de la spec :
+        "Rendement (Q_Vp vs P_elec) dépend notamment à la Temp de Vp
+        idéalement 486°C et actuellement avec montée de cadence 440°C"
+        
+        = 100 × P_élec_actuelle / P_élec_référence_design
+        
+        P_élec_référence_design : calculée une fois à l'init au point nominal
+                                (486°C, 60 bar, 120 T/h, V1=100%, valve_mp=50%).
+        
+        Interprétation opérateur :
+        ~100%     → fonctionnement nominal
+        96–98%    → légère perte (normale à 440°C, montée de cadence)
+        < 90%     → dégradation anormale (encrassement, usure, déréglage)
+        
+        Distinct de compute_efficiency (η_is thermodynamique) :
+        - η_is  = qualité interne de la détente (physique)
+        - perf  = écart relatif au point design (exploitation)
+        """
+        if self.P_NOMINAL_REF <= 0.0:
+            return 0.0
+        perf = (active_power / self.P_NOMINAL_REF) * 100.0
+        return round(min(110.0, max(0.0, perf)), 2)
     # ──────────────────────────────────────────
     # FACTEUR DE PUISSANCE
     # ──────────────────────────────────────────

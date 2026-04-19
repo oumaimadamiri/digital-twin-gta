@@ -109,8 +109,7 @@ NOMINAL = {
     "valve_bp":   80.0,    # % ouverture vanne sortie BP condenseur (nominale ~80%)
 
     # ── Rendement ──
-    "efficiency":   88.5,   # % rendement thermodynamique à T_HP_DESIGN=486°C
-    # À T_HP_OPERATING=440°C, le rendement est abaissé (~88–89%) via le modèle physique
+    "efficiency":   85.0,  # % rendement isentropique HP physique (η_is × 100, ∈ [0,100])
 }
 
 # ─────────────────────────────────────────────
@@ -141,7 +140,7 @@ THRESHOLDS = {
     "turbine_speed":    {"min": 6200.0,  "max": 6600.0},
     "active_power":     {"min": 5.0,    "max": 30.0},     # max 32 MW spec
     "power_factor":     {"min": 0.80,    "max": 0.88},     # plage réelle 0.82–0.86
-    "efficiency":       {"min": 82.0,    "max": 100.0},
+    "efficiency":       {"min": 55.0,    "max": 95.0},   # η_is HP physique    
     "pressure_bp_in":   {"min": 3.5,     "max": 6.5},
     "temperature_bp":   {"min": 180.0,   "max": 280.0},
     "voltage":          {"min": 9.975,   "max": 11.025},   # ±5% de 10.5 kV
@@ -170,30 +169,24 @@ CALIBRATION_DATASET = os.getenv("CALIBRATION_DATASET", "data/ccpp_dataset.csv")
 CALIBRATION_COEFFS  = os.path.join(AI_MODELS_DIR, "physics_coeffs.json")
 
 # ─────────────────────────────────────────────
-# COEFFICIENTS PHYSIQUES — CALIBRÉS SUR POINT NOMINAL
-# Source : résolution numérique sur spécifications industrielles
-#   P_nominal = 24 MW @ T=486°C, P=60bar, Q=120T/h, V1=100%
-#
-# PHYSICS_ETA_IS_HP / BP :
-#   Rendements isentropiques "apparents" du modèle polynomial.
-#   Valeur > 1 car le polynôme IAPWS approximatif sous-estime le Δh réel
-#   de la détente complète HP→BP. Ce sont des coefficients de calibration,
-#   pas des rendements physiques absolus. Le comportement RELATIF
-#   (dégradation avec T, variation avec débit) reste physiquement correct.
-#   Recalibrer via calibrate_physics.py si les specs changent.
-#
-# PHYSICS_V1_FLOW_FACTOR :
-#   Facteur de débit thermodynamiquement actif.
-#   = 1.0 car 120 T/h est le débit total entrant dans la turbine (HP+BP en cascade).
-#   Le rôle de V2/V3 (équilibrage mécanique) ne réduit PAS le débit thermo.
-#   ANCIEN bug : facteur 0.80 issu d'une confusion avec la répartition hydraulique.
-#
-# PHYSICS_P_OUT_RATIO :
-#   Ratio pression sortie HP / pression entrée HP.
-#   Calibré sur point nominal : 4.5 bar / 60 bar = 0.075 (exact).
-#   ANCIEN bug : 0.08 (ratio trop élevé → P_out=4.8 bar → Δh sous-estimé).
 # ─────────────────────────────────────────────
-PHYSICS_ETA_IS_HP     = float(os.getenv("PHYSICS_ETA_IS_HP",     1.7469))
-PHYSICS_ETA_IS_BP     = float(os.getenv("PHYSICS_ETA_IS_BP",     1.6613))
+# COEFFICIENTS PHYSIQUES — RENDEMENTS ISENTROPIQUES
+#
+# η_is ∈ [0, 1] par définition (Δh_réel / Δh_idéal ≤ 1).
+# Calibrés sur point nominal : 24 MW @ 486°C, 60 bar, 120 T/h, V1=100%, valve_mp=50%.
+#
+# Plages typiques turbines vapeur :
+#   - Moderne haute efficacité   : 0.85–0.90
+#   - Industrielle standard      : 0.75–0.85
+#   - Charge partielle / ancienne : 0.60–0.75
+#
+# La machine GTA (41 MVA nominal) est exploitée à 24 MW (69% charge) pour protéger
+# la pression barillet MP → les η_is calibrés reflètent ce régime de charge partielle.
+#
+# PHYSICS_P_OUT_RATIO : pression inter-étage (4.5/60 = 0.075) — séparation HP / BP.
+# PHYSICS_V1_FLOW_FACTOR : 1.0 (V1 pilote tout le débit thermodynamiquement actif).
+# ─────────────────────────────────────────────
+PHYSICS_ETA_IS_HP      = float(os.getenv("PHYSICS_ETA_IS_HP",      0.85))
+PHYSICS_ETA_IS_BP      = float(os.getenv("PHYSICS_ETA_IS_BP",      0.80))
 PHYSICS_V1_FLOW_FACTOR = float(os.getenv("PHYSICS_V1_FLOW_FACTOR", 1.0))
-PHYSICS_P_OUT_RATIO   = float(os.getenv("PHYSICS_P_OUT_RATIO",   0.075))
+PHYSICS_P_OUT_RATIO    = float(os.getenv("PHYSICS_P_OUT_RATIO",    0.075))

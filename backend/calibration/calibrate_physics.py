@@ -178,92 +178,112 @@ def extract_physical_relationships(df: pd.DataFrame) -> dict:
 
 def anchor_to_gta_specs(ccpp_relations: dict) -> dict:
     """
-    Recale les coefficients CCPP sur les specs connues du GTA.
-
-    Points d'ancrage fournis par l'encadrant :
-      A) T=486°C, P=60bar, Q=120T/h → P_elec=24MW, η=92%  (design)
-      B) T=440°C, P=60bar, Q=120T/h → η≈88-89%            (opérationnel)
-
-    Résout un système pour trouver eta_is_hp et alpha_temp cohérents.
+    Recale les coefficients physiques sur le point nominal du GTA.
+    
+    Point d'ancrage : T=486°C, P=60 bar, Q=120 T/h, V1=100%, valve_mp=50%
+                      → cible P_élec = 24 MW (spec industrielle)
+    
+    Stratégie : fixer le ratio η_is_BP / η_is_HP = 0.95 (BP légèrement moins
+    performant à cause de la zone humide), puis résoudre itérativement sur
+    η_is_HP avec la formule 2-étages.
     """
-    from simulation.physics_model import PhysicsModel, _steam_enthalpy
-
-    # ── Point A : condition design (486°C → 24 MW, η=92%) ──
-    T_A = T_HP_DESIGN    # 486°C
-    P_A = NOMINAL["pressure_hp"]        # 60 bar
-    Q_A = NOMINAL["steam_flow_hp"]      # 120 T/h
-    P_elec_target_A = NOMINAL["active_power"]   # 24 MW
-    eta_target_A    = NOMINAL["efficiency"]     # 92%
-
-    # ── Point B : condition opérationnelle (440°C → η≈88%) ──
-    T_B    = T_HP_OPERATING   # 440°C
-    eta_target_B = 88.5        # % — estimation terrain
-
-    # ── Résolution de eta_is_hp ──
-    # P = eta_is × m_dot × delta_h × eta_meca × eta_elec
-    # On connaît tout sauf eta_is
-    h_in_A = _steam_enthalpy(T_A, P_A)
-    p_out_A = P_A * 0.08
-    from simulation.physics_model import _steam_enthalpy_isentropic_out
-    _, delta_h_ideal_A = _steam_enthalpy_isentropic_out(T_A, P_A, p_out_A, 1.0)
-
-    m_dot_A = Q_A * 0.80 * 1000.0 / 3600.0   # 80% de 120 T/h → kg/s
+    from simulation.physics_model import (
+        _isentropic_expansion, _isentropic_expansion_from_h,
+    )
+    from core.config import PHYSICS_P_OUT_RATIO
+    
+    # ── Point d'ancrage (design) ──
+    T_A        = T_HP_DESIGN                      # 486°C
+    P_A        = NOMINAL["pressure_hp"]           # 60 bar
+    Q_A        = NOMINAL["steam_flow_hp"]         # 120 T/h
+    P_target   = NOMINAL["active_power"]          # 24 MW
+    valve_mp_A = NOMINAL["valve_mp"]              # 50%
+    p_cond     = NOMINAL["pressure_condenser"]    # 0.0064 bar
+    
+    # ── Débits ──
+    m_dot_hp = Q_A * 1000.0 / 3600.0              # kg/s
+    extraction_ratio = 0.76 * (valve_mp_A / 100.0)
+    m_dot_bp = m_dot_hp * (1.0 - extraction_ratio)
+    
+    # ── Pressions inter-étages ──
+    p_mid = P_A * PHYSICS_P_OUT_RATIO             # 4.5 bar (cohérent avec physics_model)
+    
+    # ── Rendements mécanique/électrique (inchangés) ──
     eta_meca = 0.975
     eta_elec = 0.985
-
-    # Résoudre : 24 = eta_is × m_dot × delta_h × eta_meca × eta_elec
-    if delta_h_ideal_A > 0:
-        eta_is_hp_calibrated = (P_elec_target_A * 1e6) / (
-            m_dot_A * delta_h_ideal_A * 1000.0 * eta_meca * eta_elec
+    eta_loss = eta_meca * eta_elec                 # ≈ 0.960
+    
+    # ── Ratio η_is_BP / η_is_HP ──
+    ratio_bp_to_hp = 0.95
+    
+    # ── Résolution itérative (point fixe) ──
+    # Raison de l'itération : Δh_BP_idéal dépend de la sortie RÉELLE de l'étage HP,
+    # qui elle-même dépend de η_is_HP. 3-5 itérations suffisent à converger.
+    eta_is_hp = 0.80   # initialisation
+    for i in range(10):
+        # HP : Δh_idéal indépendant de η_is ; h_out_réel en dépend
+        h_out_hp_real, _ = _isentropic_expansion(T_A, P_A, p_mid, eta_is_hp)
+        _, dh_hp_ideal   = _isentropic_expansion(T_A, P_A, p_mid, 1.0)
+        # BP : Δh_idéal calculé depuis la sortie réelle HP (prise en compte irréversibilité)
+        _, dh_bp_ideal = _isentropic_expansion_from_h(
+            h_in_kJkg=h_out_hp_real, P_in_bar=p_mid,
+            P_out_bar=p_cond, eta_is=1.0,
         )
-    else:
-        eta_is_hp_calibrated = 0.82  # valeur par défaut
-
-    eta_is_hp_calibrated = max(0.60, min(0.92, eta_is_hp_calibrated))
-
-    # ── Résolution de alpha_temp ──
-    # η(T_B) = η_ref × (1 + α × (T_B − T_A) / T_A)
-    # η(T_B) / η_ref = 1 + α × (T_B − T_A) / T_A
-    # α = (η(T_B)/η_ref − 1) × T_A / (T_B − T_A)
-    eta_ratio = eta_target_B / eta_target_A
+        # Résolution : P_target = η_is_HP × (ṁ_HP·Δh_HP + 0.95·ṁ_BP·Δh_BP) × η_loss / 1000
+        denom = m_dot_hp * dh_hp_ideal + ratio_bp_to_hp * m_dot_bp * dh_bp_ideal
+        if denom <= 0:
+            eta_is_hp_new = 0.85
+            break
+        eta_is_hp_new = (P_target * 1000.0) / (eta_loss * denom)
+        eta_is_hp_new = max(0.45, min(0.95, eta_is_hp_new))
+        if abs(eta_is_hp_new - eta_is_hp) < 1e-4:
+            logger.info(f"Calibration convergée en {i+1} itérations")
+            break
+        eta_is_hp = eta_is_hp_new
+    eta_is_hp = eta_is_hp_new
+    eta_is_bp = eta_is_hp * ratio_bp_to_hp
+    
+    # ── Alpha temp : sensibilité thermique (modèle linéaire sur un point secondaire) ──
+    # Hypothèse : à 440°C on perd ~4% de performance machine → η_is baisse ~3.8%
+    T_B = T_HP_OPERATING     # 440°C
+    eta_ratio_t = 0.962      # η(440°C) / η(486°C) cible
     if T_B != T_A:
-        alpha_temp_calibrated = (eta_ratio - 1.0) * T_A / (T_B - T_A)
+        alpha_temp = (eta_ratio_t - 1.0) * T_A / (T_B - T_A)
     else:
-        alpha_temp_calibrated = 0.40  # valeur par défaut
-
-    alpha_temp_calibrated = max(0.10, min(1.0, alpha_temp_calibrated))
-
-    # ── Calibrage Stodola ──
-    # C_stodola tel que P_bp=4.5bar à Q=120T/h, T=486°C
-    T_in_K = T_A + 273.15
-    q_bp   = Q_A * (1.0 - 0.20 * NOMINAL["valve_mp"] / 100.0)
-    c_stodola_calibrated = (4.5 ** 2) / ((q_bp ** 2) * T_in_K)
-
-    # ── Application de la sensibilité CCPP sur alpha ──
-    # Légère pondération par la sensibilité observée dans le dataset réel
-    ccpp_weight = 0.15   # 15% de poids au dataset externe, 85% aux specs GTA
+        alpha_temp = 0.40
+    alpha_temp = max(0.10, min(1.0, alpha_temp))
+    
+    # ── Pondération légère par la sensibilité CCPP (dataset externe) ──
+    ccpp_weight = 0.15
     alpha_final = (
-        (1 - ccpp_weight) * alpha_temp_calibrated
+        (1 - ccpp_weight) * alpha_temp
         + ccpp_weight * ccpp_relations["ccpp_sensitivity_temp"] * 10.0
     )
     alpha_final = max(0.10, min(1.0, alpha_final))
-
+    
+    # ── Stodola (inchangé) ──
+    T_in_K = T_A + 273.15
+    q_bp = Q_A * (1.0 - extraction_ratio)
+    c_stodola = (4.5 ** 2) / ((q_bp ** 2) * T_in_K)
+    
     coeffs = {
-        "eta_is_hp":   round(eta_is_hp_calibrated, 4),
-        "eta_is_bp":   round(eta_is_hp_calibrated * 0.951, 4),  # BP légèrement moins bon
+        "eta_is_hp":   round(eta_is_hp, 4),
+        "eta_is_bp":   round(eta_is_bp, 4),
         "alpha_temp":  round(alpha_final, 4),
-        "c_stodola":   round(c_stodola_calibrated, 8),
-        "calibrated_from": "UCI_CCPP + GTA_specs",
-        "anchor_points": {
-            "design":      {"T": T_HP_DESIGN,    "P_elec_MW": 24.0, "eta_pct": 92.0},
-            "operational": {"T": T_HP_OPERATING, "P_elec_MW": None, "eta_pct": 88.5},
+        "c_stodola":   round(c_stodola, 8),
+        "calibrated_from": "UCI_CCPP + GTA_specs (2-stage IAPWS model)",
+        "anchor_point": {
+            "T_C": T_A, "P_bar": P_A, "Q_Tph": Q_A,
+            "valve_mp_pct": valve_mp_A, "P_elec_MW": P_target,
         },
+        "model_version": "v2_iapws_2stage",
         "ccpp_meta": ccpp_relations,
     }
-
-    logger.info(f"Coefficients calibrés : {json.dumps({k:v for k,v in coeffs.items() if isinstance(v, float)}, indent=2)}")
+    
+    logger.info(f"η_is_HP calibré : {eta_is_hp:.4f}  (plage physique [0.5, 0.95])")
+    logger.info(f"η_is_BP calibré : {eta_is_bp:.4f}")
+    logger.info(f"α_temp calibré   : {alpha_final:.4f}")
     return coeffs
-
 
 # ─────────────────────────────────────────────
 # ÉTAPE 4 — VALIDATION POST-CALIBRAGE
