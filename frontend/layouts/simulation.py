@@ -198,13 +198,11 @@ def layout():
                             ]),
                             html.Hr(style={"borderColor": "#0f2744", "margin": "10px 0"}),
                             html.Div([
-                                html.Div("EXTRACTION / CONDENSEUR", style={
+                                html.Div("CONDENSEUR", style={
                                     "fontSize": "9px", "color": "#334155",
                                     "letterSpacing": "1.5px", "marginBottom": "6px",
                                     "fontFamily": "Share Tech Mono",
                                 }),
-                                _slider_row("mp", "Vanne MP — Extraction", 50, "#a78bfa",
-                                            "Extraction vers barillet MP · P barillet monte si ouverture ↑"),
                                 _slider_row("bp", "Vanne BP — Condenseur", 80, "#38bdf8",
                                             "Sortie BP vers condenseur · min 5% sécurité"),
                             ]),

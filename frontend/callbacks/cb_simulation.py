@@ -89,16 +89,14 @@ def register(app):
         Output("val-v1", "children"),
         Output("val-v2", "children"),
         Output("val-v3", "children"),
-        Output("val-mp", "children"),
         Output("val-bp", "children"),
         Input("slider-v1", "value"),
         Input("slider-v2", "value"),
         Input("slider-v3", "value"),
-        Input("slider-mp", "value"),
         Input("slider-bp", "value"),
     )
-    def update_valve_displays(v1, v2, v3, vmp, vbp):
-        return str(v1), str(v2), str(v3), str(vmp), str(vbp)
+    def update_valve_displays(v1, v2, v3, vbp):
+        return str(v1), str(v2), str(v3), str(vbp)
 
     # ── FIX : chargement scénarios sur URL change (plus de race condition) ──
     @app.callback(
@@ -143,21 +141,20 @@ def register(app):
         State("slider-v1", "value"),
         State("slider-v2", "value"),
         State("slider-v3", "value"),
-        State("slider-mp", "value"),
         State("slider-bp", "value"),
         prevent_initial_call=True,
     )
-    def apply_valves(_, v1, v2, v3, vmp, vbp):
+    def apply_valves(_, v1, v2, v3, vbp):
         try:
             _session.post(
                 f"{BACKEND}/simulation/valves",
                 json={"valve_v1": v1, "valve_v2": v2, "valve_v3": v3,
-                      "valve_mp": vmp, "valve_bp": vbp},
+                       "valve_bp": vbp},
                 timeout=2,
             )
             ts = datetime.now().strftime("%H:%M:%S")
             return (f"[{ts}] Vannes appliquées — "
-                    f"V1:{v1}%  V2:{v2}%  V3:{v3}%  MP:{vmp}%  BP:{vbp}%")
+                    f"V1:{v1}%  V2:{v2}%  V3:{v3}% BP:{vbp}%")
         except Exception as e:
             return f"Erreur : {e}"
 
@@ -167,7 +164,6 @@ def register(app):
         Output("slider-v1", "value"),
         Output("slider-v2", "value"),
         Output("slider-v3", "value"),
-        Output("slider-mp", "value"),
         Output("slider-bp", "value"),
         Input("btn-reset", "n_clicks"),
         prevent_initial_call=True,
@@ -177,9 +173,9 @@ def register(app):
             _session.post(f"{BACKEND}/simulation/reset",
                           json={"confirm": True}, timeout=2)
             ts = datetime.now().strftime("%H:%M:%S")
-            return f"[{ts}] Système réinitialisé à l'état nominal", 100, 100, 100, 50, 80
+            return f"[{ts}] Système réinitialisé à l'état nominal", 100, 100, 100, 80
         except Exception as e:
-            return f"Erreur reset : {e}", no_update, no_update, no_update, no_update, no_update
+            return f"Erreur reset : {e}", no_update, no_update, no_update, no_update
 
     # ── Déclenchement scénario (Pattern Matching) ─────────────────────
     @app.callback(
@@ -309,7 +305,6 @@ def register(app):
             ("V1", "valve_v1", "#f97316", "Adm. HP"),
             ("V2", "valve_v2", "#60a5fa", "Équil."),
             ("V3", "valve_v3", "#60a5fa", "Équil."),
-            ("MP", "valve_mp", "#a78bfa", "Extr. MP"),
             ("BP", "valve_bp", "#38bdf8", "Cond."),
         ]
         
@@ -340,7 +335,6 @@ def register(app):
                         ("V1", "valve_v1", "#f97316"),
                         ("V2", "valve_v2", "#60a5fa"),
                         ("V3", "valve_v3", "#60a5fa"),
-                        ("MP", "valve_mp", "#a78bfa"),
                         ("BP", "valve_bp", "#38bdf8"),
                     ]],
                 ]),

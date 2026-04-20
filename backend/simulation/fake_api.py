@@ -35,7 +35,6 @@ class FakeAPI:
             "valve_v1":       NOMINAL["valve_v1"],
             "valve_v2":       NOMINAL["valve_v2"],
             "valve_v3":       NOMINAL["valve_v3"],
-            "valve_mp":       NOMINAL["valve_mp"],
             "valve_bp":       NOMINAL["valve_bp"],
         }
 
@@ -72,8 +71,6 @@ class FakeAPI:
             self._state["valve_v2"] = float(v2)
         if v3 is not None:
             self._state["valve_v3"] = float(v3)
-        if v_mp is not None:
-            self._state["valve_mp"] = float(v_mp)
         if v_bp is not None:
             self._state["valve_bp"] = float(v_bp)
 
@@ -110,7 +107,6 @@ class FakeAPI:
             "valve_v1":       NOMINAL["valve_v1"],
             "valve_v2":       NOMINAL["valve_v2"],
             "valve_v3":       NOMINAL["valve_v3"],
-            "valve_mp":       NOMINAL["valve_mp"],
             "valve_bp":       NOMINAL["valve_bp"],
         }
         self._active_scenario      = None
@@ -159,7 +155,6 @@ class FakeAPI:
             "valve_v1":       NOMINAL["valve_v1"],
             "valve_v2":       NOMINAL["valve_v2"],
             "valve_v3":       NOMINAL["valve_v3"],
-            "valve_mp":       NOMINAL["valve_mp"],
             "valve_bp":       NOMINAL["valve_bp"],
         }
         # On n'ajoute pas de bruit sur les vannes si elles sont à 100% nominal
@@ -175,7 +170,6 @@ class FakeAPI:
             computed_nom["valve_v1_target"] = state_nom["valve_v1"]
             computed_nom["valve_v2_target"] = state_nom["valve_v2"]
             computed_nom["valve_v3_target"] = state_nom["valve_v3"]
-            computed_nom["valve_mp_target"] = state_nom["valve_mp"]
             computed_nom["valve_bp_target"] = state_nom["valve_bp"]
 
             params_nom = GTAParameters(

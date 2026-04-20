@@ -66,17 +66,17 @@ def set_valves(cmd: ValveCommand):
     """Modifie l'ouverture des 5 vannes V1, V2, V3, MP, BP (0-100%)."""
     logger.info(
         f"ACTION OPÉRATEUR : Modification vannes -> "
-        f"V1:{cmd.valve_v1}%, V2:{cmd.valve_v2}%, V3:{cmd.valve_v3}%, MP:{cmd.valve_mp}%, BP:{cmd.valve_bp}%"
+        f"V1:{cmd.valve_v1}%, V2:{cmd.valve_v2}%, V3:{cmd.valve_v3}%, BP:{cmd.valve_bp}%"
     )
     fake_api.set_valves(
         v1=cmd.valve_v1, v2=cmd.valve_v2, v3=cmd.valve_v3,
-        v_mp=cmd.valve_mp, v_bp=cmd.valve_bp,
+        v_bp=cmd.valve_bp,
     )
     return {
         "status": "updated",
         "valves": {
             "v1": cmd.valve_v1, "v2": cmd.valve_v2, "v3": cmd.valve_v3,
-            "mp": cmd.valve_mp, "bp": cmd.valve_bp,
+            "bp": cmd.valve_bp,
         },
     }
 
@@ -94,7 +94,6 @@ def get_simulation_state():
             "v1": params.valve_v1,
             "v2": params.valve_v2,
             "v3": params.valve_v3,
-            "mp": params.valve_mp,
             "bp": params.valve_bp,
         },
     }

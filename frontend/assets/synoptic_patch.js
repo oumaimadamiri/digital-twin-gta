@@ -44,7 +44,6 @@ window.patchGtaSynoptic = function(data) {
     const q_hp    = data.steam_flow_hp        ?? 120.0;
     const p_bp_in = data.pressure_bp_in       ?? 4.5;
     const t_bp    = data.temperature_bp       ?? 226.0;
-    const p_bar_mp = data.pressure_mp_barillet ?? 9.5;
     const p_bar_bp = data.pressure_bp_barillet ?? 3.0;
     const q_cond  = data.steam_flow_condenser ?? 74.0;
     const p_cond  = data.pressure_condenser   ?? 0.0064;
@@ -57,16 +56,15 @@ window.patchGtaSynoptic = function(data) {
     const voltage = data.voltage              ?? 10.5;
     const i_a     = data.current_a            ?? 2254.0;
     const status  = data.status               ?? "NORMAL";
-    const v_mp    = data.valve_mp             ?? 50.0;
     const v_v1    = data.valve_v1             ?? 100.0;
     const v_bp    = data.valve_bp             ?? 80.0;
 
     /* ── Distribution flux BP — calculée localement ── */
     const q_hp_eff      = q_hp * (v_v1 / 100.0);
-    const q_extract_mp  = q_hp_eff * 0.20 * (v_mp / 100.0);
-    const q_barillet    = q_extract_mp * 0.50;
-    const q_chauffage   = q_extract_mp * 0.30;
-    const q_surchauffeur = q_extract_mp * 0.20;
+    const q_extract  = q_hp_eff * 0.38;   // EXTRACTION_RATIO spec
+    const q_barillet    = q_extract;      // débit entrant collecteur
+    const q_chauffage   = q_extract * 0.60;
+    const q_surchauffeur = q_extract * 0.40;
 
     /* ── Mécanique & Auxiliaires ── */
     const freq    = data.grid_frequency       ?? 50.0;
@@ -82,7 +80,6 @@ window.patchGtaSynoptic = function(data) {
     const v1_tgt  = data.valve_v1_target      ?? (data.valve_v1 ?? 100);
     const v2_tgt  = data.valve_v2_target      ?? (data.valve_v2 ?? 100);
     const v3_tgt  = data.valve_v3_target      ?? (data.valve_v3 ?? 100);
-    const vmp_tgt = data.valve_mp_target      ?? (data.valve_mp ?? 50);
     const vbp_tgt = data.valve_bp_target      ?? (data.valve_bp ?? 80);
 
     /* ── Couleurs statut ── */
@@ -97,12 +94,10 @@ window.patchGtaSynoptic = function(data) {
     const alm_pow  = power > 30.0;
     const alm_pf   = _alarm(pf, 0.82, 0.86);
     const alm_eff  = eff < 85.0;
-    const alm_pbar_mp = p_bar_mp < 8.0 || p_bar_mp > 11.0;
     const alm_pbar_bp = p_bar_bp > 5.0;
     const alm_ia   = i_a > 3000;
 
     const alt_col  = alm_pow ? "#ef4444" : (power > 24 ? "#f59e0b" : "#10b981");
-    const bar_col  = alm_pbar_mp ? "#ef4444" : "#a78bfa";
 
     /* ── Statut global ── */
     _setText("syn-status", status);
@@ -181,12 +176,6 @@ window.patchGtaSynoptic = function(data) {
         spdRect.setAttribute("fill",   alm_spd ? "rgba(239,68,68,0.12)" : "rgba(15,23,42,0.75)");
         spdRect.setAttribute("stroke", alm_spd ? "#ef4444" : "#1e3a5f");
     }
-
-    /* ── Barillet MP ── */
-    _setText("syn-pbar-mp-val", `${p_bar_mp.toFixed(2)} `);
-    _setFill("syn-pbar-mp-val", bar_col);
-    const mpRect = document.getElementById("syn-barillet-mp-rect");
-    if (mpRect) mpRect.setAttribute("stroke", bar_col);
 
     /* ── Barillet BP ── */
     _setText("syn-pbar-bp-val", `${p_bar_bp.toFixed(2)} `);

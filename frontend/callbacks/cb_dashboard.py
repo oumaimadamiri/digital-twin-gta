@@ -98,7 +98,6 @@ def register(app):
             ("V1",  "valve_v1",  "#f97316"),
             ("V2",  "valve_v2",  "#60a5fa"),
             ("V3",  "valve_v3",  "#60a5fa"),
-            ("MP",  "valve_mp",  "#a78bfa"),
             ("BP",  "valve_bp",  "#38bdf8"),
         ]
 

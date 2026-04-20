@@ -42,7 +42,6 @@ class GTAParameters(BaseModel):
     # ── Sorties vapeur ──
     steam_flow_condenser:   float = Field(..., description="Débit vapeur vers condenseur (T/h)")
     pressure_bp_barillet:   float = Field(..., description="Pression VP BP vers barillet (bar)")
-    pressure_mp_barillet: float = Field(..., description="Pression barillet MP soutirage HP (bar)")
     pressure_condenser:     float = Field(..., description="Pression condenseur / vide (bar)")
 
     # ── Turbine ──
@@ -65,9 +64,6 @@ class GTAParameters(BaseModel):
     valve_v2_target: float = Field(100.0, ge=0, le=100, description="Consigne Vanne V2 (%)")
     valve_v3: float = Field(..., ge=0, le=100, description="Vanne V3 équilibrage (%)")
     valve_v3_target: float = Field(100.0, ge=0, le=100, description="Consigne Vanne V3 (%)")
-    # Vanne extraction MP → barillet
-    valve_mp: float = Field(..., ge=0, le=100, description="Vanne extraction MP (%)")
-    valve_mp_target: float = Field(50.0, ge=0, le=100, description="Consigne Vanne MP (%)")
     # Vanne sortie BP → condenseur
     valve_bp: float = Field(..., ge=0, le=100, description="Vanne sortie BP condenseur (%)")
     valve_bp_target: float = Field(80.0, ge=0, le=100, description="Consigne Vanne BP (%)")
@@ -113,5 +109,4 @@ class ValveCommand(BaseModel):
     valve_v1: Optional[float] = Field(None, ge=0, le=100, description="V1 admission HP (%)")
     valve_v2: Optional[float] = Field(None, ge=0, le=100, description="V2 équilibrage (%)")
     valve_v3: Optional[float] = Field(None, ge=0, le=100, description="V3 équilibrage (%)")
-    valve_mp: Optional[float] = Field(None, ge=0, le=100, description="Vanne extraction MP (%)")
     valve_bp: Optional[float] = Field(None, ge=0, le=100, description="Vanne sortie BP (%)")

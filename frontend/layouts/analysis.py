@@ -23,7 +23,7 @@ _GAUGES_SLOW_ELEC = ["reactive_power", "apparent_power", "power_factor",
                      "current_a", "voltage"]
 
 _GAUGES_SLOW_BP   = ["steam_flow_hp", "pressure_bp_in", "pressure_bp_barillet",
-                     "pressure_mp_barillet", "steam_flow_condenser"]
+                     "steam_flow_condenser"]
 
 
 def _gauge_section(title, gauge_keys, color):

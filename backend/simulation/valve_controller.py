@@ -57,14 +57,6 @@ VALVE_CONFIGS: dict[str, ValveConfig] = {
         default     = 100.0,
         warning_low = 10.0,
     ),
-    "mp": ValveConfig(
-        name        = "Vanne MP — Extraction vers barillet",
-        min_opening = 0.0,
-        max_opening = 100.0,
-        ramp_rate   = 10.0,
-        default     = 50.0,    # nominale ~50%
-        warning_low = 5.0,
-    ),
     "bp": ValveConfig(
         name        = "Vanne BP — Sortie vers condenseur",
         min_opening = 5.0,     # ne doit jamais être totalement fermée
@@ -146,17 +138,6 @@ class ValveController:
                     "message":  "Sécurité : valve BP ne peut pas fermer si V1 > 10%. Fermez d'abord V1.",
                 }
 
-        # ── Règle 2 : valve_mp < 80% si puissance > 22 MW ──
-        if valve_id == "mp" and clamped > 80.0 and self._current_power_mw > 22.0:
-            return {
-                "accepted": False,
-                "message":  (
-                    f"Sécurité : valve MP limitée à 80% si puissance > 22 MW "
-                    f"(actuelle {self._current_power_mw:.1f} MW). "
-                    "Risque surpression barillet BP."
-                ),
-            }
-
         # ── Alerte : fermeture rapide V1 ──
         if valve_id == "v1" and clamped < 20.0 and valve.current > 60.0:
             logger.warning("[ValveCtrl] Fermeture rapide V1 — risque choc thermique")
@@ -170,11 +151,9 @@ class ValveController:
         }
 
     def set_all(self, v1: Optional[float] = None, v2: Optional[float] = None,
-                v3: Optional[float] = None, valve_mp: Optional[float] = None,
-                valve_bp: Optional[float] = None) -> dict:
+                v3: Optional[float] = None, valve_bp: Optional[float] = None) -> dict:
         results = {}
-        for key, val in [("v1", v1), ("v2", v2), ("v3", v3),
-                         ("mp", valve_mp), ("bp", valve_bp)]:
+        for key, val in [("v1", v1), ("v2", v2), ("v3", v3), ("bp", valve_bp)]:
             if val is not None:
                 results[key] = self.set_valve(key, val)
         return results
@@ -222,8 +201,6 @@ class ValveController:
     def v2(self) -> float: return self._valves["v2"].current
     @property
     def v3(self) -> float: return self._valves["v3"].current
-    @property
-    def valve_mp(self) -> float: return self._valves["mp"].current
     @property
     def valve_bp(self) -> float: return self._valves["bp"].current
 

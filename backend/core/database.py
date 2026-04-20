@@ -44,7 +44,7 @@ def init_db():
     required_columns = [
         "voltage", "charge_site", "excedent_reseau",
         "flow_v1_th", "flow_v2_th", "flow_v3_th",
-        "flow_barillet", "flow_chauffage_as", "flow_surchauffeur","pressure_mp_barillet"
+        "flow_barillet", "flow_chauffage_as", "flow_surchauffeur"
     ]
 
     with sqlite3.connect(SQLITE_PATH) as conn:
@@ -73,7 +73,6 @@ def init_db():
                 steam_flow_bp_in REAL,
                 steam_flow_condenser REAL,
                 pressure_bp_barillet REAL,
-                pressure_mp_barillet REAL,
                 pressure_condenser REAL,
                 turbine_speed   REAL,
                 active_power    REAL,
@@ -86,7 +85,6 @@ def init_db():
                 valve_v1        REAL,
                 valve_v2        REAL,
                 valve_v3        REAL,
-                valve_mp        REAL,
                 valve_bp        REAL,
                 charge_site      REAL,
                 excedent_reseau  REAL,

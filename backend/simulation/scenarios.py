@@ -2,7 +2,7 @@
 simulation/scenarios.py — 10 scénarios de perturbation du GTA
 Mis à jour :
   - V2/V3 retirés des deltas thermo (équilibrage mécanique pur)
-  - valve_mp et valve_bp ajoutés là où pertinent
+  - valve_bp ajoutés là où pertinent
   - Scénario 8 : dépassement 24 MW → surpression BP barillet
   - Scénario 9 : interruption source vapeur (acide sulfurique)
   - Scénario 10 : panne pompe refroidissement huile de graissage
@@ -132,7 +132,6 @@ SCENARIOS: dict[int, Scenario] = {
         target_deltas={
             "steam_flow_hp": +35.0,   # T/h → monte à ~155 T/h → P > 24 MW
             "pressure_hp":   +4.0,    # bar  → légère montée pression amont
-            "valve_mp":      +25.0,   # % → valve_mp s'ouvre → pression barillet monte
         },
         duration_s=90,
     ),

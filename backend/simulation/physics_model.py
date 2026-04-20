@@ -20,8 +20,10 @@ import os
 from iapws import IAPWS97
 
 from core.config import (
-    NOMINAL, T_HP_DESIGN, T_HP_OPERATING, CALIBRATION_COEFFS,
-    PHYSICS_ETA_IS_HP, PHYSICS_ETA_IS_BP, PHYSICS_V1_FLOW_FACTOR, PHYSICS_P_OUT_RATIO,
+    NOMINAL, PHYSICS_ETA_IS_HP, PHYSICS_ETA_IS_BP,
+    PHYSICS_V1_FLOW_FACTOR, PHYSICS_P_OUT_RATIO,
+    T_HP_DESIGN, T_HP_OPERATING, CALIBRATION_COEFFS,
+    EXTRACTION_RATIO,
 )
 
 
@@ -260,7 +262,7 @@ class PhysicsModel:
     # ──────────────────────────────────────────
 
     def compute_bp_pressure(self, steam_flow_hp: float, temperature_hp: float,
-                             valve_mp: float, valve_v1: float) -> float:
+                            valve_v1: float) -> float:
         """
         Pression BP via loi de Stodola (ellipse de turbine).
         P_bp² ≈ C_stodola × Q² × T_in   (forme simplifiée)
@@ -273,9 +275,8 @@ class PhysicsModel:
         """
         # Débit effectif traversant l'admission HP
         effective_flow = steam_flow_hp * (valve_v1 / 100.0)
-        # Débit résiduel vers BP après extraction MP
-        extraction_fraction = 0.76 * (valve_mp / 100.0)   # valve_mp extrait jusqu'à 20%
-        q_bp = effective_flow * (1.0 - extraction_fraction)
+        # Débit résiduel vers BP après extraction intermédiaire (taux fixe spec IMACID)
+        q_bp = effective_flow * (1.0 - EXTRACTION_RATIO)
 
         T_in_K = temperature_hp + 273.15
         p_bp_sq = self.C_STODOLA * (q_bp ** 2) * T_in_K
@@ -307,7 +308,7 @@ class PhysicsModel:
     # DÉBIT VERS CONDENSEUR
     # ──────────────────────────────────────────
 
-    def compute_condenser_flow(self, steam_flow_hp: float, valve_mp: float,
+    def compute_condenser_flow(self, steam_flow_hp: float,
                                 valve_bp: float, valve_v1: float) -> float:
         """
         Débit de vapeur détendue vers le condenseur (T/h).
@@ -315,82 +316,58 @@ class PhysicsModel:
         Nominal : 120 T/h × (1 - 0.20×valve_mp - quelques % pertes) ≈ 74 T/h
         """
         effective_flow = steam_flow_hp * (valve_v1 / 100.0)
-        extraction_mp = effective_flow * 0.20 * (valve_mp / 100.0)
+        extraction = effective_flow * 0.20 * EXTRACTION_RATIO
         # valve_bp régule la sortie vers condenseur (ouverture nominale ~80%)
-        flow_to_cond  = (effective_flow - extraction_mp) * (valve_bp / 100.0)
+        flow_to_cond  = (effective_flow - extraction) * (valve_bp / 100.0)
         return round(max(0.0, flow_to_cond), 1)
 
     # ──────────────────────────────────────────
-    # PRESSION MP/BP BARILLET (sortie process)
+    # PRESSION BP BARILLET (sortie process)
     # ──────────────────────────────────────────
-    def compute_mp_barillet_pressure(self, pressure_hp: float, valve_mp: float) -> float:
-        """
-        Pression barillet MP (bar) — soutirage intermédiaire turbine HP.
-        Nominalement ~9.5 bar à P_hp=60 bar (ratio ~0.158).
-        valve_mp contrôle le débit extrait → légère influence sur pression.
-        """
-        base_ratio = 9.5 / 60.0   # ratio nominal
-        p_mp = pressure_hp * base_ratio
-        # valve_mp ouverte → plus d'extraction → légère chute de pression
-        valve_effect = (1.0 - (valve_mp / 100.0) * 0.05)
-        return round(max(7.0, min(12.0, p_mp * valve_effect)), 3)
-
-    def compute_bp_barillet_pressure(self, pressure_bp: float, valve_mp: float,
-                                  steam_flow_hp: float = 120.0,
+    def compute_bp_barillet_pressure(self, pressure_bp: float, steam_flow_hp: float = 120.0,
                                   valve_v1: float = 100.0) -> float:
         """
-        Pression barillet BP (bar) — distribution aval vers barillet 3 bar.
+        Pression barillet BP (bar) — collecteur à pression régulée.
         
-        Spec GTA : barillet BP = 3 bar nominal, déclenchement > 3.5 bar.
-        
-        Physique : le barillet BP reçoit la vapeur extraite (via valve_mp)
-        et distribuée aux 3 destinations (acide sulfurique, chauffage, surchauffeur).
-        Sa pression dépend du débit injecté vs. soutiré par les procédés aval.
-        
-        Modèle simplifié (régime permanent) :
-        - valve_mp fermée (0%)  → pas d'injection → barillet se vide → 2.5 bar
-        - valve_mp à 50% (nom.) → 3.0 bar (point de conception)
-        - valve_mp à 100%       → sur-injection → 3.5 bar (seuil déclenchement)
-        
-        Le paramètre pressure_bp n'influe pas directement : le barillet BP est
-        alimenté APRÈS la détente BP, pas en parallèle.
+        En régime permanent, la pression est maintenue à 3 bar par la conception
+        (vanne de détente amont, régulateurs de débit aval vers procédés AS).
+        Varie faiblement avec le débit entrant (± 0.3 bar selon charge).
         """
-        # Débit injecté dans le barillet BP (~50% de l'extraction MP)
-        q_injected_ratio = (valve_mp / 100.0) * (valve_v1 / 100.0)
-        # Pression linéaire entre 2.5 (pas d'injection) et 3.5 (saturation)
-        p_barillet = 2.5 + 1.0 * q_injected_ratio
-        return round(max(2.0, min(4.0, p_barillet)), 3)
-
+        # Variation légère selon le débit effectif (modèle simplifié)
+        flow_ratio = (steam_flow_hp * valve_v1 / 100.0) / 120.0
+        p_barillet = 2.7 + 0.3 * flow_ratio   # 3.0 bar à nominal, 2.7 à débit nul
+        return round(max(2.5, min(3.5, p_barillet)), 3)
+    
     # ──────────────────────────────────────────
     # DISTRIBUTION DÉBIT BP COMPLÈTE
     # ──────────────────────────────────────────
 
-    def compute_bp_flow_distribution(self, steam_flow_hp, valve_mp, valve_bp, valve_v1):
+    def compute_bp_flow_distribution(self, steam_flow_hp, valve_bp, valve_v1):
         """
-        Bilan massique complet de la vapeur BP — 4 destinations selon specs GTA :
-          1. Condenseur          (circuit principal)
-          2. Barillet 3 bar      (extraction MP)
-          3. Chauffage eau AS    (acide sulfurique)
-          4. Surchauffeur AS     (acide sulfurique)
+        Bilan massique BP — spec GTA (post refactor) :
+          - Extraction intermédiaire (38%) → Barillet BP collecteur 3 bar
+          - Barillet alimente 2 consommateurs : Chauffage AS + Surchauffeur AS
+          - Reste du débit → Condenseur via valve_bp
+        
+        Convention industrielle : le barillet EST le collecteur, pas un consommateur.
         """
         effective_flow = steam_flow_hp * (valve_v1 / 100.0)
 
-        # Extraction MP → barillet + dérivations acide sulfurique
-        extraction_mp = effective_flow * 0.20 * (valve_mp / 100.0)
+        # Extraction intermédiaire (taux fixe spec IMACID : 38%)
+        extraction = effective_flow * EXTRACTION_RATIO  # ≈ 46 T/h à nominal
+        
+        # Barillet redistribue vers les 2 consommateurs AS (conservation de masse)
+        flow_chauffage_as  = extraction * 0.60   # 60% → chauffage eau AS
+        flow_surchauffeur  = extraction * 0.40   # 40% → surchauffeur AS
 
-        # Répartition de l'extraction MP entre les 3 destinations BP
-        flow_barillet      = extraction_mp * 0.50   # → barillet 3 bar
-        flow_chauffage_as  = extraction_mp * 0.30   # → chauffage eau AS
-        flow_surchauffeur  = extraction_mp * 0.20   # → surchauffeur AS
-
-        # Débit vers condenseur
-        flow_condenseur = (effective_flow - extraction_mp) * (valve_bp / 100.0)
+        # Débit vers condenseur (régulé par valve_bp)
+        flow_condenseur = (effective_flow - extraction) * (valve_bp / 100.0)
 
         return {
-            "flow_condenseur":     round(flow_condenseur, 1),   # T/h → condenseur
-            "flow_barillet":       round(flow_barillet, 1),     # T/h → barillet
-            "flow_chauffage_as":   round(flow_chauffage_as, 1), # T/h → chauffage AS
-            "flow_surchauffeur":   round(flow_surchauffeur, 1), # T/h → surchauffeur AS
+            "flow_condenseur":     round(flow_condenseur, 1),
+            "flow_barillet_in":    round(extraction, 1),       # débit entrant collecteur
+            "flow_chauffage_as":   round(flow_chauffage_as, 1),
+            "flow_surchauffeur":   round(flow_surchauffeur, 1),
         }
 
     # ──────────────────────────────────────────
@@ -537,7 +514,7 @@ class PhysicsModel:
     def compute_all(self, pressure_hp: float, temperature_hp: float,
                     steam_flow_hp: float, valve_v1: float,
                     valve_v2: float, valve_v3: float,
-                    valve_mp: float, valve_bp: float) -> dict:
+                    valve_bp: float) -> dict:
         """
         Calcule tous les paramètres dérivés à partir des 8 entrées primaires.
 
@@ -553,23 +530,22 @@ class PhysicsModel:
         )
         turbine_speed  = self.compute_turbine_speed(pressure_hp, valve_v1)
         pressure_bp    = self.compute_bp_pressure(
-            steam_flow_hp, temperature_hp, valve_mp, valve_v1
+            steam_flow_hp, temperature_hp, valve_v1
         )
         temperature_bp = self.compute_bp_temperature(
             temperature_hp, pressure_hp, pressure_bp
         )
         flow_condenser = self.compute_condenser_flow(
-            steam_flow_hp, valve_mp, valve_bp, valve_v1
+            steam_flow_hp, valve_bp, valve_v1
         )
-        p_mp_barillet = self.compute_mp_barillet_pressure(pressure_hp, valve_mp)
-        p_bp_barillet = self.compute_bp_barillet_pressure(pressure_bp, valve_mp, steam_flow_hp, valve_v1)        
+        p_bp_barillet = self.compute_bp_barillet_pressure(steam_flow_hp, valve_v1)        
         efficiency     = self.compute_efficiency(
             active_power, steam_flow_hp, temperature_hp, pressure_hp
         )
 
         # ── BP Mass Balance (Complet) ──
         bp_dist = self.compute_bp_flow_distribution(
-            steam_flow_hp, valve_mp, valve_bp, valve_v1
+            steam_flow_hp, valve_bp, valve_v1
         )
 
         # ── Débits hydrauliques par vanne (informatifs) ──
@@ -599,7 +575,6 @@ class PhysicsModel:
             "steam_flow_bp_in":     0.0,   # nul en régime permanent (démarrage uniquement)
             # Sorties vapeur
             "steam_flow_condenser": flow_condenser,
-            "pressure_mp_barillet": p_mp_barillet,
             "pressure_bp_barillet": p_bp_barillet,
             "pressure_condenser":   self.nominal["pressure_condenser"],  # 0.0064 bar fixe
             # Turbine
@@ -615,7 +590,6 @@ class PhysicsModel:
             "valve_v1": round(valve_v1, 2),
             "valve_v2": round(valve_v2, 2),
             "valve_v3": round(valve_v3, 2),
-            "valve_mp": round(valve_mp, 2),
             "valve_bp": round(valve_bp, 2),
             # Rendement
             "efficiency": efficiency,
@@ -658,7 +632,6 @@ class PhysicsModel:
             valve_v1       = 100.0,
             valve_v2       = 100.0,
             valve_v3       = 100.0,
-            valve_mp       = n["valve_mp"],
             valve_bp       = n["valve_bp"],
         )
 

@@ -76,7 +76,6 @@ NOMINAL = {
 
     # ── Sorties vapeur ──
     "steam_flow_condenser": 74.0,   # T/h  VP HP détendue vers condenseur (≠ bp_in)
-    "pressure_mp_barillet": 9.5,    # bar — soutirage turbine HP
     "pressure_bp_barillet": 3.0,    # bar  VP BP sortie vers barillet
     "pressure_condenser":   0.0064, # bar  vide condenseur (système à vide)
 
@@ -100,12 +99,10 @@ NOMINAL = {
     # ── Vannes (% ouverture) ──
     # V1 : admission HP principale — pilote 80% du débit total
     # V2, V3 : équilibrage mécanique pur (~7% chacune) — N'affectent PAS le bilan thermo
-    # valve_mp : extraction vapeur MP vers barillet (4ème vanne)
     # valve_bp : sortie vapeur BP vers condenseur
     "valve_v1":   100.0,   # % ouverture V1 (100% = pleine admission)
     "valve_v2":   100.0,   # % ouverture V2 (équilibrage mécanique)
     "valve_v3":   100.0,   # % ouverture V3 (équilibrage mécanique)
-    "valve_mp":   50.0,    # % ouverture vanne extraction MP (nominale ~50%)
     "valve_bp":   80.0,    # % ouverture vanne sortie BP condenseur (nominale ~80%)
 
     # ── Rendement ──
@@ -145,7 +142,6 @@ THRESHOLDS = {
     "temperature_bp":   {"min": 180.0,   "max": 280.0},
     "voltage":          {"min": 9.975,   "max": 11.025},   # ±5% de 10.5 kV
     "current_a":        {"min": 0.0,     "max": 3500.0},
-    "pressure_mp_barillet": {"min": 8.0, "max": 11.0},  # bar barillet MP
     "pressure_bp_barillet": {"min": 2.5, "max": 5.0},    # bar — recalibré à 5.0 pour éviter fausses alertes synchro
 }
 
@@ -179,10 +175,10 @@ CALIBRATION_COEFFS  = os.path.join(AI_MODELS_DIR, "physics_coeffs.json")
 #   - Moderne haute efficacité   : 0.85–0.90
 #   - Industrielle standard      : 0.75–0.85
 #   - Charge partielle / ancienne : 0.60–0.75
-#
+
 # La machine GTA (41 MVA nominal) est exploitée à 24 MW (69% charge) pour protéger
-# la pression barillet MP → les η_is calibrés reflètent ce régime de charge partielle.
-#
+# la pression barillet BP → les η_is calibrés reflètent ce régime de charge partielle.
+
 # PHYSICS_P_OUT_RATIO : pression inter-étage (4.5/60 = 0.075) — séparation HP / BP.
 # PHYSICS_V1_FLOW_FACTOR : 1.0 (V1 pilote tout le débit thermodynamiquement actif).
 # ─────────────────────────────────────────────
@@ -190,3 +186,10 @@ PHYSICS_ETA_IS_HP      = float(os.getenv("PHYSICS_ETA_IS_HP",      0.85))
 PHYSICS_ETA_IS_BP      = float(os.getenv("PHYSICS_ETA_IS_BP",      0.80))
 PHYSICS_V1_FLOW_FACTOR = float(os.getenv("PHYSICS_V1_FLOW_FACTOR", 1.0))
 PHYSICS_P_OUT_RATIO    = float(os.getenv("PHYSICS_P_OUT_RATIO",    0.075))
+# ─────────────────────────────────────────────
+# TAUX D'EXTRACTION VERS BARILLET BP
+# Source : spec IMACID — 46 T/h extraits sur 120 T/h débit HP → 38.3%
+# L'extraction intermédiaire turbine est un prélèvement à pression fixe,
+# déterminé par la conception mécanique. Pas de vanne opérateur.
+# ─────────────────────────────────────────────
+EXTRACTION_RATIO = float(os.getenv("EXTRACTION_RATIO", 0.38))

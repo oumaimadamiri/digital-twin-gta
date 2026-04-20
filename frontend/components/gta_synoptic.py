@@ -31,7 +31,6 @@ _DEFAULTS = {
     "valve_v1":             100.0,
     "valve_v2":             100.0,
     "valve_v3":             100.0,
-    "valve_mp":             50.0,
     "valve_bp":             80.0,
 }
 
@@ -141,7 +140,6 @@ def _build_synoptic_div(data: dict, static_ids: bool) -> html.Div:
 
     p_bp_in  = data.get("pressure_bp_in",       4.5)
     t_bp     = data.get("temperature_bp",      226.0)
-    p_bar_mp = data.get("pressure_mp_barillet", 9.5)   # barillet MP soutirage HP
     p_bar_bp = data.get("pressure_bp_barillet", 3.0)   # barillet BP distribution    q_cond   = data.get("steam_flow_condenser",  74.0)
     q_cond   = data.get("steam_flow_condenser",  74.0)
     p_cond   = data.get("pressure_condenser",  0.0064)
@@ -162,8 +160,6 @@ def _build_synoptic_div(data: dict, static_ids: bool) -> html.Div:
     v2_tgt  = data.get("valve_v2_target", v2)
     v3      = data.get("valve_v3",  100.0)
     v3_tgt  = data.get("valve_v3_target", v3)
-    v_mp    = data.get("valve_mp",   50.0)
-    v_mp_tgt= data.get("valve_mp_target", v_mp)
     v_bp    = data.get("valve_bp",   80.0)
     v_bp_tgt= data.get("valve_bp_target", v_bp)
 
@@ -182,10 +178,10 @@ def _build_synoptic_div(data: dict, static_ids: bool) -> html.Div:
 
     # ── Distribution flux BP (calculé depuis données disponibles) ──
     _q_hp_eff          = q_hp * (v1 / 100.0)
-    _q_extract_mp      = _q_hp_eff * 0.20 * (v_mp / 100.0)
-    flow_barillet_val    = round(_q_extract_mp * 0.50, 1)
-    flow_chauffage_val   = round(_q_extract_mp * 0.30, 1)
-    flow_surchauffeur_val = round(_q_extract_mp * 0.20, 1)
+    _q_extract     = _q_hp_eff * 0.38 # EXTRACTION_RATIO spec
+    flow_barillet_val    = round(_q_extract, 1)
+    flow_chauffage_val   = round(_q_extract * 0.60, 1)
+    flow_surchauffeur_val = round(_q_extract * 0.40, 1)
 
     # ── Alarmes ──────────────────────────────────────────────────────────────
     alm_php  = _alarm(p_hp,  55, 65)
@@ -195,7 +191,6 @@ def _build_synoptic_div(data: dict, static_ids: bool) -> html.Div:
     alm_pow  = power > 30.0
     alm_pf   = _alarm(pf, 0.82, 0.86)
     alm_eff  = eff < 85.0
-    alm_pbar_mp = _alarm(p_bar_mp, 8.0, 11.0)
     alm_pbar_bp = p_bar_bp > 5.0
     alm_ia   = i_a > 3000
 
@@ -203,11 +198,9 @@ def _build_synoptic_div(data: dict, static_ids: bool) -> html.Div:
     sc       = STATUS_COLORS.get(status, STATUS_COLORS["NORMAL"])["stroke"]
     hp_col   = "#ef4444" if alm_thp else "#f97316"
     alt_col  = "#ef4444" if alm_pow else ("#f59e0b" if power > 24 else "#10b981")
-    bar_col  = "#ef4444" if alm_pbar_mp else "#a78bfa"
     vc1      = _vc(v1,  "#f97316")
     vc2      = _vc(v2,  "#60a5fa")
     vc3      = _vc(v3,  "#60a5fa")
-    vc_mp    = _vc(v_mp,"#a78bfa")
     vc_bp    = _vc(v_bp,"#3b82f6")
 
     # ── Animations ───────────────────────────────────────────────────────────
@@ -246,14 +239,12 @@ def _build_synoptic_div(data: dict, static_ids: bool) -> html.Div:
         vsym_v1  = _valve_symbol_static(330, 248, v1, v1_tgt, "V1",  vc1,  "syn-v1",  20)
         vsym_v2  = _valve_symbol_static(280, 175, v2, v2_tgt, "V2",  vc2,  "syn-v2",  13, orient="left")
         vsym_v3  = _valve_symbol_static(280, 335, v3, v3_tgt, "V3",  vc3,  "syn-v3",  13, orient="left")
-        vsym_vmp = _valve_symbol_static(544, 62, v_mp, v_mp_tgt,"VMP", vc_mp, "syn-vmp", 17, orient="right")
         vsym_vbp = _valve_symbol_static(656, 415, v_bp, v_bp_tgt,"VBP", vc_bp,"syn-vbp", 18, orient="right")
     else:
         # Appel direct — _valve_symbol est défini dans ce même module
         vsym_v1  = _valve_symbol(330, 248, v1, v1_tgt, "V1",  vc1,  20)
         vsym_v2  = _valve_symbol(280, 175, v2, v2_tgt, "V2",  vc2,  13, orient="left")
         vsym_v3  = _valve_symbol(280, 335, v3, v3_tgt, "V3",  vc3,  13, orient="left")
-        vsym_vmp = _valve_symbol(544, 62, v_mp, v_mp_tgt,"VMP", vc_mp, 17, orient="right")
         vsym_vbp = _valve_symbol(656, 415, v_bp, v_bp_tgt,"VBP", vc_bp, 18, orient="right")
 
     svg = f"""
@@ -521,29 +512,7 @@ def _build_synoptic_div(data: dict, static_ids: bool) -> html.Div:
       text-anchor="middle">Détente adiabatique — Δh = ṁ × (h_in − h_out)</text>
   </g>
 
-  <!-- ════ EXTRACTION MP → VANNE_MP → BARILLET [SHIFT -20px] ════ -->
-  <line x1="544" y1="130" x2="544" y2="0"
-      stroke="#a78bfa" stroke-width="6" stroke-linecap="round" class="flow-bp"/>
-  {_instrument_circle(544, 105, "PT", "#a78bfa")}
-  {vsym_vmp}
-
-<!-- ════ BARILLET MP (~9.5 bar) ════ -->
-<rect id="syn-barillet-mp-rect" x="480" y="-20" width="130" height="50" rx="8"
-      fill="#0a101a" stroke="{bar_col}" stroke-width="1.8"/>
-<text x="545" y="0" fill="#f8fafc" font-size="10" font-weight="600"
-      text-anchor="middle" letter-spacing="1">BARILLET MP</text>
-<text{sid("pbar-mp-val")} x="545" y="15" fill="{bar_col}" font-size="11" font-weight="700"
-      text-anchor="middle">{p_bar_mp:.2f} <tspan fill="#64748b" font-size="8" font-weight="400">bar</tspan></text>
-
 <!-- [BARILLET BP déplacé — voir section DISTRIBUTION BP ci-dessous] -->
-
-
-<!-- Sorties barillet [centre y = -50 + 50/2 = -25] -->
-<line x1="480" y1="5" x2="455" y2="5" stroke="#a78bfa" stroke-width="3"/>
-<text x="450" y="4" fill="#94a3b8" font-size="8" text-anchor="end">→ Acid. Sulf.</text>
-<text x="450" y="11" fill="#94a3b8" font-size="8" text-anchor="end">→ Surchauffeur</text>
-<line x1="610" y1="5" x2="635" y2="5" stroke="#a78bfa" stroke-width="3"/>
-<text x="638" y="8" fill="#94a3b8" font-size="8">→ Réseau vapeur</text>
 
   <!-- ════ DISTRIBUTION BP ════ -->
   <!-- Tuyau BP sortie turbine → VBP (actuateur vers le haut) -->
