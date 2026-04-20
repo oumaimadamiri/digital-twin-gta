@@ -80,7 +80,7 @@ NOMINAL = {
     "pressure_condenser":   0.0064, # bar  vide condenseur (système à vide)
 
     # ── Bilan massique BP complet ──
-    "steam_flow_barillet":     8.0,   # T/h → barillet (estimation)
+    "steam_flow_barillet_in":  46.0,   # T/h → barillet (estimation)
     "steam_flow_chauffage_as": 5.0,   # T/h → chauffage eau AS (estimation)
     "steam_flow_surchauffeur": 3.0,   # T/h → surchauffeur AS (estimation)
 
@@ -112,7 +112,7 @@ NOMINAL = {
 # ─────────────────────────────────────────────
 # POIDS DE DISTRIBUTION DU DÉBIT HP PAR VANNE
 # V1 porte 80% du débit total ; V2+V3 = équilibrage (14% restant passe par les étages)
-# Le débit thermodynamiquement actif est contrôlé par V1 + valve_mp/valve_bp
+# Le débit thermodynamiquement actif est contrôlé par V1 + valve_bp
 # ─────────────────────────────────────────────
 VALVE_FLOW_WEIGHTS = {
     "v1": 0.80,   # répartition hydraulique réelle (80% du débit passe par V1)
@@ -169,7 +169,7 @@ CALIBRATION_COEFFS  = os.path.join(AI_MODELS_DIR, "physics_coeffs.json")
 # COEFFICIENTS PHYSIQUES — RENDEMENTS ISENTROPIQUES
 #
 # η_is ∈ [0, 1] par définition (Δh_réel / Δh_idéal ≤ 1).
-# Calibrés sur point nominal : 24 MW @ 486°C, 60 bar, 120 T/h, V1=100%, valve_mp=50%.
+# Calibrés sur point nominal : 24 MW @ 486°C, 60 bar, 120 T/h, V1=100%,extraction=38%
 #
 # Plages typiques turbines vapeur :
 #   - Moderne haute efficacité   : 0.85–0.90

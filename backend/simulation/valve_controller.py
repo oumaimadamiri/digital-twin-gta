@@ -5,12 +5,10 @@ Architecture :
   V1  — Admission vapeur HP principale (80% du débit)
   V2  — Équilibrage mécanique turbine (~7%) — pas dans le bilan thermo
   V3  — Équilibrage mécanique turbine (~7%) — pas dans le bilan thermo
-  MP  — Extraction vapeur MP vers barillet
   BP  — Sortie vapeur BP vers condenseur (min 5% sécurité)
 
 Règles de sécurité intégrées :
   - valve_bp ≥ 5% si V1 > 10% (pression condenseur)
-  - valve_mp < 80% si active_power > 22 MW (risque surpression barillet)
   - Fermeture rapide V1 → alerte choc thermique
 """
 

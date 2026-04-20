@@ -1,7 +1,7 @@
 """
 models/gta_parameters.py — Schémas Pydantic des données du GTA
-Mis à jour : ajout vannes valve_mp/valve_bp, signaux électriques calculés,
-             séparation flux BP entrée / condenseur.
+Mis à jour : ajout vanne valve_bp, signaux électriques calculés,
+             extraction intermédiaire à taux fixe (38% spec).
 """
 
 from pydantic import BaseModel, Field

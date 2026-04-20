@@ -197,14 +197,12 @@ class FakeAPI:
                 valve_v1       = state_sim["valve_v1"],
                 valve_v2       = state_sim["valve_v2"],
                 valve_v3       = state_sim["valve_v3"],
-                valve_mp       = state_sim["valve_mp"],
                 valve_bp       = state_sim["valve_bp"],
             )
             # Ajout des targets vannes (avant application du bruit d'actuation)
             computed_sim["valve_v1_target"] = self._state["valve_v1"]
             computed_sim["valve_v2_target"] = self._state["valve_v2"]
             computed_sim["valve_v3_target"] = self._state["valve_v3"]
-            computed_sim["valve_mp_target"] = self._state["valve_mp"]
             computed_sim["valve_bp_target"] = self._state["valve_bp"]
 
             if self._power_factor_offset != 0:

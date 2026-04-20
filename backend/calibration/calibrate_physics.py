@@ -186,7 +186,7 @@ def anchor_to_gta_specs(ccpp_relations: dict) -> dict:
     """
     Recale les coefficients physiques sur le point nominal du GTA.
     
-    Point d'ancrage : T=486°C, P=60 bar, Q=120 T/h, V1=100%, valve_mp=50%
+    Point d'ancrage : T=486°C, P=60 bar, Q=120 T/h, V1=100% , extraction=38%
                       → cible P_élec = 24 MW (spec industrielle)
     
     Stratégie : fixer le ratio η_is_BP / η_is_HP = 0.95 (BP légèrement moins
@@ -203,13 +203,12 @@ def anchor_to_gta_specs(ccpp_relations: dict) -> dict:
     P_A        = NOMINAL["pressure_hp"]           # 60 bar
     Q_A        = NOMINAL["steam_flow_hp"]         # 120 T/h
     P_target   = NOMINAL["active_power"]          # 24 MW
-    valve_mp_A = NOMINAL["valve_mp"]              # 50%
     p_cond     = NOMINAL["pressure_condenser"]    # 0.0064 bar
     
     # ── Débits ──
     m_dot_hp = Q_A * 1000.0 / 3600.0              # kg/s
-    extraction_ratio = 0.76 * (valve_mp_A / 100.0)
-    m_dot_bp = m_dot_hp * (1.0 - extraction_ratio)
+    from core.config import EXTRACTION_RATIO
+    m_dot_bp = m_dot_hp * (1.0 - EXTRACTION_RATIO)
     
     # ── Pressions inter-étages ──
     p_mid = P_A * PHYSICS_P_OUT_RATIO             # 4.5 bar (cohérent avec physics_model)
@@ -269,7 +268,7 @@ def anchor_to_gta_specs(ccpp_relations: dict) -> dict:
     
     # ── Stodola (inchangé) ──
     T_in_K = T_A + 273.15
-    q_bp = Q_A * (1.0 - extraction_ratio)
+    q_bp = Q_A * (1.0 - EXTRACTION_RATIO)
     c_stodola = (4.5 ** 2) / ((q_bp ** 2) * T_in_K)
     
     coeffs = {
@@ -280,7 +279,7 @@ def anchor_to_gta_specs(ccpp_relations: dict) -> dict:
         "calibrated_from": "UCI_CCPP + GTA_specs (2-stage IAPWS model)",
         "anchor_point": {
             "T_C": T_A, "P_bar": P_A, "Q_Tph": Q_A,
-            "valve_mp_pct": valve_mp_A, "P_elec_MW": P_target,
+            "extraction_ratio": EXTRACTION_RATIO, "P_elec_MW": P_target,
         },
         "model_version": "v2_iapws_2stage",
         "ccpp_meta": ccpp_relations,

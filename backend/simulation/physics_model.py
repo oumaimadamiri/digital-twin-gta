@@ -9,7 +9,7 @@ Améliorations vs version initiale :
   4. Loi de Stodola pour P_bp (liée au débit, pas proportion fixe de P_hp)
   5. V1 seule pilote le débit thermo (80% débit HP)
      V2/V3 = équilibrage mécanique pur → pas dans le bilan de puissance
-  6. valve_mp et valve_bp contrôlent le split du débit sortie
+  6. valve_bp contrôlent le split du débit sortie
   7. Pression condenseur 0.0064 bar intégrée dans le rendement BP
   8. Signaux électriques calculés : I(A), Q(MVAR), S(MVA)
 """
@@ -83,7 +83,6 @@ class PhysicsModel:
       pressure_hp, temperature_hp, steam_flow_hp  — état vapeur HP
       valve_v1    — admission HP (80% du débit total)
       valve_v2, valve_v3 — équilibrage mécanique (pas dans le bilan thermo)
-      valve_mp    — extraction MP vers barillet
       valve_bp    — sortie BP vers condenseur
 
     Sorties calculées : puissance, vitesse, pressions, températures, signaux élec.
@@ -127,7 +126,6 @@ class PhysicsModel:
             pressure_hp    = self.nominal["pressure_hp"],
             temperature_hp = T_HP_DESIGN,
             valve_v1       = 100.0,
-            valve_mp       = self.nominal["valve_mp"],
         )
 
     def _load_calibration_coeffs(self):
@@ -191,14 +189,12 @@ class PhysicsModel:
     # ──────────────────────────────────────────
 
     def compute_active_power(self, steam_flow_hp: float, pressure_hp: float,
-                         temperature_hp: float, valve_v1: float,
-                         valve_mp: float = 50.0) -> float:
+                         temperature_hp: float, valve_v1: float) -> float:
         """
         Puissance active (MW) — bilan enthalpique 2-étages (HP + BP avec soutirage MP).
         
         Architecture (turbine à condensation avec soutirage MP) :
         [HP] vapeur 60 bar 486°C → détente → 4.5 bar (sortie étage HP)
-            → soutirage MP (% valve_mp) vers barillet / chauffage AS / surchauffeur
             → reste : [BP] 4.5 bar → détente → 0.0064 bar (condenseur vide)
         
         Équations :
@@ -224,9 +220,7 @@ class PhysicsModel:
         )
         
         # ── SOUTIRAGE MP entre les 2 étages ──
-        # valve_mp=50% → 10% de soutirage ; valve_mp=100% → 20% de soutirage.
-        extraction_ratio = 0.76 * (valve_mp / 100.0)
-        m_dot_bp = m_dot_hp * (1.0 - extraction_ratio)
+        m_dot_bp = m_dot_hp * (1.0 - EXTRACTION_RATIO)
         
         # ── ÉTAGE BP : P_mid → P_condenseur (0.0064 bar, zone vapeur humide) ──
         p_cond = self.nominal["pressure_condenser"]
@@ -266,9 +260,6 @@ class PhysicsModel:
         """
         Pression BP via loi de Stodola (ellipse de turbine).
         P_bp² ≈ C_stodola × Q² × T_in   (forme simplifiée)
-
-        La vanne valve_mp d'extraction modifie le débit résiduel vers BP.
-        Plus valve_mp est ouverte, plus de vapeur est extraite en MP → P_bp diminue.
 
         Cette relation est physiquement correcte : la pression BP est déterminée
         par le débit qui traverse les étages BP, pas par une proportion fixe de P_hp.
@@ -313,7 +304,6 @@ class PhysicsModel:
         """
         Débit de vapeur détendue vers le condenseur (T/h).
         = débit HP effectif - extraction MP - extraction BP process
-        Nominal : 120 T/h × (1 - 0.20×valve_mp - quelques % pertes) ≈ 74 T/h
         """
         effective_flow = steam_flow_hp * (valve_v1 / 100.0)
         extraction = effective_flow * 0.20 * EXTRACTION_RATIO
@@ -403,7 +393,7 @@ class PhysicsModel:
         = 100 × P_élec_actuelle / P_élec_référence_design
         
         P_élec_référence_design : calculée une fois à l'init au point nominal
-                                (486°C, 60 bar, 120 T/h, V1=100%, valve_mp=50%).
+                                (486°C, 60 bar, 120 T/h, V1=100%).
         
         Interprétation opérateur :
         ~100%     → fonctionnement nominal
@@ -597,7 +587,7 @@ class PhysicsModel:
             "flow_v1_th": round(flow_v1, 1),
             "flow_v2_th": round(flow_v2, 1),
             "flow_v3_th": round(flow_v3, 1),
-            "flow_barillet":       bp_dist["flow_barillet"],
+            "flow_barillet_in":    bp_dist["flow_barillet_in"],
             "flow_chauffage_as":   bp_dist["flow_chauffage_as"],
             "flow_surchauffeur":   bp_dist["flow_surchauffeur"],
             "charge_site":     round(charge_site, 2),

@@ -8,7 +8,7 @@
     "T_C": 486.0,
     "P_bar": 60.0,
     "Q_Tph": 120.0,
-    "valve_mp_pct": 50.0,
+    "extraction_ratio": 0.38,
     "P_elec_MW": 24.0
   },
   "model_version": "v2_iapws_2stage",

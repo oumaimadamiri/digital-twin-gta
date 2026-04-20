@@ -179,7 +179,7 @@ def _build_synoptic_div(data: dict, static_ids: bool) -> html.Div:
     # ── Distribution flux BP (calculé depuis données disponibles) ──
     _q_hp_eff          = q_hp * (v1 / 100.0)
     _q_extract     = _q_hp_eff * 0.38 # EXTRACTION_RATIO spec
-    flow_barillet_val    = round(_q_extract, 1)
+    flow_barillet_val_in    = round(_q_extract, 1)
     flow_chauffage_val   = round(_q_extract * 0.60, 1)
     flow_surchauffeur_val = round(_q_extract * 0.40, 1)
 
@@ -558,7 +558,7 @@ def _build_synoptic_div(data: dict, static_ids: bool) -> html.Div:
   <!-- 2. VP BP 3 bar → Barillet -->
   <text x="360" y="518" fill="#38bdf8" font-size="7.5">② 3 bar → Barillet</text>
   <text id="syn-q-barillet" x="540" y="518" fill="#38bdf8" font-size="8" font-weight="700"
-        text-anchor="end">{flow_barillet_val:.1f} T/h</text>
+        text-anchor="end">{flow_barillet_val_in:.1f} T/h</text>
 
   <!-- 3. VP BP Chauffage eau AS -->
   <text x="360" y="536" fill="#a78bfa" font-size="7.5">③ Chauffage Eau AS</text>
