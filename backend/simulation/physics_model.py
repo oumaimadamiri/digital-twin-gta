@@ -274,7 +274,7 @@ class PhysicsModel:
         # Débit effectif traversant l'admission HP
         effective_flow = steam_flow_hp * (valve_v1 / 100.0)
         # Débit résiduel vers BP après extraction MP
-        extraction_fraction = 0.20 * (valve_mp / 100.0)   # valve_mp extrait jusqu'à 20%
+        extraction_fraction = 0.76 * (valve_mp / 100.0)   # valve_mp extrait jusqu'à 20%
         q_bp = effective_flow * (1.0 - extraction_fraction)
 
         T_in_K = temperature_hp + 273.15
@@ -335,14 +335,31 @@ class PhysicsModel:
         valve_effect = (1.0 - (valve_mp / 100.0) * 0.05)
         return round(max(7.0, min(12.0, p_mp * valve_effect)), 3)
 
-    def compute_bp_barillet_pressure(self, pressure_bp: float) -> float:
+    def compute_bp_barillet_pressure(self, pressure_bp: float, valve_mp: float,
+                                  steam_flow_hp: float = 120.0,
+                                  valve_v1: float = 100.0) -> float:
         """
-        Pression barillet BP (bar).
-        Physiquement couplée à la pression d'échappement turbine BP.
+        Pression barillet BP (bar) — distribution aval vers barillet 3 bar.
+        
+        Spec GTA : barillet BP = 3 bar nominal, déclenchement > 3.5 bar.
+        
+        Physique : le barillet BP reçoit la vapeur extraite (via valve_mp)
+        et distribuée aux 3 destinations (acide sulfurique, chauffage, surchauffeur).
+        Sa pression dépend du débit injecté vs. soutiré par les procédés aval.
+        
+        Modèle simplifié (régime permanent) :
+        - valve_mp fermée (0%)  → pas d'injection → barillet se vide → 2.5 bar
+        - valve_mp à 50% (nom.) → 3.0 bar (point de conception)
+        - valve_mp à 100%       → sur-injection → 3.5 bar (seuil déclenchement)
+        
+        Le paramètre pressure_bp n'influe pas directement : le barillet BP est
+        alimenté APRÈS la détente BP, pas en parallèle.
         """
-        # Synchronisation stricte demandée par l'utilisateur
-        p_bar = pressure_bp
-        return round(max(2.0, min(7.0, p_bar)), 3)
+        # Débit injecté dans le barillet BP (~50% de l'extraction MP)
+        q_injected_ratio = (valve_mp / 100.0) * (valve_v1 / 100.0)
+        # Pression linéaire entre 2.5 (pas d'injection) et 3.5 (saturation)
+        p_barillet = 2.5 + 1.0 * q_injected_ratio
+        return round(max(2.0, min(4.0, p_barillet)), 3)
 
     # ──────────────────────────────────────────
     # DISTRIBUTION DÉBIT BP COMPLÈTE
@@ -545,7 +562,7 @@ class PhysicsModel:
             steam_flow_hp, valve_mp, valve_bp, valve_v1
         )
         p_mp_barillet = self.compute_mp_barillet_pressure(pressure_hp, valve_mp)
-        p_bp_barillet = self.compute_bp_barillet_pressure(pressure_bp)        
+        p_bp_barillet = self.compute_bp_barillet_pressure(pressure_bp, valve_mp, steam_flow_hp, valve_v1)        
         efficiency     = self.compute_efficiency(
             active_power, steam_flow_hp, temperature_hp, pressure_hp
         )
