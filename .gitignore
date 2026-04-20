@@ -24,5 +24,9 @@ Thumbs.db
 backend/ai/saved_models/*.h5
 backend/ai/saved_models/*.pkl
 backend/ai/saved_models/*.npz
+backend/data/*.xlsx
+backend/data/*.csv
+backend/data/CCPP/*
+backend/data/*.zip
 *.log
 *.txt

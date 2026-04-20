@@ -1,0 +1,21 @@
+{
+  "eta_is_hp": 0.6119,
+  "eta_is_bp": 0.5813,
+  "alpha_temp": 0.3961,
+  "c_stodola": 4.82e-06,
+  "calibrated_from": "UCI_CCPP + GTA_specs (2-stage IAPWS model)",
+  "anchor_point": {
+    "T_C": 486.0,
+    "P_bar": 60.0,
+    "Q_Tph": 120.0,
+    "valve_mp_pct": 50.0,
+    "P_elec_MW": 24.0
+  },
+  "model_version": "v2_iapws_2stage",
+  "ccpp_meta": {
+    "ccpp_sensitivity_temp": 0.0365627904481598,
+    "ccpp_sensitivity_vacuum": 0.007191778187228604,
+    "ccpp_mape": 0.005546091189116765,
+    "ccpp_n_samples": 500
+  }
+}

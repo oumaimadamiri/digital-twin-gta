@@ -21,6 +21,7 @@ import math
 import urllib.request
 import zipfile
 import logging
+import shutil
 
 import numpy as np
 import pandas as pd
@@ -83,6 +84,11 @@ def download_ccpp(force: bool = False) -> pd.DataFrame:
                     df.columns = ["AT", "V", "AP", "RH", "PE"]
                     df.to_csv(CCPP_CACHE, index=False)
                     logger.info(f"Dataset sauvegardé : {CCPP_CACHE} ({len(df)} lignes)")
+                    if name.endswith(".xlsx"):
+                        os.remove(extracted)
+                        extracted_dir = os.path.join(os.path.dirname(CCPP_CACHE), "CCPP")
+                        if os.path.isdir(extracted_dir) and not os.listdir(extracted_dir):
+                            shutil.rmtree(extracted_dir)
                     os.remove(zip_path)
                     return df
     except Exception as e:
