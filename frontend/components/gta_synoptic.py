@@ -16,7 +16,6 @@ _DEFAULTS = {
     "steam_flow_hp":        120.0,
     "pressure_bp_in":       4.5,
     "temperature_bp":       226.0,
-    "pressure_mp_barillet": 9.5,
     "pressure_bp_barillet": 3.0,
     "steam_flow_condenser": 74.0,
     "pressure_condenser":   0.0064,
@@ -313,8 +312,6 @@ def _build_synoptic_div(data: dict, static_ids: bool) -> html.Div:
   <line x1="1265" y1="-30" x2="1240" y2="-30" stroke="#3b82f6" stroke-width="4"/>
   <text x="1270" y="-27" fill="#94a3b8" font-size="9">Vapeur BP</text>
   <line x1="1350" y1="-30" x2="1325" y2="-30" stroke="#a78bfa" stroke-width="4"/>
-  <text x="1355" y="-27" fill="#94a3b8" font-size="9">Extr. MP</text>
-  <line x1="1180" y1="-15" x2="1155" y2="-15" stroke="#10b981" stroke-width="4"/>
   <text x="1185" y="-12" fill="#94a3b8" font-size="9">Électrique</text>
   <line x1="1265" y1="-15" x2="1240" y2="-15" stroke="#60a5fa" stroke-width="2" stroke-dasharray="4,2"/>
   <text x="1270" y="-12" fill="#94a3b8" font-size="9">Équilibrage</text>
@@ -394,7 +391,7 @@ def _build_synoptic_div(data: dict, static_ids: bool) -> html.Div:
   <text{sid("casing-val")} x="485" y="112" fill="#38bdf8" font-size="11" font-weight="700" text-anchor="middle">{casing:.1f}</text>
   <text x="505" y="112" fill="#64748b" font-size="7">mm</text>
 
-  <!-- ════ BLOC TURBINE HP/MP/BP ════ -->
+  <!-- ════ BLOC TURBINE HP/BP ════ -->
   <g class="{turb_cls}">
     <rect x="385" y="130" width="340" height="260" rx="12"
           fill="#060d1a" stroke="#3b82f6" stroke-width="2" filter="url(#gb)"/>
@@ -422,9 +419,9 @@ def _build_synoptic_div(data: dict, static_ids: bool) -> html.Div:
     <text{sid("hp-stages")} x="465" y="297" fill="#60a5fa" font-size="7.5" text-anchor="middle">{p_hp:.0f}→{p_bp_in:.1f} bar</text>
 
     <!-- Point d'extraction intermédiaire (entre HP et BP) -->
-    <circle cx="542" cy="248" r="6" fill="#a78bfa" stroke="#0a101a" stroke-width="1.5"/>
-    <text x="542" y="315" fill="#a78bfa" font-size="7.5" font-weight="600" text-anchor="middle">Ext.</text>
-    <text x="542" y="324" fill="#a78bfa" font-size="7" text-anchor="middle">(4.5 bar)</text>
+    <circle cx="549" cy="248" r="6" fill="#a78bfa" stroke="#0a101a" stroke-width="1.5"/>
+    <text x="549" y="260" fill="#a78bfa" font-size="7.5" font-weight="600" text-anchor="middle">Ext.</text>
+    <text x="549" y="269" fill="#a78bfa" font-size="7" text-anchor="middle">(4.5 bar)</text>
 
     <!-- Étage BP (inchangé, x=570..710) -->
     <rect x="570" y="185" width="140" height="115" rx="6"
@@ -502,46 +499,46 @@ def _build_synoptic_div(data: dict, static_ids: bool) -> html.Div:
   </g>
 
   <!-- ════ EXTRACTION → BARILLET BP (depuis point inter-étages turbine) ════ -->
-  <line x1="542" y1="130" x2="542" y2="55"
+  <line x1="549" y1="130" x2="549" y2="55"
       stroke="#a78bfa" stroke-width="7" stroke-linecap="round" class="flow-bp"/>
-  {_instrument_circle(542, 95, "PT", "#a78bfa")}
-  <text x="555" y="98" fill="#a78bfa" font-size="8" font-weight="700">38%</text>
+  {_instrument_circle(549, 95, "PT", "#a78bfa")}
+  <text x="562" y="98" fill="#a78bfa" font-size="8" font-weight="700">38%</text>
 
   <!-- ════ BARILLET BP — Grand bloc position haute ════ -->
-  <rect id="syn-barillet-bp-rect" x="400" y="-10" width="285" height="65" rx="10"
+  <rect id="syn-barillet-bp-rect" x="407" y="-10" width="285" height="65" rx="10"
         fill="#0a101a" stroke="#38bdf8" stroke-width="1.8" filter="url(#gb)"/>
-  <text x="542" y="10" fill="#f8fafc" font-size="11" font-weight="600"
+  <text x="549" y="10" fill="#f8fafc" font-size="11" font-weight="600"
         text-anchor="middle" letter-spacing="1.5">BARILLET BP</text>
-  <text x="542" y="21" fill="#64748b" font-size="7.5" text-anchor="middle">Collecteur 3 bar — Procédés AS</text>
+  <text x="549" y="21" fill="#64748b" font-size="7.5" text-anchor="middle">Collecteur 3 bar — Procédés AS</text>
 
   <!-- Ligne séparatrice -->
-  <line x1="410" y1="27" x2="675" y2="27" stroke="#1e3a5f" stroke-width="0.8"/>
+  <line x1="417" y1="27" x2="675" y2="27" stroke="#1e3a5f" stroke-width="0.8"/>
 
   <!-- Pression barillet (gauche) -->
-  <text x="420" y="40" fill="#64748b" font-size="7">P</text>
-  <text{sid("pbar-bp-val")} x="420" y="50" fill="#38bdf8" font-size="12" font-weight="700">{p_bar_bp:.2f}</text>
-  <text x="448" y="50" fill="#64748b" font-size="7">bar</text>
+  <text x="427" y="40" fill="#64748b" font-size="7">P</text>
+  <text{sid("pbar-bp-val")} x="427" y="50" fill="#38bdf8" font-size="12" font-weight="700">{p_bar_bp:.2f}</text>
+  <text x="455" y="50" fill="#64748b" font-size="7">bar</text>
 
   <!-- Débit entrant (milieu) -->
-  <text x="478" y="40" fill="#64748b" font-size="7">Ent.</text>
-  <text id="syn-q-barillet" x="478" y="50" fill="#a78bfa" font-size="12" font-weight="700">{flow_barillet_val_in:.0f}</text>
-  <text x="506" y="50" fill="#64748b" font-size="7">T/h</text>
+  <text x="485" y="40" fill="#64748b" font-size="7">Ent.</text>
+  <text id="syn-q-barillet" x="485" y="50" fill="#a78bfa" font-size="12" font-weight="700">{flow_barillet_val_in:.0f}</text>
+  <text x="513" y="50" fill="#64748b" font-size="7">T/h</text>
 
   <!-- Séparateur vertical -->
-  <line x1="540" y1="30" x2="540" y2="52" stroke="#1e3a5f" stroke-width="0.8"/>
+  <line x1="547" y1="30" x2="547" y2="52" stroke="#1e3a5f" stroke-width="0.8"/>
 
   <!-- Sortie 1 : Chauffage AS (60%) -->
-  <text x="548" y="37" fill="#a78bfa" font-size="7">→ Chauffage AS</text>
-  <text id="syn-q-chauffage" x="668" y="37" fill="#a78bfa" font-size="8" font-weight="700"
+  <text x="555" y="37" fill="#a78bfa" font-size="7">→ Chauffage AS</text>
+  <text id="syn-q-chauffage" x="675" y="37" fill="#a78bfa" font-size="8" font-weight="700"
         text-anchor="end">{flow_chauffage_val:.1f} T/h</text>
 
   <!-- Sortie 2 : Surchauffeur AS (40%) -->
-  <text x="548" y="50" fill="#a78bfa" font-size="7">→ Surchauffeur AS</text>
-  <text id="syn-q-surchauffeur" x="668" y="50" fill="#a78bfa" font-size="8" font-weight="700"
+  <text x="555" y="50" fill="#a78bfa" font-size="7">→ Surchauffeur AS</text>
+  <text id="syn-q-surchauffeur" x="675" y="50" fill="#a78bfa" font-size="8" font-weight="700"
         text-anchor="end">{flow_surchauffeur_val:.1f} T/h</text>
 
   <!-- Alarme (si pression > seuil) -->
-  <rect id="syn-barillet-bp-blink" x="665" y="-3" width="14" height="14" rx="7"
+  <rect id="syn-barillet-bp-blink" x="672" y="-3" width="14" height="14" rx="7"
         fill="#ef4444" class="blink"
         {'display="block"' if p_bar_bp > 5.0 else 'display="none"'}/>
 

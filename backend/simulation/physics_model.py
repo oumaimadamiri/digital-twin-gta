@@ -191,9 +191,9 @@ class PhysicsModel:
     def compute_active_power(self, steam_flow_hp: float, pressure_hp: float,
                          temperature_hp: float, valve_v1: float) -> float:
         """
-        Puissance active (MW) — bilan enthalpique 2-étages (HP + BP avec soutirage MP).
+        Puissance active (MW) — bilan enthalpique 2-étages (HP avec soutirage BP).
         
-        Architecture (turbine à condensation avec soutirage MP) :
+        Architecture (turbine à condensation avec soutirage BP) :
         [HP] vapeur 60 bar 486°C → détente → 4.5 bar (sortie étage HP)
             → reste : [BP] 4.5 bar → détente → 0.0064 bar (condenseur vide)
         
@@ -219,7 +219,7 @@ class PhysicsModel:
             temperature_hp, pressure_hp, p_mid, eta_is_hp
         )
         
-        # ── SOUTIRAGE MP entre les 2 étages ──
+        # ── SOUTIRAGE BP entre les 2 étages ──
         m_dot_bp = m_dot_hp * (1.0 - EXTRACTION_RATIO)
         
         # ── ÉTAGE BP : P_mid → P_condenseur (0.0064 bar, zone vapeur humide) ──

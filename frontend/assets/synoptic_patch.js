@@ -270,7 +270,6 @@ window.patchGtaSynoptic = function(data) {
     _setText("syn-v1-tgt", "Cible:" + v1_tgt.toFixed(0) + "%");
     _setText("syn-v2-tgt", "Cible:" + v2_tgt.toFixed(0) + "%");
     _setText("syn-v3-tgt", "Cible:" + v3_tgt.toFixed(0) + "%");
-    _setText("syn-vmp-tgt", "Cible:" + vmp_tgt.toFixed(0) + "%");
     _setText("syn-vbp-tgt", "Cible:" + vbp_tgt.toFixed(0) + "%");
     _setText("syn-v1-pct",  (data.valve_v1 ?? 100).toFixed(0) + "%");
     _setText("syn-v2-pct",  (data.valve_v2 ?? 100).toFixed(0) + "%");
