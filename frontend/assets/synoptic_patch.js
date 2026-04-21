@@ -275,7 +275,6 @@ window.patchGtaSynoptic = function(data) {
     _setText("syn-v1-pct",  (data.valve_v1 ?? 100).toFixed(0) + "%");
     _setText("syn-v2-pct",  (data.valve_v2 ?? 100).toFixed(0) + "%");
     _setText("syn-v3-pct",  (data.valve_v3 ?? 100).toFixed(0) + "%");
-    _setText("syn-vmp-pct", (data.valve_mp ?? 50).toFixed(0) + "%");
     _setText("syn-vbp-pct", (data.valve_bp ?? 80).toFixed(0) + "%");
 
     // ── Animations dynamiques — turbine / réducteur / flux ────────────────────

@@ -401,57 +401,46 @@ def _build_synoptic_div(data: dict, static_ids: bool) -> html.Div:
     <text x="555" y="160" fill="#60a5fa" font-size="13" font-weight="700"
           text-anchor="middle" letter-spacing="2">TURBINE À VAPEUR</text>
     <text x="555" y="175" fill="#475569" font-size="9" text-anchor="middle">
-      Réduction multi-étagée — HP → MP → BP
+      Détente 2 étages — HP → Extraction → BP
     </text>
 
-    <!-- Étage HP -->
-    <rect x="400" y="185" width="85" height="115" rx="6"
+    # APRÈS
+    <!-- Étage HP (élargi, x=400..550) -->
+    <rect x="400" y="185" width="130" height="115" rx="6"
           fill="transparent" stroke="#3b82f6" stroke-width="1.2" stroke-dasharray="4,2"/>
-    <text x="442" y="202" fill="#93c5fd" font-size="11" font-weight="600" text-anchor="middle">HP</text>
-    <line x1="408" y1="213" x2="478" y2="280" stroke="#3b82f6" stroke-width="1.2"/>
-    <line x1="478" y1="213" x2="408" y2="280" stroke="#3b82f6" stroke-width="1.2"/>
-    <g transform="translate(442,248)"><g class="spin">
-      <circle r="13" fill="#060d1a" stroke="#3b82f6" stroke-width="1.5"/>
+    <text x="465" y="202" fill="#93c5fd" font-size="11" font-weight="600" text-anchor="middle">HP</text>
+    <line x1="410" y1="213" x2="522" y2="280" stroke="#3b82f6" stroke-width="1.2"/>
+    <line x1="522" y1="213" x2="410" y2="280" stroke="#3b82f6" stroke-width="1.2"/>
+    <g transform="translate(465,248)"><g class="spin">
+      <circle r="16" fill="#060d1a" stroke="#3b82f6" stroke-width="1.5"/>
       <circle r="3" fill="#3b82f6"/>
-      <line x1="-13" y1="0" x2="13" y2="0" stroke="#3b82f6" stroke-width="1.5"/>
-      <line x1="0" y1="-13" x2="0" y2="13" stroke="#3b82f6" stroke-width="1.5"/>
-      <line x1="-9" y1="-9" x2="9" y2="9" stroke="#3b82f6" stroke-width="1"/>
-      <line x1="9" y1="-9" x2="-9" y2="9" stroke="#3b82f6" stroke-width="1"/>
+      <line x1="-16" y1="0" x2="16" y2="0" stroke="#3b82f6" stroke-width="1.5"/>
+      <line x1="0" y1="-16" x2="0" y2="16" stroke="#3b82f6" stroke-width="1.5"/>
+      <line x1="-11" y1="-11" x2="11" y2="11" stroke="#3b82f6" stroke-width="1"/>
+      <line x1="11" y1="-11" x2="-11" y2="11" stroke="#3b82f6" stroke-width="1"/>
     </g></g>
-    <text{sid("hp-stages")} x="442" y="297" fill="#60a5fa" font-size="7.5" text-anchor="middle">{p_hp:.0f}→{p_bp_in:.1f} bar</text>
+    <text{sid("hp-stages")} x="465" y="297" fill="#60a5fa" font-size="7.5" text-anchor="middle">{p_hp:.0f}→{p_bp_in:.1f} bar</text>
 
-    <!-- Étage MP -->
-    <rect x="502" y="185" width="85" height="115" rx="6"
-          fill="transparent" stroke="#818cf8" stroke-width="1.2" stroke-dasharray="4,2"/>
-    <text x="544" y="202" fill="#a5b4fc" font-size="11" font-weight="600" text-anchor="middle">MP</text>
-    <line x1="510" y1="213" x2="580" y2="280" stroke="#818cf8" stroke-width="1.2"/>
-    <line x1="580" y1="213" x2="510" y2="280" stroke="#818cf8" stroke-width="1.2"/>
-    <g transform="translate(544,248)"><g class="spin">
-      <circle r="13" fill="#060d1a" stroke="#818cf8" stroke-width="1.5"/>
-      <circle r="3" fill="#818cf8"/>
-      <line x1="-13" y1="0" x2="13" y2="0" stroke="#818cf8" stroke-width="1.5"/>
-      <line x1="0" y1="-13" x2="0" y2="13" stroke="#818cf8" stroke-width="1.5"/>
-      <line x1="-9" y1="-9" x2="9" y2="9" stroke="#818cf8" stroke-width="1"/>
-      <line x1="9" y1="-9" x2="-9" y2="9" stroke="#818cf8" stroke-width="1"/>
-    </g></g>
-    <circle cx="544" cy="185" r="5" fill="#a78bfa"/>
-    <text x="552" y="182" fill="#a78bfa" font-size="8">Ext. MP</text>
+    <!-- Point d'extraction intermédiaire (entre HP et BP) -->
+    <circle cx="542" cy="248" r="6" fill="#a78bfa" stroke="#0a101a" stroke-width="1.5"/>
+    <text x="542" y="315" fill="#a78bfa" font-size="7.5" font-weight="600" text-anchor="middle">Ext.</text>
+    <text x="542" y="324" fill="#a78bfa" font-size="7" text-anchor="middle">(4.5 bar)</text>
 
-    <!-- Étage BP -->
-    <rect x="604" y="185" width="105" height="115" rx="6"
+    <!-- Étage BP (inchangé, x=570..710) -->
+    <rect x="570" y="185" width="140" height="115" rx="6"
           fill="transparent" stroke="#38bdf8" stroke-width="1.2" stroke-dasharray="4,2"/>
-    <text x="656" y="202" fill="#7dd3fc" font-size="11" font-weight="600" text-anchor="middle">BP</text>
-    <line x1="612" y1="213" x2="700" y2="280" stroke="#38bdf8" stroke-width="1.2"/>
-    <line x1="700" y1="213" x2="612" y2="280" stroke="#38bdf8" stroke-width="1.2"/>
-    <g transform="translate(656,248)"><g class="spin">
-      <circle r="15" fill="#060d1a" stroke="#38bdf8" stroke-width="1.5"/>
+    <text x="640" y="202" fill="#7dd3fc" font-size="11" font-weight="600" text-anchor="middle">BP</text>
+    <line x1="580" y1="213" x2="700" y2="280" stroke="#38bdf8" stroke-width="1.2"/>
+    <line x1="700" y1="213" x2="580" y2="280" stroke="#38bdf8" stroke-width="1.2"/>
+    <g transform="translate(640,248)"><g class="spin">
+      <circle r="16" fill="#060d1a" stroke="#38bdf8" stroke-width="1.5"/>
       <circle r="3" fill="#38bdf8"/>
-      <line x1="-15" y1="0" x2="15" y2="0" stroke="#38bdf8" stroke-width="1.5"/>
-      <line x1="0" y1="-15" x2="0" y2="15" stroke="#38bdf8" stroke-width="1.5"/>
+      <line x1="-16" y1="0" x2="16" y2="0" stroke="#38bdf8" stroke-width="1.5"/>
+      <line x1="0" y1="-16" x2="0" y2="16" stroke="#38bdf8" stroke-width="1.5"/>
       <line x1="-11" y1="-11" x2="11" y2="11" stroke="#38bdf8" stroke-width="1"/>
       <line x1="11" y1="-11" x2="-11" y2="11" stroke="#38bdf8" stroke-width="1"/>
     </g></g>
-    <text{sid("bp-label")} x="656" y="295" fill="#38bdf8" font-size="7.5" text-anchor="middle">{p_bp_in:.1f} bar · {t_bp:.0f}°C</text>
+    <text{sid("bp-label")} x="640" y="295" fill="#38bdf8" font-size="7.5" text-anchor="middle">{p_bp_in:.1f} bar · {t_bp:.0f}°C</text>   
     <circle cx="656" cy="300" r="5" fill="#38bdf8"/>
     <text x="664" y="310" fill="#38bdf8" font-size="8">Ext. BP</text>
 
@@ -512,65 +501,58 @@ def _build_synoptic_div(data: dict, static_ids: bool) -> html.Div:
       text-anchor="middle">Détente adiabatique — Δh = ṁ × (h_in − h_out)</text>
   </g>
 
-<!-- [BARILLET BP déplacé — voir section DISTRIBUTION BP ci-dessous] -->
+  <!-- ════ EXTRACTION → BARILLET BP (depuis point inter-étages turbine) ════ -->
+  <line x1="542" y1="130" x2="542" y2="55"
+      stroke="#a78bfa" stroke-width="7" stroke-linecap="round" class="flow-bp"/>
+  {_instrument_circle(542, 95, "PT", "#a78bfa")}
+  <text x="555" y="98" fill="#a78bfa" font-size="8" font-weight="700">38%</text>
 
-  <!-- ════ DISTRIBUTION BP ════ -->
-  <!-- Tuyau BP sortie turbine → VBP (actuateur vers le haut) -->
-  <line x1="656" y1="390" x2="656" y2="410"
-        stroke="#38bdf8" stroke-width="8" stroke-linecap="round" class="flow-bp"/>
-  {vsym_vbp}
-
-  <!-- Ligne VBP → Nœud de distribution -->
-  <line x1="656" y1="433" x2="656" y2="468"
-        stroke="#38bdf8" stroke-width="8" class="flow-bp"/>
-  <!-- Nœud de distribution (T-junction) -->
-  <circle cx="656" cy="468" r="7" fill="#38bdf8" opacity="0.85"/>
-  <!-- Bras vertical ↓ : nœud → BARILLET BP -->
-  <line x1="656" y1="468" x2="550" y2="468"
-        stroke="#38bdf8" stroke-width="8" class="flow-bp"/>
-  <!-- Bras horizontal → : nœud → CONDENSEUR -->
-  <line x1="656" y1="468" x2="762" y2="468"
-        stroke="#38bdf8" stroke-width="6" class="flow-bp"/>
-
-  <!-- ════ BARILLET BP — Position principale ════ -->
-  <rect id="syn-barillet-bp-rect" x="350" y="455" width="200" height="110" rx="8"
+  <!-- ════ BARILLET BP — Grand bloc position haute ════ -->
+  <rect id="syn-barillet-bp-rect" x="400" y="-10" width="285" height="65" rx="10"
         fill="#0a101a" stroke="#38bdf8" stroke-width="1.8" filter="url(#gb)"/>
-  <text x="450" y="470" fill="#f8fafc" font-size="10" font-weight="600"
-        text-anchor="middle" letter-spacing="1">BARILLET BP</text>
+  <text x="542" y="10" fill="#f8fafc" font-size="11" font-weight="600"
+        text-anchor="middle" letter-spacing="1.5">BARILLET BP</text>
+  <text x="542" y="21" fill="#64748b" font-size="7.5" text-anchor="middle">Collecteur 3 bar — Procédés AS</text>
 
-  <!-- Pression barillet BP -->
-  <text{sid("pbar-bp-val")} x="450" y="485" fill="#38bdf8" font-size="14" font-weight="700"
-        text-anchor="middle">{p_bar_bp:.2f} <tspan fill="#64748b" font-size="9" font-weight="400">bar</tspan></text>
+  <!-- Ligne séparatrice -->
+  <line x1="410" y1="27" x2="675" y2="27" stroke="#1e3a5f" stroke-width="0.8"/>
 
-  <!-- Alarme barillet BP -->
-  <rect id="syn-barillet-bp-blink" x="736" y="449" width="16" height="16" rx="8"
+  <!-- Pression barillet (gauche) -->
+  <text x="420" y="40" fill="#64748b" font-size="7">P</text>
+  <text{sid("pbar-bp-val")} x="420" y="50" fill="#38bdf8" font-size="12" font-weight="700">{p_bar_bp:.2f}</text>
+  <text x="448" y="50" fill="#64748b" font-size="7">bar</text>
+
+  <!-- Débit entrant (milieu) -->
+  <text x="478" y="40" fill="#64748b" font-size="7">Ent.</text>
+  <text id="syn-q-barillet" x="478" y="50" fill="#a78bfa" font-size="12" font-weight="700">{flow_barillet_val_in:.0f}</text>
+  <text x="506" y="50" fill="#64748b" font-size="7">T/h</text>
+
+  <!-- Séparateur vertical -->
+  <line x1="540" y1="30" x2="540" y2="52" stroke="#1e3a5f" stroke-width="0.8"/>
+
+  <!-- Sortie 1 : Chauffage AS (60%) -->
+  <text x="548" y="37" fill="#a78bfa" font-size="7">→ Chauffage AS</text>
+  <text id="syn-q-chauffage" x="668" y="37" fill="#a78bfa" font-size="8" font-weight="700"
+        text-anchor="end">{flow_chauffage_val:.1f} T/h</text>
+
+  <!-- Sortie 2 : Surchauffeur AS (40%) -->
+  <text x="548" y="50" fill="#a78bfa" font-size="7">→ Surchauffeur AS</text>
+  <text id="syn-q-surchauffeur" x="668" y="50" fill="#a78bfa" font-size="8" font-weight="700"
+        text-anchor="end">{flow_surchauffeur_val:.1f} T/h</text>
+
+  <!-- Alarme (si pression > seuil) -->
+  <rect id="syn-barillet-bp-blink" x="665" y="-3" width="14" height="14" rx="7"
         fill="#ef4444" class="blink"
         {'display="block"' if p_bar_bp > 5.0 else 'display="none"'}/>
 
-  <!-- Séparateur + 4 destinations VP BP -->
-  <line x1="360" y1="490" x2="540" y2="490" stroke="#1e3a5f" stroke-width="0.8"/>
-
-  <!-- 1. VP HP → Condenseur (flux principal, affiché dans le condenseur) -->
-  <text x="360" y="500" fill="#10b981" font-size="8" font-weight="600">① VP HP → Condenseur</text>
-  <text{sid("q-barillet-hp")} x="540" y="500" fill="#10b981" font-size="8" font-weight="700"
-        text-anchor="end">{q_cond:.0f} T/h</text>
-
-  <!-- 2. VP BP 3 bar → Barillet -->
-  <text x="360" y="518" fill="#38bdf8" font-size="7.5">② 3 bar → Barillet</text>
-  <text id="syn-q-barillet" x="540" y="518" fill="#38bdf8" font-size="8" font-weight="700"
-        text-anchor="end">{flow_barillet_val_in:.1f} T/h</text>
-
-  <!-- 3. VP BP Chauffage eau AS -->
-  <text x="360" y="536" fill="#a78bfa" font-size="7.5">③ Chauffage Eau AS</text>
-  <text id="syn-q-chauffage" x="540" y="536" fill="#a78bfa" font-size="8" font-weight="700"
-        text-anchor="end">{flow_chauffage_val:.1f} T/h</text>
-
-  <!-- 4. VP BP Surchauffeur AS -->
-  <text x="360" y="554" fill="#a78bfa" font-size="7.5">④ Surchauffeur AS</text>
-  <text id="syn-q-surchauffeur" x="540" y="554" fill="#a78bfa" font-size="8" font-weight="700"
-        text-anchor="end">{flow_surchauffeur_val:.1f} T/h</text>
-
-
+  <!-- ════ TUYAU BP : TURBINE → VBP → CONDENSEUR ════ -->
+  <line x1="655" y1="390" x2="655" y2="410"
+        stroke="#38bdf8" stroke-width="8" stroke-linecap="round" class="flow-bp"/>
+  {vsym_vbp}
+  <line x1="655" y1="433" x2="655" y2="500"
+        stroke="#38bdf8" stroke-width="8" class="flow-bp"/>
+  <line x1="655" y1="500" x2="757" y2="500"
+        stroke="#38bdf8" stroke-width="8" class="flow-bp"/>      
 
   <!-- ════ CONDENSEUR — À droite du BARILLET BP ════ -->
   <rect x="762" y="445" width="195" height="125" rx="10"
