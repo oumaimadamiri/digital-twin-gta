@@ -63,7 +63,7 @@ def reset_simulation(_: ResetCommand = None):
 
 @router.post("/valves")
 def set_valves(cmd: ValveCommand):
-    """Modifie l'ouverture des 5 vannes V1, V2, V3, MP, BP (0-100%)."""
+    """Modifie l'ouverture des 5 vannes V1, V2, V3, BP (0-100%)."""
     logger.info(
         f"ACTION OPÉRATEUR : Modification vannes -> "
         f"V1:{cmd.valve_v1}%, V2:{cmd.valve_v2}%, V3:{cmd.valve_v3}%, BP:{cmd.valve_bp}%"

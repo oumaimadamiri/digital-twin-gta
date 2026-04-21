@@ -119,7 +119,7 @@ class PhysicsModel:
         self.nominal = NOMINAL.copy()
         # Coefficients chargés depuis fichier calibration si disponible
         self._load_calibration_coeffs()
-        # Puissance de référence au point design (486°C, 60 bar, 120 T/h, V1=100%, MP=50%)
+        # Puissance de référence au point design (486°C, 60 bar, 120 T/h, V1=100%)
         # Utilisée par compute_machine_performance pour le "rendement machine" de la spec.
         self.P_NOMINAL_REF = self.compute_active_power(
             steam_flow_hp  = self.nominal["steam_flow_hp"],
@@ -303,7 +303,7 @@ class PhysicsModel:
                                 valve_bp: float, valve_v1: float) -> float:
         """
         Débit de vapeur détendue vers le condenseur (T/h).
-        = débit HP effectif - extraction MP - extraction BP process
+        = débit HP effectif - extraction BP process
         """
         effective_flow = steam_flow_hp * (valve_v1 / 100.0)
         extraction = effective_flow * 0.20 * EXTRACTION_RATIO

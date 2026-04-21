@@ -104,7 +104,7 @@ class ValveState:
 
 
 class ValveController:
-    """Gestionnaire des 5 vannes du GTA en régime permanent."""
+    """Gestionnaire des 4 vannes du GTA en régime permanent."""
 
     def __init__(self):
         self._valves: dict[str, ValveState] = {

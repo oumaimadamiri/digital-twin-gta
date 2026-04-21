@@ -64,7 +64,7 @@ _GAUGES_FAST = ["pressure_hp", "temperature_hp", "active_power",
 _GAUGES_SLOW = ["reactive_power", "apparent_power", "power_factor",
                 "current_a", "voltage",
                 "steam_flow_hp", "pressure_bp_in",
-                "pressure_bp_barillet", "pressure_mp_barillet", "steam_flow_condenser"]
+                "pressure_bp_barillet", "steam_flow_condenser"]
 
 
 def register(app):

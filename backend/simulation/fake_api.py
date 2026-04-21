@@ -63,7 +63,7 @@ class FakeAPI:
         """Enregistre un callback appelé à chaque nouveau snapshot."""
         self._on_new_data = callback
 
-    def set_valves(self, v1=None, v2=None, v3=None, v_mp=None, v_bp=None):
+    def set_valves(self, v1=None, v2=None, v3=None, v_bp=None):
         """Modifie les vannes depuis l'API (commande opérateur)."""
         if v1 is not None:
             self._state["valve_v1"] = float(v1)
