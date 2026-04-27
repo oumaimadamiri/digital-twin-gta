@@ -160,6 +160,7 @@ window.patchGtaSynoptic = function(data) {
     _setFill("syn-speed-val", alm_spd ? "#ef4444" : "#60a5fa");
     _setText("syn-eff-val", eff.toFixed(1));
     _setFill("syn-eff-val", alm_eff ? "#ef4444" : "#10b981");
+
     _setText("syn-pbp-val",   p_bp_in.toFixed(2));
     _setText("syn-qcond-val", q_cond.toFixed(0));
 
@@ -213,6 +214,7 @@ window.patchGtaSynoptic = function(data) {
     _setText("syn-smva-val",  s_mva.toFixed(1));
     _setText("syn-pf-val", pf.toFixed(3));
     _setFill("syn-pf-val", alm_pf ? "#ef4444" : "#fbbf24");
+
     _setText("syn-ia-val", i_a.toFixed(0));
     _setFill("syn-ia-val", alm_ia ? "#ef4444" : "#10b981");
     _setText("syn-volt-val", voltage.toFixed(1));

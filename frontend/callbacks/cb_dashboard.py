@@ -15,7 +15,7 @@ import json
 from datetime import datetime
 import requests
 import plotly.graph_objects as go
-from dash import Input, Output, State, html, no_update, Patch, ctx, callback_context as ctx_cb
+from dash import Input, Output, State, html, no_update, Patch, ctx, callback_context as ctx_cb, ALL
 from components.alert_banner import alerts_panel
 from config import BACKEND
 
@@ -29,15 +29,40 @@ def _hex_to_rgba(hex_color: str, alpha: float) -> str:
 
 # ── Paramètres disponibles pour le mini-sparkline ────────────────────────────
 _SPARK_PARAMS = {
-    # Plages Y fixes calées sur NOMINAL + THRESHOLDS de backend/core/config.py
-    "active_power":   {"label": "P active",  "unit": "MW",  "color": "#10b981", "y_range": [0,    35]},
-    "pressure_hp":    {"label": "P HP",      "unit": "bar", "color": "#f97316", "y_range": [45,   75]},
-    "steam_flow_hp":  {"label": "Débit HP",  "unit": "T/h", "color": "#06b6d4", "y_range": [60,  160]},
-    "turbine_speed":  {"label": "Vitesse",   "unit": "RPM", "color": "#818cf8", "y_range": [5800, 7000]},
-    "temperature_hp": {"label": "T HP",      "unit": "°C",  "color": "#ef4444", "y_range": [350,  550]},
-    "efficiency":     {"label": "Rendement", "unit": "%",   "color": "#38bdf8", "y_range": [50,  100]},
-    "power_factor":   {"label": "cosφ",      "unit": "",    "color": "#fbbf24", "y_range": [0.70, 1.00]},
+    # Plages étroites centrées sur NOMINAL — amplifie la variance visible (style recorder industriel)
+    "active_power":   {"label": "P active",  "unit": "MW",  "color": "#10b981", "y_range": [20.5 , 23.5]},
+    "pressure_hp":    {"label": "P HP",      "unit": "bar", "color": "#f97316", "y_range": [58,  62]},
+    "steam_flow_hp":  {"label": "Débit HP",  "unit": "T/h", "color": "#06b6d4", "y_range": [115,  125]},
+    "turbine_speed":  {"label": "Vitesse",   "unit": "RPM", "color": "#818cf8", "y_range": [6325, 6525]},
+    "temperature_hp": {"label": "T HP",      "unit": "°C",  "color": "#ef4444", "y_range": [420,  455]},
+    "efficiency":           {"label": "Rendement", "unit": "%",   "color": "#38bdf8", "y_range": [58,    59.75]},
+    "power_factor":         {"label": "cosφ",      "unit": "",    "color": "#fbbf24", "y_range": [0.8555, 0.8585]},
+    "pressure_bp_in":       {"label": "P BP",      "unit": "bar", "color": "#38bdf8", "y_range": [4.2,   4.55]},
+    "steam_flow_condenser": {"label": "Q cond.",   "unit": "T/h", "color": "#7dd3fc", "y_range": [84,    94]},
+    "current_a":            {"label": "Courant",   "unit": "A",   "color": "#60a5fa", "y_range": [1360, 1485]},
+    "apparent_power":       {"label": "S app.",    "unit": "MVA", "color": "#a78bfa", "y_range": [25,    27]},
+    "reactive_power":       {"label": "Q réact.",  "unit": "MVAR","color": "#818cf8", "y_range": [12.75,    14]},
 }
+
+_PARAM_GROUPS = {
+    "__turbine_int__": {
+        "label":  "Turbine",
+        "color":  "#38bdf8",
+        "params": ["efficiency", "pressure_bp_in", "steam_flow_condenser"],
+    },
+    "__alternateur__": {
+        "label":  "Alternateur",
+        "color":  "#10b981",
+        "params": ["power_factor", "current_a", "apparent_power", "reactive_power"],
+    },
+}
+
+
+def _resolve_param(param, idx):
+    if param in _PARAM_GROUPS:
+        ps = _PARAM_GROUPS[param]["params"]
+        return ps[(idx or 0) % len(ps)]
+    return param
 
 _SPARK_LAYOUT_BASE = dict(
     paper_bgcolor="rgba(0,0,0,0)",
@@ -112,58 +137,124 @@ def register(app):
     def close_spark_modal(_c, _b):
         return None
 
-    # ── Ouverture / fermeture visuelle du modal + titre ──────────────────
+    # ── Ouverture / fermeture visuelle du modal ──────────────────────────
     @app.callback(
-        Output("spark-modal",       "style"),
-        Output("spark-modal-title", "children"),
-        Output("spark-modal-dot",   "style"),
-        Input("store-spark-param",  "data"),
+        Output("spark-modal",          "style"),
+        Output("spark-nav-bar",        "style"),
+        Output("store-spark-group-idx","data"),
+        Input("store-spark-param",     "data"),
     )
     def toggle_spark_modal(param):
-        if not param:
-            return {"display": "none"}, "", {"display": "none"}
-        cfg = _SPARK_PARAMS.get(param, _SPARK_PARAMS["active_power"])
-        title = f"Tendance — {cfg['label']} ({cfg['unit']})" if cfg["unit"] else f"Tendance — {cfg['label']}"
-        dot_style = {
-            "color":      cfg["color"],
-            "fontSize":   "11px",
-            "marginRight": "8px",
+        hidden      = {"display": "none"}
+        nav_hidden  = {"display": "none"}
+        nav_flex    = {
+            "display": "flex", "gap": "6px", "flexWrap": "wrap",
+            "paddingBottom": "8px", "marginBottom": "6px",
+            "borderBottom": "1px solid #1e3a5f",
         }
-        return {"display": "block"}, title, dot_style
+        if not param:
+            return hidden, nav_hidden, 0
+        if param in _PARAM_GROUPS:
+            return {"display": "block"}, nav_flex, 0
+        return {"display": "block"}, nav_hidden, 0
+
+    # ── Titre + dot + onglets nav ─────────────────────────────────────────
+    @app.callback(
+        Output("spark-modal-title",    "children"),
+        Output("spark-modal-dot",      "style"),
+        Output("spark-nav-bar",        "children"),
+        Input("store-spark-param",     "data"),
+        Input("store-spark-group-idx", "data"),
+    )
+    def update_spark_header(param, group_idx):
+        if not param:
+            return "", {"display": "none"}, []
+
+        if param in _PARAM_GROUPS:
+            grp      = _PARAM_GROUPS[param]
+            group_idx = group_idx or 0
+            actual   = _resolve_param(param, group_idx)
+            cfg_act  = _SPARK_PARAMS.get(actual, _SPARK_PARAMS["active_power"])
+            title    = (
+                f"{grp['label']} — {cfg_act['label']}"
+                + (f" ({cfg_act['unit']})" if cfg_act["unit"] else "")
+            )
+            dot_style = {"color": cfg_act["color"], "fontSize": "11px", "marginRight": "8px"}
+
+            tabs = []
+            for i, p in enumerate(grp["params"]):
+                pc = _SPARK_PARAMS.get(p, _SPARK_PARAMS["active_power"])
+                active = i == group_idx
+                tabs.append(html.Button(
+                    pc["label"],
+                    id={"type": "spark-tab", "index": i},
+                    n_clicks=0,
+                    style={
+                        "background":    pc["color"] if active else "rgba(30,58,95,0.4)",
+                        "color":         "#0a101a" if active else "#94a3b8",
+                        "border":        f"1px solid {pc['color']}",
+                        "borderRadius":  "12px",
+                        "padding":       "3px 12px",
+                        "fontSize":      "10px",
+                        "fontFamily":    "Share Tech Mono",
+                        "fontWeight":    "700",
+                        "cursor":        "pointer",
+                        "letterSpacing": "0.5px",
+                    },
+                ))
+            return title, dot_style, tabs
+
+        cfg = _SPARK_PARAMS.get(param, _SPARK_PARAMS["active_power"])
+        title = f"Tendance — {cfg['label']}" + (f" ({cfg['unit']})" if cfg["unit"] else "")
+        dot_style = {"color": cfg["color"], "fontSize": "11px", "marginRight": "8px"}
+        return title, dot_style, []
+
+    # ── Clic sur un onglet → met à jour l'index du groupe ─────────────────
+    @app.callback(
+        Output("store-spark-group-idx", "data", allow_duplicate=True),
+        Input({"type": "spark-tab", "index": ALL}, "n_clicks"),
+        prevent_initial_call=True,
+    )
+    def spark_tab_click(n_clicks_list):
+        if not ctx.triggered_id:
+            return no_update
+        return ctx.triggered_id["index"]
 
     # ── Mise à jour du mini-sparkline ────────────────────────────────────
     # Source : store-history (dernier 300 points WS, ~2m30s)
     # Déclenché à chaque nouveau push WS (store-history se met à jour en cascade)
     @app.callback(
-        Output("spark-chart",       "figure"),
-        Output("spark-param-label", "children"),
-        Input("store-history",      "data"),
-        Input("store-spark-param",  "data"),
-        State("url",                "pathname"),
+        Output("spark-chart",          "figure"),
+        Output("spark-param-label",    "children"),
+        Input("store-history",         "data"),
+        Input("store-spark-param",     "data"),
+        Input("store-spark-group-idx", "data"),
+        State("url",                   "pathname"),
         prevent_initial_call=True,
     )
-    def update_sparkline(history, param, pathname):
+    def update_sparkline(history, param, group_idx, pathname):
         if pathname != "/" or not param:
             return no_update, no_update
 
-        cfg = _SPARK_PARAMS.get(param, _SPARK_PARAMS["active_power"])
+        actual = _resolve_param(param, group_idx)
+        cfg    = _SPARK_PARAMS.get(actual, _SPARK_PARAMS["active_power"])
         color  = cfg["color"]
         unit   = cfg["unit"]
 
         if not history:
-            return make_empty_spark_figure(param), ""
+            return make_empty_spark_figure(actual), ""
 
         # Extraire x / y depuis l'historique (ordre chronologique)
         xs, ys = [], []
         for pt in history:
             ts = pt.get("timestamp", "")
-            v  = pt.get(param)
+            v  = pt.get(actual)
             if ts and v is not None:
                 xs.append(ts[:19])
                 ys.append(v)
 
         if not xs:
-            return make_empty_spark_figure(param), ""
+            return make_empty_spark_figure(actual), ""
 
         # Construire la figure — échelle Y fixe par paramètre (pas d'auto-scale)
         fig = go.Figure()
@@ -180,9 +271,7 @@ def register(app):
             line_color=_hex_to_rgba(color, 0.55),
             line_width=1.2,
         )
-        # uirevision = param : réinitialise le zoom si l'utilisateur change de paramètre,
-        # mais le préserve si c'est juste une mise à jour de données du même paramètre.
-        fig.update_layout(**_SPARK_LAYOUT_BASE, uirevision=param)
+        fig.update_layout(**_SPARK_LAYOUT_BASE, uirevision=actual)
         fig.update_yaxes(range=cfg["y_range"])
 
         n_pts  = len(ys)

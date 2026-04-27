@@ -111,6 +111,21 @@ def _valve_symbol_static(cx, cy, pct, target, name, col, vid, size=18, orient="t
     <text id="{vid}-pct" x="{cx}" y="{cy+9}" fill="{col}" font-size="8.5" text-anchor="middle" font-family="Share Tech Mono">{pct:.0f}%</text>"""
 
 
+def _group_tag_static(cx, cy, label, elem_id, param_name, color, w=85):
+    """Bouton launcher compact (dashed border) pour un groupe de paramètres."""
+    xi = cx - w // 2
+    return f"""
+    <g id="{elem_id}" class="hover-tag"
+       onclick="window._svgClickParam='{param_name}'"
+       style="cursor:pointer" title="Voir les tendances : {label}">
+      <rect x="{xi}" y="{cy}" width="{w}" height="20" rx="10"
+            fill="rgba(59,130,246,0.06)" stroke="{color}"
+            stroke-width="0.8" stroke-dasharray="4,2"/>
+      <text x="{cx}" y="{cy+13}" fill="{color}" font-size="8.5" font-weight="700"
+            text-anchor="middle" font-family="Share Tech Mono">{label}</text>
+    </g>"""
+
+
 def _instrument_circle(cx, cy, label, col="#60a5fa", r=11):
     return f"""
     <circle cx="{cx}" cy="{cy}" r="{r}" fill="#0a101a" stroke="{col}" stroke-width="1.2"/>
@@ -217,6 +232,12 @@ def _build_synoptic_div(data: dict, static_ids: bool) -> html.Div:
         tag_pout = _tag_static(1142,262, "P active",    "syn-pout", f"{power:.1f}","MW",   alm_pow,
                                w=65, param_name="active_power")
         tag_vit2 = _tag_static(915, 264, "Vit.",        "syn-vit2", "1500",          "RPM",  False, w=55)
+        tag_turbine_int = _group_tag_static(
+            519, 375, "⋯ Param Turbine", "syn-turbine-int-launcher",
+            "__turbine_int__", "#38bdf8", w=100)
+        tag_alt_group   = _group_tag_static(
+            1027, 338, "⋯ Param Alternateur", "syn-alt-launcher",
+            "__alternateur__", "#10b981", w=100)
     else:
         tag_php  = _tag(80,  251, "Pression",    f"{p_hp:.1f}",  "bar", alm_php)
         tag_thp  = _tag(80,  289, "Température", f"{t_hp:.0f}",  "°C",  alm_thp)
@@ -225,6 +246,8 @@ def _build_synoptic_div(data: dict, static_ids: bool) -> html.Div:
         tag_v1   = _tag(330, 273, "Adm. HP",     f"{v1:.0f}",    "%", w=60)
         tag_pout = _tag(1142,262, "P active",    f"{power:.1f}","MW", alarm=alm_pow, w=65)
         tag_vit2 = _tag(915, 264, "Vit.",         "1500",          "RPM", w=55)
+        tag_turbine_int = ""
+        tag_alt_group   = ""
 
     if static_ids:
         vsym_v1  = _valve_symbol_static(330, 248, v1, v1_tgt, "V1",  vc1,  "syn-v1",  20)
@@ -477,6 +500,8 @@ def _build_synoptic_div(data: dict, static_ids: bool) -> html.Div:
           text-anchor="middle">Détente adiabatique — Δh = ṁ × (h_in − h_out)</text>
   </g>
 
+  {tag_turbine_int}
+
   <!-- ════ EXTRACTION → BARILLET BP ════ -->
   <line x1="549" y1="130" x2="549" y2="55"
       stroke="#a78bfa" stroke-width="7" stroke-linecap="round" class="flow-bp"/>
@@ -604,6 +629,8 @@ def _build_synoptic_div(data: dict, static_ids: bool) -> html.Div:
   <text{sid("ia-val")} x="1014" y="332" fill="{'#ef4444' if alm_ia else '#10b981'}" font-size="12" font-weight="700">{i_a:.0f}<tspan fill="#64748b" font-size="7"> A</tspan></text>
   <text x="1065" y="316" fill="#64748b" font-size="7.5">Tension</text>
   <text{sid("volt-val")} x="1065" y="332" fill="#10b981" font-size="12" font-weight="700">{voltage:.1f}<tspan fill="#64748b" font-size="7"> kV</tspan></text>
+
+  {tag_alt_group}
 
   <!-- ════ BUS BARRES ÉLECTRIQUE ════ -->
   <line x1="1110" y1="248" x2="1175" y2="248"

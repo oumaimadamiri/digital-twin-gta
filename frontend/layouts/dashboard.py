@@ -15,6 +15,7 @@ from callbacks.cb_dashboard import make_empty_spark_figure
 
 def layout():
     return html.Div([
+        dcc.Store(id="store-spark-group-idx", data=0),
         create_sidebar(active_path="/"),
         html.Div([
             html.Div([
@@ -122,6 +123,13 @@ def layout():
                                     "borderBottom":   "1px solid #1e3a5f",
                                     "paddingBottom":  "8px",
                                 }),
+
+                                # Barre d'onglets (groupe uniquement)
+                                html.Div(
+                                    id="spark-nav-bar",
+                                    style={"display": "none"},
+                                    children=[],
+                                ),
 
                                 # Graphe
                                 dcc.Graph(
