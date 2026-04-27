@@ -64,9 +64,18 @@ app.layout = html.Div([
     # Le callback JS patche le SVG en place — ce store n'est jamais lu
     dcc.Store(id="syn-patch-tick",        data=0),
 
+    # Valeur = clé dans _SPARK_PARAMS (ex: "active_power", "pressure_hp"…)
+    dcc.Store(id="store-spark-param",     data=None),
+ 
+    # NOUVEAU : mode Analyse ("live" = temps réel WS, "history" = HTTP historique)
+    dcc.Store(id="analysis-mode",         data="history"),
+
     # Intervalles (uniquement pour horloge et alertes, données viennent du WS)
     dcc.Interval(id="interval-fast", interval=1000, n_intervals=0, disabled=True),   # 1s  — horloge
     dcc.Interval(id="interval-slow", interval=5000, n_intervals=0),   # 5s  — alertes
+
+    # Activé uniquement sur /  (géré dans cb_dashboard)
+    dcc.Interval(id="interval-spark-poll", interval=300, n_intervals=0, disabled=True),
 
     html.Div(id="page-content"),
 ])

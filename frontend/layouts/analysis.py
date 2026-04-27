@@ -1,12 +1,12 @@
 """
 layouts/analysis.py — Analyse & Historique
 
-Ajouts :
-  1. Bande KPI dynamique en haut — métriques calculées sur la période filtrée
-     (puissance moy/max, rendement moy vs nominal, alertes, % temps dégradé).
-  2. Section jauges temps réel (déplacées depuis Dashboard) — toujours live.
-  3. DatePickerRange remplacé par 2 dcc.Input(type="date").
-  4. Boutons de filtres rapides : 1h · 6h · 24h · 7j · Tout.
+MODIFICATIONS :
+  1. Bouton [● LIVE] ajouté dans la barre de filtres rapides.
+     En mode LIVE, le graphe d'évolution temporelle se comporte exactement
+     comme l'ancien graphe Dashboard (source = store-history WS, fenêtre 2m30s).
+  2. En mode HISTORY (défaut), comportement inchangé (HTTP history, date picker).
+  3. L'indicateur de mode (pill coloré) s'affiche dans le header du graphe.
 """
 from dash import html, dcc
 from components.sidebar import create_sidebar
@@ -15,7 +15,6 @@ from config import BACKEND
 from datetime import date
 
 
-# ── Groupes de jauges (identiques à l'ancien dashboard) ──────────────────────
 _GAUGES_FAST = ["pressure_hp", "temperature_hp", "active_power",
                 "turbine_speed", "efficiency"]
 
@@ -81,7 +80,7 @@ def layout():
             html.Div([
 
                 # ══════════════════════════════════════════════════════════
-                # BANDE KPI — résumé sur la période sélectionnée
+                # BANDE KPI
                 # ══════════════════════════════════════════════════════════
                 html.Div([
                     html.Div("Indicateurs sur la période sélectionnée",
@@ -110,7 +109,7 @@ def layout():
                 ], className="card", style={"marginBottom": "16px"}),
 
                 # ══════════════════════════════════════════════════════════
-                # JAUGES TEMPS RÉEL (déplacées depuis Dashboard)
+                # JAUGES TEMPS RÉEL
                 # ══════════════════════════════════════════════════════════
                 html.Details([
                     html.Summary([
@@ -149,10 +148,28 @@ def layout():
                 # ══════════════════════════════════════════════════════════
                 html.Div([
 
-                    # Filtres rapides
+                    # ── Filtres rapides (LIVE + 1h/6h/24h/7j/Tout) ────────
                     html.Div([
                         html.Div("Période rapide", className="filter-label"),
                         html.Div([
+                            # Bouton LIVE — source WebSocket (temps réel)
+                            html.Button(
+                                [
+                                    html.Span("●", style={
+                                        "color": "#10b981", "marginRight": "5px",
+                                        "fontSize": "10px",
+                                    }),
+                                    html.Span("LIVE"),
+                                ],
+                                id="qf-live",
+                                className="btn btn-outline",
+                                style={"fontSize": "11px", "padding": "6px 12px",
+                                       "display": "inline-flex", "alignItems": "center",
+                                       "borderColor": "#10b981", "color": "#10b981"},
+                            ),
+                            # Séparateur
+                            html.Span("│", style={"color": "#1e3a5f", "alignSelf": "center"}),
+                            # Boutons historiques
                             html.Button("1h",   id="qf-1h",   className="btn btn-outline",
                                         style={"fontSize": "11px", "padding": "6px 12px"}),
                             html.Button("6h",   id="qf-6h",   className="btn btn-outline",
@@ -163,10 +180,11 @@ def layout():
                                         style={"fontSize": "11px", "padding": "6px 12px"}),
                             html.Button("Tout", id="qf-all",  className="btn btn-outline",
                                         style={"fontSize": "11px", "padding": "6px 12px"}),
-                        ], style={"display": "flex", "gap": "6px", "flexWrap": "wrap"}),
+                        ], style={"display": "flex", "gap": "6px", "flexWrap": "wrap",
+                                  "alignItems": "center"}),
                     ], style={"flex": "0 0 auto"}),
 
-                    # Plage manuelle
+                    # ── Plage manuelle ─────────────────────────────────────
                     html.Div([
                         html.Div("Plage personnalisée", className="filter-label"),
                         html.Div([
@@ -185,7 +203,7 @@ def layout():
                         ], style={"display": "flex", "gap": "8px", "alignItems": "center"}),
                     ], style={"flex": "1"}),
 
-                    # Paramètres
+                    # ── Paramètres ─────────────────────────────────────────
                     html.Div([
                         html.Div("Paramètres", className="filter-label"),
                         dcc.Dropdown(id="param-selector",
@@ -204,7 +222,7 @@ def layout():
                         ),
                     ], style={"flex": "2"}),
 
-                    # Actions
+                    # ── Actions ────────────────────────────────────────────
                     html.Div([
                         html.Div("Actions", className="filter-label"),
                         html.Div([
@@ -223,12 +241,27 @@ def layout():
                    style={"display": "flex", "gap": "16px", "alignItems": "flex-start",
                           "flexWrap": "wrap", "marginBottom": "16px"}),
 
-                # ── Graphique principal ───────────────────────────────────
+                # ── Graphique principal (LIVE ou HISTORY) ─────────────────
                 html.Div([
-                    html.Div("Évolution temporelle multi-paramètres",
-                             className="card-title"),
+                    # Header avec indicateur de mode
+                    html.Div([
+                        html.Div("Évolution temporelle multi-paramètres",
+                                 className="card-title", style={"marginBottom": "0"}),
+                        # Indicateur de mode — mis à jour par callback
+                        html.Div(id="analysis-mode-indicator", children=[
+                            html.Span("●", style={
+                                "color": "#334155", "marginRight": "5px", "fontSize": "10px",
+                            }),
+                            html.Span("HISTORIQUE", style={
+                                "color": "#334155", "fontSize": "10px",
+                                "fontFamily": "Share Tech Mono", "letterSpacing": "1px",
+                            }),
+                        ], style={"display": "flex", "alignItems": "center"}),
+                    ], style={"display": "flex", "justifyContent": "space-between",
+                              "alignItems": "center", "marginBottom": "12px"}),
+
                     dcc.Graph(id="history-chart",
-                              figure=create_empty_fig(320, "Chargement de l'historique..."),
+                              figure=create_empty_fig(320, "Sélectionnez une période ou LIVE"),
                               config={"displayModeBar": True},
                               style={"height": "320px"}),
                 ], className="card", style={"marginBottom": "16px"}),

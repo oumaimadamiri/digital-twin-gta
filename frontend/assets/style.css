@@ -1107,3 +1107,36 @@ input[type="date"].custom-input::-webkit-calendar-picker-indicator {
 .accordion-section .collapse-header:has(+ .collapse-body[style*="block"]) {
   border-radius: var(--r) var(--r) 0 0;
 }
+/* ═══════════════════════════════════════════════════════════════════
+   AJOUTS style.css — Sparkline Dashboard + Mode LIVE Analyse
+   À AJOUTER à la fin de frontend/assets/style.css
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* ── Bouton sparkline actif (paramètre sélectionné) ──────────────── */
+.spark-btn-active {
+  /* Fond légèrement coloré + bordure plus marquée */
+  background: rgba(59, 130, 246, 0.1) !important;
+  border-width: 1.5px !important;
+  font-weight: 700 !important;
+  /* Léger underline pour indiquer la sélection */
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* ── Tags SVG cliquables : halo au survol ─────────────────────────── */
+/* (Le CSS inline dans le SVG gère déjà le cursor:pointer
+   et le drop-shadow. Ces règles sont en backup pour navigateurs
+   qui n'appliquent pas les styles inline SVG.) */
+.hover-tag {
+  cursor: pointer;
+}
+
+/* ── Animation ouverture modal sparkline ──────────────────────────── */
+@keyframes spark-modal-in {
+  from { opacity: 0; transform: translate(-50%, -47%); }
+  to   { opacity: 1; transform: translate(-50%, -50%); }
+}
+
+.spark-modal-card {
+  animation: spark-modal-in 0.18s ease-out;
+}
