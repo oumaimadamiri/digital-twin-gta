@@ -1140,3 +1140,30 @@ input[type="date"].custom-input::-webkit-calendar-picker-indicator {
 .spark-modal-card {
   animation: spark-modal-in 0.18s ease-out;
 }
+/* ═══════════════════════════════════════════════
+   DASH PANEL TABS (overlay synoptique)
+   ═══════════════════════════════════════════════ */
+.dash-panel-tab {
+  flex: 1;
+  padding: 6px 0;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text3);
+  font-family: var(--mono);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+
+.dash-panel-tab:hover {
+  color: var(--text2);
+}
+
+.dash-panel-tab--active {
+  color: var(--blue-bright);
+  border-bottom-color: var(--blue);
+}

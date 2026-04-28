@@ -34,21 +34,46 @@ def layout():
                         html.Div(
                             id="dash-state-panel",
                             style={
-                                "position":       "absolute",
+                                "position":       "absolute", 
                                 "top":            "410px",
                                 "right":          "12px",
-                                "width":          "220px",
+                                "width":          "260px",
                                 "background":     "rgba(10,16,26,0.92)",
                                 "border":         "1px solid #1e3a5f",
                                 "borderRadius":   "8px",
-                                "padding":        "12px",
+                                "padding":        "0",
                                 "zIndex":         "10",
                                 "backdropFilter": "blur(4px)",
                             },
                             children=[
-                                html.Div("État Système", className="card-title",
-                                         style={"color": "#64748b", "fontSize": "11px",
-                                                "fontFamily": "Share Tech Mono", "marginBottom": "6px"}),
+                                # ── Header fixe ────────────────────────────────────────
+                                html.Div([
+                                    html.Span("État Système", style={
+                                        "fontFamily": "Share Tech Mono", "fontSize": "10px",
+                                        "color": "#64748b", "letterSpacing": "1px",
+                                        "textTransform": "uppercase",
+                                    }),
+                                    html.Span(id="topbar-status-pill"),   # pill existante réutilisée
+                                ], style={
+                                    "display": "flex", "justifyContent": "space-between",
+                                    "alignItems": "center", "padding": "10px 12px 8px",
+                                    "borderBottom": "1px solid #0f2744",
+                                }),
+
+                                # ── Tab bar (IDs stables, NON remplacés par callback) ──
+                                html.Div([
+                                    html.Button("⚠ Critique",    id="dash-tab-0", n_clicks=0,
+                                                className="dash-panel-tab dash-panel-tab--active"),
+                                    html.Button("⚙ Turbine",     id="dash-tab-1", n_clicks=0,
+                                                className="dash-panel-tab"),
+                                    html.Button("∿ Alternateur", id="dash-tab-2", n_clicks=0,
+                                                className="dash-panel-tab"),
+                                ], style={
+                                    "display": "flex", "borderBottom": "1px solid #0f2744",
+                                }),
+
+                                # ── Contenu dynamique (seule zone remplacée) ───────────
+                                html.Div(id="dash-panel-content", style={"padding": "10px 12px"}),
                             ],
                         ),
                     ],
@@ -156,10 +181,7 @@ def layout():
                 html.Div([
                     html.Div([
                         html.Div("Alertes actives", className="card-title"),
-                        html.Div(id="topbar-status-pill",
-                                 style={"fontSize": "11px", "fontFamily": "Share Tech Mono",
-                                        "color": "#10b981", "fontWeight": "700"}),
-                    ], style={"display": "flex", "justifyContent": "space-between",
+                        ], style={"display": "flex", "justifyContent": "space-between",
                                "alignItems": "center", "marginBottom": "12px"}),
                     html.Div(id="alerts-panel"),
                 ], className="card"),

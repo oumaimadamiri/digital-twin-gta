@@ -96,7 +96,142 @@ def make_empty_spark_figure(param: str = "active_power") -> go.Figure:
     fig.update_yaxes(range=cfg["y_range"])
     return fig
 
+# ════════════════════════════════════════════════════════
+# HELPERS PANEL ÉTAT SYSTÈME
+# ════════════════════════════════════════════════════════
 
+def _row(label, val, col="#e2e8f0"):
+    return html.Div([
+        html.Span(label + ":", style={
+            "color": "#475569", "width": "90px", "flexShrink": "0",
+            "display": "inline-block",
+            "fontFamily": "Share Tech Mono", "fontSize": "10px",
+        }),
+        html.Span(val, style={
+            "color": col, "fontWeight": "700",
+            "fontFamily": "Share Tech Mono", "fontSize": "10px",
+        }),
+    ], style={"display": "flex", "alignItems": "center", "minHeight": "20px"})
+
+
+def _section(title):
+    return html.Div(title, style={
+        "fontFamily": "Share Tech Mono", "fontSize": "8px",
+        "color": "#334155", "letterSpacing": "1.5px",
+        "textTransform": "uppercase", "marginTop": "8px",
+        "marginBottom": "3px", "borderBottom": "1px solid #0f2744",
+        "paddingBottom": "2px",
+    })
+
+
+def _render_tab_critique(d):
+    return html.Div([
+        _section("Vannes"),
+        *[_row(name, f"{d.get(key, 0):.0f}%",
+               col if d.get(key, 0) > 30 else "#ef4444")
+          for name, key, col in [
+              ("V1 HP",   "valve_v1", "#f97316"),
+              ("V2 Éq.",  "valve_v2", "#60a5fa"),
+              ("V3 Éq.",  "valve_v3", "#60a5fa"),
+              ("BP Cond", "valve_bp", "#38bdf8"),
+          ]],
+        _section("Performance"),
+        _row("P active",
+             f"{d.get('active_power', 0):.1f} MW",
+             "#ef4444" if d.get("active_power", 0) > 30 else "#10b981"),
+        _row("Vitesse",
+             f"{d.get('turbine_speed', 0):.0f} RPM", "#60a5fa"),
+        _row("Rendement",
+             f"{d.get('efficiency', 0):.1f} %",
+             "#ef4444" if d.get("efficiency", 0) < 85 else "#38bdf8"),
+        _row("P barillet",
+             f"{d.get('pressure_bp_barillet', 3.0):.2f} bar",
+             "#ef4444" if d.get("pressure_bp_barillet", 3.0) > 5.0 else "#a78bfa"),
+        _row("cos φ",
+             f"{d.get('power_factor', 0):.3f}",
+             "#ef4444" if not (0.82 <= d.get("power_factor", 0.85) <= 0.86) else "#fbbf24"),
+    ])
+
+
+def _render_tab_turbine(d):
+    vib_fwd = d.get("vib_bearing_fwd", 2.1)
+    vib_aft = d.get("vib_bearing_aft", 1.8)
+    return html.Div([
+        _section("Vapeur"),
+        _row("P HP",
+             f"{d.get('pressure_hp', 60):.1f} bar",
+             "#ef4444" if not (55 <= d.get("pressure_hp", 60) <= 65) else "#f97316"),
+        _row("T HP",
+             f"{d.get('temperature_hp', 440):.0f} °C",
+             "#ef4444" if d.get("temperature_hp", 440) > 500 else "#ef8c34"),
+        _row("Q HP",
+             f"{d.get('steam_flow_hp', 120):.0f} T/h", "#f97316"),
+        _row("P BP in",
+             f"{d.get('pressure_bp_in', 4.5):.2f} bar", "#38bdf8"),
+        _row("P barillet",
+             f"{d.get('pressure_bp_barillet', 3.0):.2f} bar",
+             "#ef4444" if d.get("pressure_bp_barillet", 3.0) > 5.0 else "#a78bfa"),
+        _row("Q cond.",
+             f"{d.get('steam_flow_condenser', 74):.0f} T/h", "#7dd3fc"),
+        _section("Mécanique"),
+        _row("Vitesse",
+             f"{d.get('turbine_speed', 6435):.0f} RPM", "#818cf8"),
+        _row("Rendement",
+             f"{d.get('efficiency', 85):.1f} %", "#38bdf8"),
+        _row("Fréquence",
+             f"{d.get('grid_frequency', 50):.2f} Hz", "#34d399"),
+        _section("Paliers & Huile"),
+        _row("Vib. Av.",
+             f"{vib_fwd:.1f} mm/s",
+             "#ef4444" if vib_fwd > 4.5 else "#fbbf24"),
+        _row("Vib. Ar.",
+             f"{vib_aft:.1f} mm/s",
+             "#ef4444" if vib_aft > 4.5 else "#fbbf24"),
+        _row("T° Pal.Av.",
+             f"{d.get('temp_bearing_fwd', 74):.0f} °C", "#fbbf24"),
+        _row("T° Pal.Ar.",
+             f"{d.get('temp_bearing_aft', 76):.0f} °C", "#fbbf24"),
+        _row("Huile P.",
+             f"{d.get('lube_oil_press', 1.5):.2f} bar", "#60a5fa"),
+        _row("Huile T.",
+             f"{d.get('lube_oil_temp', 45):.1f} °C",    "#60a5fa"),
+        _row("Dép. Axial",
+             f"+{d.get('axial_displacement', 0.2):.2f} mm", "#38bdf8"),
+        _row("Dilatation",
+             f"{d.get('casing_expansion', 5.0):.1f} mm",    "#38bdf8"),
+    ])
+
+
+def _render_tab_alternateur(d):
+    pf    = d.get("power_factor", 0.85)
+    i_a   = d.get("current_a", 2254)
+    power = d.get("active_power", 24)
+    return html.Div([
+        _section("Puissances"),
+        _row("P active",
+             f"{power:.2f} MW",
+             "#ef4444" if power > 30 else "#10b981"),
+        _row("Q réactive",
+             f"{d.get('reactive_power', 21.4):.2f} MVAR", "#818cf8"),
+        _row("S apparente",
+             f"{d.get('apparent_power', 28.2):.2f} MVA",  "#fbbf24"),
+        _section("Électrique"),
+        _row("cos φ",
+             f"{pf:.4f}",
+             "#ef4444" if not (0.82 <= pf <= 0.86) else "#fbbf24"),
+        _row("Courant",
+             f"{i_a:.0f} A",
+             "#ef4444" if i_a > 3000 else "#10b981"),
+        _row("Tension",
+             f"{d.get('voltage', 10.5):.2f} kV",          "#38bdf8"),
+        _row("Fréquence",
+             f"{d.get('grid_frequency', 50):.2f} Hz",      "#34d399"),
+        _section("Bilan site"),
+        _row("Charge site",
+             f"{d.get('charge_site', 14):.1f} MW",         "#60a5fa"),
+        _row("Excédent",
+             f"{d.get('excedent_reseau', 10):.1f} MW",     "#fbbf24"),
+    ])
 def register(app):
 
     # ── Activation interval-spark-poll uniquement sur / ──────────────────
@@ -309,73 +444,109 @@ def register(app):
             "color": color, "fontWeight": "700",
             "fontFamily": "var(--ui)", "fontSize": "11px", "letterSpacing": "1px",
         })
+    #clic onglet 
+    @app.callback(
+        Output("store-dash-panel-tab", "data"),
+        Input("dash-tab-0", "n_clicks"),
+        Input("dash-tab-1", "n_clicks"),
+        Input("dash-tab-2", "n_clicks"),
+        prevent_initial_call=True,
+    )
+    def switch_panel_tab(_0, _1, _2):
+        mapping = {"dash-tab-0": 0, "dash-tab-1": 1, "dash-tab-2": 2}
+        return mapping.get(ctx.triggered_id, 0)
+
+    #styles onglets actifs (surbrillance)
+    @app.callback(
+        Output("dash-tab-0", "className"),
+        Output("dash-tab-1", "className"),
+        Output("dash-tab-2", "className"),
+        Input("store-dash-panel-tab", "data"),
+    )
+    def highlight_panel_tab(tab):
+        base    = "dash-panel-tab"
+        active  = "dash-panel-tab dash-panel-tab--active"
+        return [active if (tab or 0) == i else base for i in range(3)]
 
     # ── Panneau état système ──────────────────────────────────────────────
     @app.callback(
-        Output("dash-state-panel", "children"),
+        Output("dash-state-content", "children"),
         Input("store-current-data", "data"),
+        Input("store-dash-panel-tab",  "data"),
         State("url", "pathname"),
     )
-    def update_dash_state_panel(d, pathname):
+    def update_dash_panel_content(d, tab, pathname):
         if pathname != "/":
             return no_update
-        d = d or {}
+        d   = d or {}
+        tab = tab or 0
 
-        status  = d.get("status", "NORMAL")
-        s_color = {"NORMAL": "#10b981", "DEGRADED": "#f59e0b",
-                   "CRITICAL": "#ef4444"}.get(status, "#10b981")
+        if tab == 0:
+            return _render_tab_critique(d)
+        elif tab == 1:
+            return _render_tab_turbine(d)
+        else:
+            return _render_tab_alternateur(d)
+    # def update_dash_state_panel(d, pathname):
+    #     if pathname != "/":
+    #         return no_update
+    #     d = d or {}
 
-        valves = [
-            ("V1",  "valve_v1",  "#f97316"),
-            ("V2",  "valve_v2",  "#60a5fa"),
-            ("V3",  "valve_v3",  "#60a5fa"),
-            ("BP",  "valve_bp",  "#38bdf8"),
-        ]
+    #     status  = d.get("status", "NORMAL")
+    #     s_color = {"NORMAL": "#10b981", "DEGRADED": "#f59e0b",
+    #                "CRITICAL": "#ef4444"}.get(status, "#10b981")
 
-        return [
-            html.Div([
-                html.Div("État Système", className="card-title",
-                         style={"marginBottom": "0"}),
-                html.Span(status, style={"color": s_color, "fontWeight": "700",
-                             "fontFamily": "Share Tech Mono", "fontSize": "11px"}),
-            ], style={
-                "display": "flex", "justifyContent": "space-between",
-                "alignItems": "center", "marginBottom": "8px",
-                "borderBottom": "1px solid #1e3a5f", "paddingBottom": "6px",
-            }),
+    #     valves = [
+    #         ("V1",  "valve_v1",  "#f97316"),
+    #         ("V2",  "valve_v2",  "#60a5fa"),
+    #         ("V3",  "valve_v3",  "#60a5fa"),
+    #         ("BP",  "valve_bp",  "#38bdf8"),
+    #     ]
 
-            html.Div([
-                html.Div([
-                    html.Div([
-                        html.Span(f"{name}:", style={"color": "#475569", "width": "28px",
-                                                     "display": "inline-block"}),
-                        html.Span(f"{d.get(key, 0):.0f}%", style={
-                            "color": col if d.get(key, 0) > 30 else "#ef4444",
-                            "fontWeight": "700",
-                        }),
-                    ], style={"fontFamily": "Share Tech Mono", "fontSize": "11px",
-                              "height": "22px", "display": "flex", "alignItems": "center"})
-                    for name, key, col in valves
-                ]),
-                html.Div([
-                    html.Div([
-                        html.Span(f"{label}:", style={"color": "#475569", "width": "70px",
-                                                      "display": "inline-block"}),
-                        html.Span(f"{val}", style={"color": col, "fontWeight": "700"}),
-                    ], style={"fontFamily": "Share Tech Mono", "fontSize": "11px",
-                              "height": "22px", "display": "flex", "alignItems": "center"})
-                    for label, val, col in [
-                        ("P active",   f"{d.get('active_power', 0):.1f} MW",   "#10b981"),
-                        ("Vitesse",    f"{d.get('turbine_speed', 0):.0f} RPM", "#60a5fa"),
-                        ("Rendement",  f"{d.get('efficiency', 0):.1f} %",      "#38bdf8"),
-                        ("P barillet", f"{d.get('pressure_bp_barillet', 3.0):.2f} bar",
-                                       "#ef4444" if d.get("pressure_bp_barillet", 3.0) > 5
-                                       else "#a78bfa"),
-                        ("cos φ",      f"{d.get('power_factor', 0):.3f}",      "#fbbf24"),
-                    ]
-                ]),
-            ], style={"display": "flex", "justifyContent": "space-between", "gap": "12px"}),
-        ]
+    #     return [
+    #         html.Div([
+    #             html.Div("État Système", className="card-title",
+    #                      style={"marginBottom": "0"}),
+    #             html.Span(status, style={"color": s_color, "fontWeight": "700",
+    #                          "fontFamily": "Share Tech Mono", "fontSize": "11px"}),
+    #         ], style={
+    #             "display": "flex", "justifyContent": "space-between",
+    #             "alignItems": "center", "marginBottom": "8px",
+    #             "borderBottom": "1px solid #1e3a5f", "paddingBottom": "6px",
+    #         }),
+
+    #         html.Div([
+    #             html.Div([
+    #                 html.Div([
+    #                     html.Span(f"{name}:", style={"color": "#475569", "width": "28px",
+    #                                                  "display": "inline-block"}),
+    #                     html.Span(f"{d.get(key, 0):.0f}%", style={
+    #                         "color": col if d.get(key, 0) > 30 else "#ef4444",
+    #                         "fontWeight": "700",
+    #                     }),
+    #                 ], style={"fontFamily": "Share Tech Mono", "fontSize": "11px",
+    #                           "height": "22px", "display": "flex", "alignItems": "center"})
+    #                 for name, key, col in valves
+    #             ]),
+    #             html.Div([
+    #                 html.Div([
+    #                     html.Span(f"{label}:", style={"color": "#475569", "width": "70px",
+    #                                                   "display": "inline-block"}),
+    #                     html.Span(f"{val}", style={"color": col, "fontWeight": "700"}),
+    #                 ], style={"fontFamily": "Share Tech Mono", "fontSize": "11px",
+    #                           "height": "22px", "display": "flex", "alignItems": "center"})
+    #                 for label, val, col in [
+    #                     ("P active",   f"{d.get('active_power', 0):.1f} MW",   "#10b981"),
+    #                     ("Vitesse",    f"{d.get('turbine_speed', 0):.0f} RPM", "#60a5fa"),
+    #                     ("Rendement",  f"{d.get('efficiency', 0):.1f} %",      "#38bdf8"),
+    #                     ("P barillet", f"{d.get('pressure_bp_barillet', 3.0):.2f} bar",
+    #                                    "#ef4444" if d.get("pressure_bp_barillet", 3.0) > 5
+    #                                    else "#a78bfa"),
+    #                     ("cos φ",      f"{d.get('power_factor', 0):.3f}",      "#fbbf24"),
+    #                 ]
+    #             ]),
+    #         ], style={"display": "flex", "justifyContent": "space-between", "gap": "12px"}),
+    #     ]
 
     # ── Alertes ──────────────────────────────────────────────────────────
     @app.callback(

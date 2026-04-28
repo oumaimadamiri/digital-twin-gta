@@ -70,6 +70,9 @@ app.layout = html.Div([
     # NOUVEAU : mode Analyse ("live" = temps réel WS, "history" = HTTP historique)
     dcc.Store(id="analysis-mode",         data="history"),
 
+    # Ajouter dans app.layout, avec les autres dcc.Store
+    dcc.Store(id="store-dash-panel-tab", data=0),
+
     # Intervalles (uniquement pour horloge et alertes, données viennent du WS)
     dcc.Interval(id="interval-fast", interval=1000, n_intervals=0, disabled=True),   # 1s  — horloge
     dcc.Interval(id="interval-slow", interval=5000, n_intervals=0),   # 5s  — alertes
