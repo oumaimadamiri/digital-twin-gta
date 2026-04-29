@@ -129,7 +129,7 @@ def layout():
                 children=[
                     html.Div(
                         id="gta-synoptic-sim",
-                        children=[create_gta_synoptic_static()],
+                        children=[create_gta_synoptic_static(show_table=False, interactive=False)],
                         style={"minHeight": "520px"},
                     ),
                     html.Div([

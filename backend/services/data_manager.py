@@ -142,16 +142,24 @@ class DataManager:
             }
         return stats
 
-    def export_csv(self, start=None, end=None) -> bytes:
-        """Exporte l'historique en CSV (bytes)."""
+    def _filter_columns(self, df: pd.DataFrame, params=None) -> pd.DataFrame:
+        """Restreint les colonnes au filtre `params` (timestamp + status conservés)."""
+        if not params:
+            return df
+        keep = ["timestamp", "status"] + [p for p in params if p not in ("timestamp", "status")]
+        keep = [c for c in keep if c in df.columns]
+        return df[keep] if keep else df
+
+    def export_csv(self, start=None, end=None, params=None) -> bytes:
+        """Exporte l'historique en CSV (bytes). `params` filtre les colonnes."""
         data = self.get_history(start, end, limit=50_000)
-        df   = pd.DataFrame(data)
+        df   = self._filter_columns(pd.DataFrame(data), params)
         return df.to_csv(index=False).encode("utf-8")
 
-    def export_excel(self, start=None, end=None) -> bytes:
-        """Exporte l'historique en Excel (bytes)."""
+    def export_excel(self, start=None, end=None, params=None) -> bytes:
+        """Exporte l'historique en Excel (bytes). `params` filtre les colonnes."""
         data   = self.get_history(start, end, limit=50_000)
-        df     = pd.DataFrame(data)
+        df     = self._filter_columns(pd.DataFrame(data), params)
         buffer = io.BytesIO()
         with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
             df.to_excel(writer, index=False, sheet_name="GTA_History")

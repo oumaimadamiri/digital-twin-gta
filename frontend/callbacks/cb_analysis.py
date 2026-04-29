@@ -72,8 +72,60 @@ _GAUGES_SLOW = ["reactive_power", "apparent_power", "power_factor",
 
 _ALL_FILTER_IDS = ["qf-live", "qf-1h", "qf-6h", "qf-24h", "qf-7j", "qf-all"]
 
+# Liste maître des options du sélecteur de paramètres (option = clé colonne)
+_ALL_PARAM_OPTIONS = [
+    {"label": "Pression HP (bar)",     "value": "pressure_hp"},
+    {"label": "Température HP (°C)",   "value": "temperature_hp"},
+    {"label": "Vitesse turbine (RPM)", "value": "turbine_speed"},
+    {"label": "Puissance active (MW)", "value": "active_power"},
+    {"label": "Facteur cosφ",          "value": "power_factor"},
+    {"label": "Rendement (%)",         "value": "efficiency"},
+    {"label": "Débit vapeur HP (T/h)", "value": "steam_flow_hp"},
+]
+
 
 def register(app):
+
+    # ══════════════════════════════════════════════════════════════════
+    # Sélecteur mono-paramètre (vue graphe) — options dérivées du filtre
+    # ══════════════════════════════════════════════════════════════════
+    @app.callback(
+        Output("param-view", "options"),
+        Output("param-view", "value"),
+        Input("param-selector", "value"),
+        State("param-view", "value"),
+    )
+    def update_param_view(selected, current):
+        """Filtre vide → toutes les options ; sinon restreint à la sélection.
+        Conserve la valeur courante si encore valide, sinon prend la 1re."""
+        if not selected:
+            opts = _ALL_PARAM_OPTIONS
+        else:
+            opts = [o for o in _ALL_PARAM_OPTIONS if o["value"] in selected]
+        valid = {o["value"] for o in opts}
+        if current in valid:
+            return opts, current
+        return opts, (opts[0]["value"] if opts else None)
+
+    # ══════════════════════════════════════════════════════════════════
+    # URL CSV dynamique (respecte la sélection + plage)
+    # ══════════════════════════════════════════════════════════════════
+    @app.callback(
+        Output("btn-export-csv", "href"),
+        Input("param-selector", "value"),
+        Input("date-start",     "value"),
+        Input("date-end",       "value"),
+    )
+    def update_csv_url(params, date_start, date_end):
+        qs = []
+        if date_start:
+            qs.append(f"start={date_start}T00:00:00")
+        if date_end:
+            qs.append(f"end={date_end}T23:59:59")
+        if params:
+            qs.extend(f"params={p}" for p in params)
+        base = f"{BACKEND}/data/export/csv"
+        return f"{base}?{'&'.join(qs)}" if qs else base
 
     # ══════════════════════════════════════════════════════════════════
     # ÉTAPE 1 — Bascule du mode analysis (LIVE ↔ HISTORY)
@@ -177,16 +229,15 @@ def register(app):
     @app.callback(
         Output("history-chart", "figure", allow_duplicate=True),
         Input("store-history",  "data"),          # mis à jour à chaque push WS
+        Input("param-view",     "value"),         # changement de paramètre vue
         State("analysis-mode",  "data"),
-        State("param-selector", "value"),
         State("url",            "pathname"),
         prevent_initial_call=True,
     )
-    def update_chart_live(history, mode, params, pathname):
+    def update_chart_live(history, param, mode, pathname):
         """
-        Graphe LIVE : affiché uniquement quand analysis-mode == 'live'.
+        Graphe LIVE mono-paramètre : affiché quand analysis-mode == 'live'.
         Source : store-history (derniers 300 snapshots WS, ~2m30s @500ms/push).
-        Même logique que l'ancien graphe Dashboard mais multi-paramètres.
         """
         if pathname != "/analysis" or mode != "live":
             return no_update
@@ -203,24 +254,22 @@ def register(app):
             )
             return fig
 
-        params = params or ["active_power"]
-        fig    = go.Figure()
-
-        for p in params:
-            xs, ys = [], []
-            for pt in history:
-                ts = pt.get("timestamp", "")
-                v  = pt.get(p)
-                if ts and v is not None:
-                    xs.append(ts[:19])
-                    ys.append(v)
-            if xs:
-                fig.add_trace(go.Scatter(
-                    x=xs, y=ys,
-                    name=PARAM_LABELS.get(p, p),
-                    line={"color": PARAM_COLORS.get(p, "#3b82f6"), "width": 1.5},
-                    mode="lines",
-                ))
+        param = param or "active_power"
+        fig   = go.Figure()
+        xs, ys = [], []
+        for pt in history:
+            ts = pt.get("timestamp", "")
+            v  = pt.get(param)
+            if ts and v is not None:
+                xs.append(ts[:19])
+                ys.append(v)
+        if xs:
+            fig.add_trace(go.Scatter(
+                x=xs, y=ys,
+                name=PARAM_LABELS.get(param, param),
+                line={"color": PARAM_COLORS.get(param, "#3b82f6"), "width": 1.5},
+                mode="lines",
+            ))
 
         fig.update_layout(
             margin={"t": 10, "b": 30, "l": 50, "r": 10},
@@ -304,13 +353,13 @@ def register(app):
         Input("btn-refresh-history",    "n_clicks"),
         Input("interval-analysis",      "n_intervals"),
         Input("url",                    "pathname"),
+        Input("param-view",             "value"),       # change de param vue
         State("analysis-mode",          "data"),        # ← NOUVEAU
         State("date-start",             "value"),
         State("date-end",               "value"),
-        State("param-selector",         "value"),
         prevent_initial_call=False,
     )
-    def update_kpis_and_analysis(_, __, pathname, mode, date_start, date_end, params):
+    def update_kpis_and_analysis(_, __, pathname, param, mode, date_start, date_end):
         if pathname != "/analysis":
             return [no_update] * 16
 
@@ -392,20 +441,20 @@ def register(app):
         if date_start:
             period_sub = f"Du {date_start}" + (f" au {date_end}" if date_end else "")
 
-        # ── Graphe (ignoré en mode live) ─────────────────────────────
+        # ── Graphe mono-paramètre (ignoré en mode live) ──────────────
         if skip_chart:
             chart_out = no_update
         else:
             timestamps = df.get("timestamp", pd.Series(dtype=str)).str[:19]
             fig = go.Figure()
-            for p in (params or ["active_power"]):
-                if p in df.columns:
-                    fig.add_trace(go.Scatter(
-                        x=timestamps, y=df[p],
-                        name=PARAM_LABELS.get(p, p),
-                        line={"color": PARAM_COLORS.get(p, "#3b82f6"), "width": 1.5},
-                        mode="lines",
-                    ))
+            p = param or "active_power"
+            if p in df.columns:
+                fig.add_trace(go.Scatter(
+                    x=timestamps, y=df[p],
+                    name=PARAM_LABELS.get(p, p),
+                    line={"color": PARAM_COLORS.get(p, "#3b82f6"), "width": 1.5},
+                    mode="lines",
+                ))
             fig.update_layout(margin={"t": 10, "b": 30, "l": 50, "r": 10}, **_DARK_LAYOUT)
             chart_out = fig
 

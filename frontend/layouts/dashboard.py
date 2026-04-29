@@ -20,61 +20,14 @@ def layout():
         html.Div([
             html.Div([
 
-                # ── Synoptique P&ID ────────────────────────────────────────
+                # ── Synoptique P&ID (table État Système intégrée dans le SVG) ──
                 html.Div(
                     className="synoptic-bleed",
-                    style={"position": "relative", "marginBottom": "20px", "minHeight": "520px"},
+                    style={"marginBottom": "20px"},
                     children=[
                         html.Div(
                             id="gta-synoptic",
                             children=[create_gta_synoptic_static()],
-                            style={"minHeight": "520px"},
-                        ),
-                        # Panneau état superposé en bas à droite
-                        html.Div(
-                            id="dash-state-panel",
-                            style={
-                                "position":       "absolute", 
-                                "top":            "410px",
-                                "right":          "12px",
-                                "width":          "260px",
-                                "background":     "rgba(10,16,26,0.92)",
-                                "border":         "1px solid #1e3a5f",
-                                "borderRadius":   "8px",
-                                "padding":        "0",
-                                "zIndex":         "10",
-                                "backdropFilter": "blur(4px)",
-                            },
-                            children=[
-                                # ── Header fixe ────────────────────────────────────────
-                                html.Div([
-                                    html.Span("État Système", style={
-                                        "fontFamily": "Share Tech Mono", "fontSize": "10px",
-                                        "color": "#64748b", "letterSpacing": "1px",
-                                        "textTransform": "uppercase",
-                                    }),
-                                    html.Span(id="topbar-status-pill"),   # pill existante réutilisée
-                                ], style={
-                                    "display": "flex", "justifyContent": "space-between",
-                                    "alignItems": "center", "padding": "10px 12px 8px",
-                                    "borderBottom": "1px solid #0f2744",
-                                }),
-
-                                # ── Tab bar (IDs stables, NON remplacés par callback) ──
-                                html.Div([
-                                    html.Button("⚠ Critique",    id="dash-tab-0", n_clicks=0,
-                                                className="dash-panel-tab dash-panel-tab--active"),
-                                    html.Button("⚙ Turbine",     id="dash-tab-1", n_clicks=0,
-                                                className="dash-panel-tab"),
-                                    html.Button("∿ Alternateur", id="dash-tab-2", n_clicks=0,
-                                                className="dash-panel-tab"),
-                                ], style={
-                                    "display": "flex", "borderBottom": "1px solid #0f2744",
-                                }),
-
-                                # ── Contenu dynamique (seule zone remplacée) ───────────
-                                html.Div(id="dash-panel-content", style={"padding": "10px 12px"}),
-                            ],
                         ),
                     ],
                 ),
@@ -188,4 +141,4 @@ def layout():
 
             ], className="page-content"),
         ], className="main-content"),
-    ], className="main-content-wrap")
+], className="main-content-wrap")

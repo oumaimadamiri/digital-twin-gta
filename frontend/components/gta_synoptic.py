@@ -114,10 +114,14 @@ def _valve_symbol_static(cx, cy, pct, target, name, col, vid, size=18, orient="t
 def _group_tag_static(cx, cy, label, elem_id, param_name, color, w=85):
     """Bouton launcher compact (dashed border) pour un groupe de paramètres."""
     xi = cx - w // 2
+    if param_name:
+        interact = f'onclick="window._svgClickParam=\'{param_name}\'" style="cursor:pointer" title="Voir les tendances : {label}"'
+        cls = "hover-tag"
+    else:
+        interact = ""
+        cls = ""
     return f"""
-    <g id="{elem_id}" class="hover-tag"
-       onclick="window._svgClickParam='{param_name}'"
-       style="cursor:pointer" title="Voir les tendances : {label}">
+    <g id="{elem_id}" class="{cls}" {interact}>
       <rect x="{xi}" y="{cy}" width="{w}" height="20" rx="10"
             fill="rgba(59,130,246,0.06)" stroke="{color}"
             stroke-width="0.8" stroke-dasharray="4,2"/>
@@ -137,8 +141,8 @@ def _instrument_circle(cx, cy, label, col="#60a5fa", r=11):
 # API publique
 # ─────────────────────────────────────────────────────────────────────────────
 
-def create_gta_synoptic_static() -> html.Div:
-    return _build_synoptic_div(_DEFAULTS, static_ids=True)
+def create_gta_synoptic_static(show_table: bool = True, interactive: bool = True) -> html.Div:
+    return _build_synoptic_div(_DEFAULTS, static_ids=True, show_table=show_table, interactive=interactive)
 
 
 def create_gta_synoptic(data: dict) -> html.Div:
@@ -146,7 +150,7 @@ def create_gta_synoptic(data: dict) -> html.Div:
     return _build_synoptic_div(merged, static_ids=False)
 
 
-def _build_synoptic_div(data: dict, static_ids: bool) -> html.Div:
+def _build_synoptic_div(data: dict, static_ids: bool, show_table: bool = True, interactive: bool = True) -> html.Div:
 
     status  = data.get("status", "NORMAL")
     p_hp    = data.get("pressure_hp",      60.0)
@@ -209,6 +213,30 @@ def _build_synoptic_div(data: dict, static_ids: bool) -> html.Div:
     vc3      = _vc(v3,  "#60a5fa")
     vc_bp    = _vc(v_bp,"#3b82f6")
 
+    # ── Couleurs table État Système ──────────────────────────────────────────
+    c_tbl_php  = "#ef4444" if alm_php else "#f97316"
+    c_tbl_thp  = "#ef4444" if alm_thp else "#ef8c34"
+    c_tbl_spd  = "#ef4444" if alm_spd else "#818cf8"
+    c_tbl_eff  = "#ef4444" if eff < 85 else "#38bdf8"
+    c_tbl_v1   = "#ef4444" if v1 < 30  else "#f97316"
+    c_tbl_vbp  = "#ef4444" if v_bp < 30 else "#38bdf8"
+    c_tbl_pbar = "#ef4444" if p_bar_bp > 5.0 else "#a78bfa"
+    c_tbl_vib  = "#ef4444" if vib_fwd > 4.5 else "#fbbf24"
+    c_tbl_oilt = "#ef4444" if oil_t > 60 else "#60a5fa"
+    c_tbl_dot  = {"NORMAL": "#10b981", "DEGRADED": "#f59e0b", "CRITICAL": "#ef4444"}.get(status, "#10b981")
+    tbl_pulse  = "pulse" if status != "NORMAL" else ""
+    # Page 2 — couleurs initiales
+    c_tbl2_pbpin  = "#38bdf8"
+    c_tbl2_qcond  = "#7dd3fc"
+    c_tbl2_pcond  = "#a78bfa"
+    c_tbl2_freq   = "#ef4444" if abs(freq   - 50.0) > 0.5 else "#10b981"
+    c_tbl2_vibaft = "#ef4444" if vib_aft   > 4.5   else "#fbbf24"
+    c_tbl2_tfwd   = "#ef4444" if temp_fwd  > 85    else "#60a5fa"
+    c_tbl2_taft   = "#ef4444" if temp_aft  > 85    else "#60a5fa"
+    c_tbl2_oilp   = "#ef4444" if oil_p     < 0.8   else "#10b981"
+    c_tbl2_axial  = "#ef4444" if abs(axial) > 1.0   else "#10b981"
+    c_tbl2_casing = "#ef4444" if casing    > 8.0   else "#10b981"
+
     flow_dur = f"{max(0.3, 120.0/max(1, q_hp)):.2f}s" if q_hp > 5 else "99999s"
     rpm_norm = min(max((speed - 5500)/1500, 0), 1)
     spin_dur = f"{max(0.4, 2.0 - rpm_norm*1.6):.2f}s"
@@ -217,37 +245,46 @@ def _build_synoptic_div(data: dict, static_ids: bool) -> html.Div:
     def sid(name):
         return f' id="syn-{name}"' if static_ids else ""
 
-    # ── Tags SCADA — avec param_name pour les tags cliquables ────────────────
+    # ── Tags SCADA — param_name activé seulement sur Dashboard (interactive) ──
     if static_ids:
-        # param_name active le curseur pointer + onclick → store-spark-param
+        _p = lambda name: name if interactive else None
         tag_php  = _tag_static(80,  251, "Pression",    "syn-php",  f"{p_hp:.1f}",  "bar",  alm_php,
-                               param_name="pressure_hp")
+                               param_name=_p("pressure_hp"))
         tag_thp  = _tag_static(80,  289, "Température", "syn-thp",  f"{t_hp:.0f}",  "°C",   alm_thp,
-                               param_name="temperature_hp")
+                               param_name=_p("temperature_hp"))
         tag_qhp  = _tag_static(185, 193, "Débit HP",    "syn-qhp",  f"{q_hp:.0f}",  "T/h",  alm_qhp,
-                               w=55, param_name="steam_flow_hp")
+                               w=55, param_name=_p("steam_flow_hp"))
         tag_spd  = _tag_static(755, 265, "Vit. arbre",  "syn-spd",  f"{speed:.0f}", "RPM",  alm_spd,
-                               w=55, param_name="turbine_speed")
+                               w=55, param_name=_p("turbine_speed"))
         tag_v1   = _tag_static(330, 273, "Adm. HP",     "syn-v1t",  f"{v1:.0f}",    "%",    False, w=60)
-        tag_pout = _tag_static(1142,262, "P active",    "syn-pout", f"{power:.1f}","MW",   alm_pow,
-                               w=65, param_name="active_power")
         tag_vit2 = _tag_static(915, 264, "Vit.",        "syn-vit2", "1500",          "RPM",  False, w=55)
         tag_turbine_int = _group_tag_static(
-            519, 375, "⋯ Param Turbine", "syn-turbine-int-launcher",
-            "__turbine_int__", "#38bdf8", w=100)
+            435, 133, "⋯ Param Turbine", "syn-turbine-int-launcher",
+            "__turbine_int__" if interactive else None, "#38bdf8", w=90)
         tag_alt_group   = _group_tag_static(
-            1027, 338, "⋯ Param Alternateur", "syn-alt-launcher",
-            "__alternateur__", "#10b981", w=100)
+            1000, 157, "⋯ Param Alternateur", "syn-alt-launcher",
+            "__alternateur__" if interactive else None, "#10b981", w=90)
+        tag_turb_bottom = (
+            _tag_static(450, 315, "Vit. arbre", "syn-bx-spd", f"{speed:.0f}",   "RPM",  alm_spd,       w=80 , param_name=_p("turbine_speed")) +
+            _tag_static(555, 315, "Rendement",  "syn-bx-eff", f"{eff:.1f}",     "%",    alm_eff,       w=80 , param_name=_p("efficiency")) +
+            _tag_static(660, 315, "Vib. Avant", "syn-bx-vib", f"{vib_fwd:.1f}", "mm/s", vib_fwd > 4.5, w=80)
+        )
+        tag_alt_bottom = (
+            _tag_static(974,  295, "P active", "syn-bx-pout", f"{power:.1f}", "MW", alm_pow, w=48, param_name=_p("active_power")) +
+            _tag_static(1027, 295, "cos φ",    "syn-bx-pf",   f"{pf:.3f}",   "",   alm_pf,  w=48, param_name=_p("power_factor")) +
+            _tag_static(1080, 295, "Courant",  "syn-bx-ia",   f"{i_a:.0f}",  "A",  alm_ia,  w=48, param_name=_p("current_a"))
+        )
     else:
         tag_php  = _tag(80,  251, "Pression",    f"{p_hp:.1f}",  "bar", alm_php)
         tag_thp  = _tag(80,  289, "Température", f"{t_hp:.0f}",  "°C",  alm_thp)
         tag_qhp  = _tag(185, 193, "Débit HP",    f"{q_hp:.0f}",  "T/h", alm_qhp, w=55)
         tag_spd  = _tag(755, 265, "Vit. arbre",  f"{speed:.0f}", "RPM", alarm=alm_spd, w=55)
         tag_v1   = _tag(330, 273, "Adm. HP",     f"{v1:.0f}",    "%", w=60)
-        tag_pout = _tag(1142,262, "P active",    f"{power:.1f}","MW", alarm=alm_pow, w=65)
         tag_vit2 = _tag(915, 264, "Vit.",         "1500",          "RPM", w=55)
         tag_turbine_int = ""
         tag_alt_group   = ""
+        tag_turb_bottom = ""
+        tag_alt_bottom  = ""
 
     if static_ids:
         vsym_v1  = _valve_symbol_static(330, 248, v1, v1_tgt, "V1",  vc1,  "syn-v1",  20)
@@ -259,6 +296,145 @@ def _build_synoptic_div(data: dict, static_ids: bool) -> html.Div:
         vsym_v2  = _valve_symbol(280, 175, v2, v2_tgt, "V2",  vc2,  13, orient="left")
         vsym_v3  = _valve_symbol(280, 335, v3, v3_tgt, "V3",  vc3,  13, orient="left")
         vsym_vbp = _valve_symbol(656, 415, v_bp, v_bp_tgt,"VBP", vc_bp, 18, orient="right")
+
+    # Table ÉTAT SYSTÈME — conditionnelle (masquée sur page Simulation)
+    _table_svg = f"""
+  <!-- ════ ÉTAT SYSTÈME — TABLE PAGINÉE ════ -->
+  <rect x="948" y="368" width="432" height="202" rx="8"
+        fill="#060d1a" stroke="#1e3a5f" stroke-width="1.5"/>
+  <rect x="949" y="369" width="430" height="21" rx="7" fill="rgba(15,23,42,0.9)"/>
+  <rect x="949" y="379" width="430" height="11"         fill="rgba(15,23,42,0.9)"/>
+  <text x="960" y="384" fill="#475569" font-size="11" font-weight="700"
+        text-anchor="middle" onclick="window.tblPage(-1)" style="cursor:pointer">◀</text>
+  <text x="1090" y="384" fill="#64748b" font-size="9" text-anchor="middle"
+        letter-spacing="2" font-weight="600">ÉTAT SYSTÈME</text>
+  <circle id="syn-tbl-ind1" cx="1258" cy="380" r="3" fill="#e2e8f0"/>
+  <circle id="syn-tbl-ind2" cx="1272" cy="380" r="3" fill="#334155"/>
+  <circle id="syn-tbl-ind3" cx="1286" cy="380" r="3" fill="#334155"/>
+  <circle{sid("tbl-dot")} cx="1315" cy="380" r="5"
+          fill="{c_tbl_dot}" class="{tbl_pulse}"/>
+  <text x="1368" y="384" fill="#475569" font-size="11" font-weight="700"
+        text-anchor="middle" onclick="window.tblPage(1)" style="cursor:pointer">▶</text>
+  <line x1="948" y1="390" x2="1380" y2="390" stroke="#0f2744" stroke-width="0.8"/>
+  <line x1="1034" y1="390" x2="1034" y2="570" stroke="#0f2744" stroke-width="0.8"/>
+  <line x1="1121" y1="390" x2="1121" y2="570" stroke="#0f2744" stroke-width="0.8"/>
+  <line x1="1207" y1="390" x2="1207" y2="570" stroke="#0f2744" stroke-width="0.8"/>
+  <line x1="1294" y1="390" x2="1294" y2="570" stroke="#0f2744" stroke-width="0.8"/>
+  <line x1="948" y1="474" x2="1380" y2="474" stroke="#0f2744" stroke-width="0.8"/>
+  <!-- Pages réordonnées : du plus critique (sécurité mécanique) au moins critique (monitoring BP) -->
+  <g id="syn-tbl-page1">
+  <!-- Page 1 — Sécurité mécanique / Protection -->
+  <!-- Row 1 : Vitesse, Vib. Av., Vib. Ar., Dép. Axial, Huile P. -->
+  <text x="991"  y="406" fill="#64748b" font-size="9" text-anchor="middle">Vitesse</text>
+  <text{sid("tbl-spd")} x="991" y="438" fill="{c_tbl_spd}" font-size="19"
+       font-weight="700" text-anchor="middle">{speed:.0f}</text>
+  <text x="991"  y="452" fill="#475569" font-size="8.5" text-anchor="middle">RPM</text>
+  <text x="1077" y="406" fill="#64748b" font-size="9" text-anchor="middle">Vib. Av.</text>
+  <text{sid("tbl-vib")} x="1077" y="438" fill="{c_tbl_vib}" font-size="19"
+       font-weight="700" text-anchor="middle">{vib_fwd:.1f}</text>
+  <text x="1077" y="452" fill="#475569" font-size="8.5" text-anchor="middle">mm/s</text>
+  <text x="1163" y="406" fill="#64748b" font-size="9" text-anchor="middle">Vib. Ar.</text>
+  <text{sid("tbl2-vibaft")} x="1163" y="438" fill="{c_tbl2_vibaft}" font-size="19"
+       font-weight="700" text-anchor="middle">{vib_aft:.1f}</text>
+  <text x="1163" y="452" fill="#475569" font-size="8.5" text-anchor="middle">mm/s</text>
+  <text x="1250" y="406" fill="#64748b" font-size="9" text-anchor="middle">Dép. Axial</text>
+  <text{sid("tbl2-axial")} x="1250" y="438" fill="{c_tbl2_axial}" font-size="16"
+       font-weight="700" text-anchor="middle">{axial:+.2f}</text>
+  <text x="1250" y="452" fill="#475569" font-size="8.5" text-anchor="middle">mm</text>
+  <text x="1337" y="406" fill="#64748b" font-size="9" text-anchor="middle">Huile P.</text>
+  <text{sid("tbl2-oilp")} x="1337" y="438" fill="{c_tbl2_oilp}" font-size="19"
+       font-weight="700" text-anchor="middle">{oil_p:.2f}</text>
+  <text x="1337" y="452" fill="#475569" font-size="8.5" text-anchor="middle">bar</text>
+  <!-- Row 2 : T° Pal.Av., T° Pal.Ar., Huile T°, P HP, T HP -->
+  <text x="991"  y="492" fill="#64748b" font-size="9" text-anchor="middle">T° Pal.Av.</text>
+  <text{sid("tbl2-tfwd")} x="991" y="524" fill="{c_tbl2_tfwd}" font-size="19"
+       font-weight="700" text-anchor="middle">{temp_fwd:.0f}</text>
+  <text x="991"  y="540" fill="#475569" font-size="8.5" text-anchor="middle">°C</text>
+  <text x="1077" y="492" fill="#64748b" font-size="9" text-anchor="middle">T° Pal.Ar.</text>
+  <text{sid("tbl2-taft")} x="1077" y="524" fill="{c_tbl2_taft}" font-size="19"
+       font-weight="700" text-anchor="middle">{temp_aft:.0f}</text>
+  <text x="1077" y="540" fill="#475569" font-size="8.5" text-anchor="middle">°C</text>
+  <text x="1163" y="492" fill="#64748b" font-size="9" text-anchor="middle">Huile T°</text>
+  <text{sid("tbl-oilt")} x="1163" y="524" fill="{c_tbl_oilt}" font-size="19"
+       font-weight="700" text-anchor="middle">{oil_t:.0f}</text>
+  <text x="1163" y="540" fill="#475569" font-size="8.5" text-anchor="middle">°C</text>
+  <text x="1250" y="492" fill="#64748b" font-size="9" text-anchor="middle">P HP</text>
+  <text{sid("tbl-php")} x="1250" y="524" fill="{c_tbl_php}" font-size="19"
+       font-weight="700" text-anchor="middle">{p_hp:.1f}</text>
+  <text x="1250" y="540" fill="#475569" font-size="8.5" text-anchor="middle">bar</text>
+  <text x="1337" y="492" fill="#64748b" font-size="9" text-anchor="middle">T HP</text>
+  <text{sid("tbl-thp")} x="1337" y="524" fill="{c_tbl_thp}" font-size="19"
+       font-weight="700" text-anchor="middle">{t_hp:.0f}</text>
+  <text x="1337" y="540" fill="#475569" font-size="8.5" text-anchor="middle">°C</text>
+  </g>
+  <g id="syn-tbl-page2" display="none">
+  <!-- Page 2 — Opérationnel / Électrique -->
+  <!-- Row 1 : P active, Fréquence, cos φ, Courant, Dilatation -->
+  <text x="991"  y="406" fill="#64748b" font-size="9" text-anchor="middle">P activ.</text>
+  <text{sid("tbl3-power")} x="991" y="438" fill="{alt_col}" font-size="19"
+       font-weight="700" text-anchor="middle">{power:.1f}</text>
+  <text x="991"  y="452" fill="#475569" font-size="8.5" text-anchor="middle">MW</text>
+  <text x="1077" y="406" fill="#64748b" font-size="9" text-anchor="middle">Fréquence</text>
+  <text{sid("tbl2-freq")} x="1077" y="438" fill="{c_tbl2_freq}" font-size="19"
+       font-weight="700" text-anchor="middle">{freq:.2f}</text>
+  <text x="1077" y="452" fill="#475569" font-size="8.5" text-anchor="middle">Hz</text>
+  <text x="1163" y="406" fill="#64748b" font-size="9" text-anchor="middle">cos φ</text>
+  <text{sid("tbl3-pf")} x="1163" y="438" fill="{'#ef4444' if alm_pf else '#fbbf24'}" font-size="19"
+       font-weight="700" text-anchor="middle">{pf:.3f}</text>
+  <text x="1250" y="406" fill="#64748b" font-size="9" text-anchor="middle">Courant</text>
+  <text{sid("tbl3-ia")} x="1250" y="438" fill="{'#ef4444' if alm_ia else '#10b981'}" font-size="19"
+       font-weight="700" text-anchor="middle">{i_a:.0f}</text>
+  <text x="1250" y="452" fill="#475569" font-size="8.5" text-anchor="middle">A</text>
+  <text x="1337" y="406" fill="#64748b" font-size="9" text-anchor="middle">Dilatation</text>
+  <text{sid("tbl2-casing")} x="1337" y="438" fill="{c_tbl2_casing}" font-size="19"
+       font-weight="700" text-anchor="middle">{casing:.1f}</text>
+  <text x="1337" y="452" fill="#475569" font-size="8.5" text-anchor="middle">mm</text>
+  <!-- Row 2 : V1 HP, Valve BP, Q HP, Rendement, P barillet -->
+  <text x="991"  y="492" fill="#64748b" font-size="9" text-anchor="middle">V1 HP</text>
+  <text{sid("tbl-v1")} x="991" y="524" fill="{c_tbl_v1}" font-size="19"
+       font-weight="700" text-anchor="middle">{v1:.0f}</text>
+  <text x="991"  y="540" fill="#475569" font-size="8.5" text-anchor="middle">%</text>
+  <text x="1077" y="492" fill="#64748b" font-size="9" text-anchor="middle">Valve BP</text>
+  <text{sid("tbl-vbp")} x="1077" y="524" fill="{c_tbl_vbp}" font-size="19"
+       font-weight="700" text-anchor="middle">{v_bp:.0f}</text>
+  <text x="1077" y="540" fill="#475569" font-size="8.5" text-anchor="middle">%</text>
+  <text x="1163" y="492" fill="#64748b" font-size="9" text-anchor="middle">Q HP</text>
+  <text{sid("tbl-qhp")} x="1163" y="524" fill="#f97316" font-size="19"
+       font-weight="700" text-anchor="middle">{q_hp:.0f}</text>
+  <text x="1163" y="540" fill="#475569" font-size="8.5" text-anchor="middle">T/h</text>
+  <text x="1250" y="492" fill="#64748b" font-size="9" text-anchor="middle">Rendement</text>
+  <text{sid("tbl-eff")} x="1250" y="524" fill="{c_tbl_eff}" font-size="19"
+       font-weight="700" text-anchor="middle">{eff:.1f}</text>
+  <text x="1250" y="540" fill="#475569" font-size="8.5" text-anchor="middle">%</text>
+  <text x="1337" y="492" fill="#64748b" font-size="9" text-anchor="middle">P barillet</text>
+  <text{sid("tbl-pbar")} x="1337" y="524" fill="{c_tbl_pbar}" font-size="19"
+       font-weight="700" text-anchor="middle">{p_bar_bp:.2f}</text>
+  <text x="1337" y="540" fill="#475569" font-size="8.5" text-anchor="middle">bar</text>
+  </g>
+  <g id="syn-tbl-page3" display="none">
+  <!-- Page 3 — BP / Monitoring -->
+  <!-- Row 1 (5 cellules) : P BP in, Q cond., P vide, Q réact., S appar. -->
+  <text x="991"  y="406" fill="#64748b" font-size="9" text-anchor="middle">P BP in</text>
+  <text{sid("tbl2-pbpin")} x="991" y="438" fill="{c_tbl2_pbpin}" font-size="19"
+       font-weight="700" text-anchor="middle">{p_bp_in:.2f}</text>
+  <text x="991"  y="452" fill="#475569" font-size="8.5" text-anchor="middle">bar</text>
+  <text x="1077" y="406" fill="#64748b" font-size="9" text-anchor="middle">Q cond.</text>
+  <text{sid("tbl2-qcond")} x="1077" y="438" fill="{c_tbl2_qcond}" font-size="19"
+       font-weight="700" text-anchor="middle">{q_cond:.0f}</text>
+  <text x="1077" y="452" fill="#475569" font-size="8.5" text-anchor="middle">T/h</text>
+  <text x="1163" y="406" fill="#64748b" font-size="9" text-anchor="middle">P vide</text>
+  <text{sid("tbl2-pcond")} x="1163" y="438" fill="{c_tbl2_pcond}" font-size="16"
+       font-weight="700" text-anchor="middle">{p_cond:.4f}</text>
+  <text x="1163" y="452" fill="#475569" font-size="8.5" text-anchor="middle">bar</text>
+  <text x="1250" y="406" fill="#64748b" font-size="9" text-anchor="middle">Q réact.</text>
+  <text{sid("tbl3-qmvar")} x="1250" y="438" fill="#818cf8" font-size="19"
+       font-weight="700" text-anchor="middle">{q_mvar:.1f}</text>
+  <text x="1250" y="452" fill="#475569" font-size="8.5" text-anchor="middle">MVAR</text>
+  <text x="1337" y="406" fill="#64748b" font-size="9" text-anchor="middle">S appar.</text>
+  <text{sid("tbl3-smva")} x="1337" y="438" fill="#fbbf24" font-size="19"
+       font-weight="700" text-anchor="middle">{s_mva:.1f}</text>
+  <text x="1337" y="452" fill="#475569" font-size="8.5" text-anchor="middle">MVA</text>
+  </g>""" if show_table else ""
 
     svg = f"""
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="-20 -38 1430 615"
@@ -338,12 +514,14 @@ def _build_synoptic_div(data: dict, static_ids: bool) -> html.Div:
   <!-- Légende flux -->
   <line x1="1180" y1="-30" x2="1155" y2="-30" stroke="#f97316" stroke-width="4"/>
   <text x="1185" y="-27" fill="#94a3b8" font-size="9">Vapeur HP</text>
-  <line x1="1265" y1="-30" x2="1240" y2="-30" stroke="#3b82f6" stroke-width="4"/>
-  <text x="1270" y="-27" fill="#94a3b8" font-size="9">Vapeur BP</text>
-  <line x1="1350" y1="-30" x2="1325" y2="-30" stroke="#a78bfa" stroke-width="4"/>
+  <line x1="1265" y1="-30" x2="1240" y2="-30" stroke="#a78bfa" stroke-width="4"/>
+  <text x="1270" y="-27" fill="#94a3b8" font-size="9">Extr. BP</text>
+  <line x1="1340" y1="-30" x2="1315" y2="-30" stroke="#38bdf8" stroke-width="4"/>
+  <text x="1345" y="-27" fill="#94a3b8" font-size="9">Vapeur Sortie</text>
+  <line x1="1180" y1="-15" x2="1155" y2="-15" stroke="#10b981" stroke-width="4"/>
   <text x="1185" y="-12" fill="#94a3b8" font-size="9">Électrique</text>
-  <line x1="1265" y1="-15" x2="1240" y2="-15" stroke="#60a5fa" stroke-width="2" stroke-dasharray="4,2"/>
-  <text x="1270" y="-12" fill="#94a3b8" font-size="9">Équilibrage</text>
+  <line x1="1265" y1="-15" x2="1240" y2="-15" stroke="#1d4ed8" stroke-width="2" stroke-dasharray="4,2"/>
+  <text x="1270" y="-12" fill="#94a3b8" font-size="9">Équilibrage</text>ù
 
   <!-- ════ SOURCE VAPEUR HP ════ -->
   <g filter="url(#go)">
@@ -416,9 +594,9 @@ def _build_synoptic_div(data: dict, static_ids: bool) -> html.Div:
   <g class="{turb_cls}">
     <rect x="385" y="130" width="340" height="260" rx="12"
           fill="#060d1a" stroke="#3b82f6" stroke-width="2" filter="url(#gb)"/>
-    <text x="555" y="160" fill="#60a5fa" font-size="13" font-weight="700"
+    <text x="555" y="167" fill="#60a5fa" font-size="13" font-weight="700"
           text-anchor="middle" letter-spacing="2">TURBINE À VAPEUR</text>
-    <text x="555" y="175" fill="#475569" font-size="9" text-anchor="middle">
+    <text x="555" y="181" fill="#475569" font-size="9" text-anchor="middle">
       Détente 2 étages — HP → Extraction → BP
     </text>
 
@@ -435,7 +613,6 @@ def _build_synoptic_div(data: dict, static_ids: bool) -> html.Div:
       <line x1="-11" y1="-11" x2="11" y2="11" stroke="#3b82f6" stroke-width="1"/>
       <line x1="11" y1="-11" x2="-11" y2="11" stroke="#3b82f6" stroke-width="1"/>
     </g></g>
-    <text{sid("hp-stages")} x="465" y="297" fill="#60a5fa" font-size="7.5" text-anchor="middle">{p_hp:.0f}→{p_bp_in:.1f} bar</text>
 
     <circle cx="549" cy="248" r="6" fill="#a78bfa" stroke="#0a101a" stroke-width="1.5"/>
     <text x="549" y="260" fill="#a78bfa" font-size="7.5" font-weight="600" text-anchor="middle">Ext.</text>
@@ -454,10 +631,8 @@ def _build_synoptic_div(data: dict, static_ids: bool) -> html.Div:
       <line x1="-11" y1="-11" x2="11" y2="11" stroke="#38bdf8" stroke-width="1"/>
       <line x1="11" y1="-11" x2="-11" y2="11" stroke="#38bdf8" stroke-width="1"/>
     </g></g>
-    <text{sid("bp-label")} x="640" y="295" fill="#38bdf8" font-size="7.5" text-anchor="middle">{p_bp_in:.1f} bar · {t_bp:.0f}°C</text>
     <circle cx="656" cy="300" r="5" fill="#38bdf8"/>
     <text x="664" y="310" fill="#38bdf8" font-size="8">Ext. BP</text>
-
     <rect x="735" y="178" width="40" height="58" rx="4" fill="rgba(15,23,42,0.85)" stroke="#64748b" stroke-width="0.8"/>
     <text x="755" y="188" fill="#cbd5e1" font-size="7" font-weight="700" text-anchor="middle">P. AV</text>
     <text{sid("vibfwd-val")} x="755" y="202" fill="{'#ef4444' if vib_fwd > 4.5 else '#fbbf24'}" font-size="10" font-weight="700" text-anchor="middle">{vib_fwd:.1f}</text>
@@ -471,36 +646,12 @@ def _build_synoptic_div(data: dict, static_ids: bool) -> html.Div:
     <text x="915" y="210" fill="#64748b" font-size="6" text-anchor="middle">mm/s</text>
     <text{sid("tempaft-val")} x="915" y="222" fill="#38bdf8" font-size="9" text-anchor="middle">{temp_aft:.0f}</text>
     <text x="915" y="230" fill="#64748b" font-size="6" text-anchor="middle">°C</text>
-
     <line x1="395" y1="248" x2="720" y2="248"
-          stroke="#1d4ed8" stroke-width="4" stroke-dasharray="8,5" class="flow-hp" opacity="0.5"/>
-
-    <rect x="395" y="315" width="330" height="62" rx="6"
-          fill="rgba(10,16,26,0.85)" stroke="#1e3a5f" stroke-width="0.8"/>
-    <text x="436" y="325" fill="#64748b" font-size="7.5" text-anchor="middle">VITESSE</text>
-    <text{sid("speed-val")} x="436" y="340" fill="{'#ef4444' if alm_spd else '#60a5fa'}"
-          font-size="14" font-weight="700" text-anchor="middle">{speed:.0f}</text>
-    <text x="436" y="352" fill="#64748b" font-size="7" text-anchor="middle">RPM</text>
-    <line x1="478" y1="319" x2="478" y2="373" stroke="#1e3a5f" stroke-width="0.8"/>
-    <text x="519" y="325" fill="#64748b" font-size="7.5" text-anchor="middle">RENDEMENT</text>
-    <text{sid("eff-val")} x="519" y="340" fill="{'#ef4444' if alm_eff else '#10b981'}"
-          font-size="14" font-weight="700" text-anchor="middle">{eff:.1f}</text>
-    <text x="519" y="352" fill="#64748b" font-size="7" text-anchor="middle">%</text>
-    <line x1="560" y1="319" x2="560" y2="373" stroke="#1e3a5f" stroke-width="0.8"/>
-    <text x="601" y="325" fill="#64748b" font-size="7.5" text-anchor="middle">PRESS. BP</text>
-    <text{sid("pbp-val")} x="601" y="340" fill="#38bdf8"
-          font-size="14" font-weight="700" text-anchor="middle">{p_bp_in:.2f}</text>
-    <text x="601" y="352" fill="#64748b" font-size="7" text-anchor="middle">bar</text>
-    <line x1="643" y1="319" x2="643" y2="373" stroke="#1e3a5f" stroke-width="0.8"/>
-    <text x="684" y="325" fill="#64748b" font-size="7.5" text-anchor="middle">Q COND.</text>
-    <text{sid("qcond-val")} x="684" y="340" fill="#38bdf8"
-          font-size="14" font-weight="700" text-anchor="middle">{q_cond:.0f}</text>
-    <text x="684" y="352" fill="#64748b" font-size="7" text-anchor="middle">T/h</text>
-    <text x="560" y="372" fill="#1e3a5f" font-size="7"
-          text-anchor="middle">Détente adiabatique — Δh = ṁ × (h_in − h_out)</text>
+          stroke="#1d4ed8" stroke-width="4" stroke-dasharray="8,5" class="flow-hp" opacity="0.5"/>   
   </g>
 
   {tag_turbine_int}
+  {tag_turb_bottom}
 
   <!-- ════ EXTRACTION → BARILLET BP ════ -->
   <line x1="549" y1="130" x2="549" y2="55"
@@ -538,38 +689,37 @@ def _build_synoptic_div(data: dict, static_ids: bool) -> html.Div:
   {vsym_vbp}
   <line x1="655" y1="433" x2="655" y2="500"
         stroke="#38bdf8" stroke-width="8" class="flow-bp"/>
-  <line x1="655" y1="500" x2="757" y2="500"
+  <line x1="655" y1="500" x2="562" y2="500"
         stroke="#38bdf8" stroke-width="8" class="flow-bp"/>
 
   <!-- ════ CONDENSEUR ════ -->
-  <rect x="762" y="445" width="195" height="125" rx="10"
+  <rect x="562" y="445" width="195" height="125" rx="10"
         fill="#060d1a" stroke="#38bdf8" stroke-width="1.8" filter="url(#gb)"/>
-  <text x="859" y="462" fill="#f8fafc" font-size="11" font-weight="600"
+  <text x="659" y="462" fill="#f8fafc" font-size="11" font-weight="600"
         text-anchor="middle" letter-spacing="1">CONDENSEUR</text>
-  <text x="859" y="474" fill="#64748b" font-size="8" text-anchor="middle">Pression quasi nulle (absolue)</text>
-  <text x="859" y="485" fill="#10b981" font-size="8" font-weight="600"
+  <text x="659" y="474" fill="#64748b" font-size="8" text-anchor="middle">Pression quasi nulle (absolue)</text>
+  <text x="659" y="485" fill="#10b981" font-size="8" font-weight="600"
         text-anchor="middle">① VP HP → Condenseur</text>
-  <rect x="764" y="490" width="192" height="74" rx="4"
+  <rect x="564" y="490" width="192" height="74" rx="4"
         fill="rgba(15,23,42,0.75)" stroke="#0f2744" stroke-width="0.8"/>
-  <text x="790" y="505" fill="#64748b" font-size="8">P vide</text>
-  <text{sid("pcond-val")} x="790" y="520" fill="#38bdf8" font-size="11" font-weight="700">{p_cond:.4f}</text>
-  <text x="790" y="532" fill="#64748b" font-size="7.5">bar</text>
-  <line x1="835" y1="492" x2="835" y2="562" stroke="#0f2744" stroke-width="0.8"/>
-  <text x="848" y="505" fill="#64748b" font-size="8">T BP sortie</text>
-  <text{sid("tbp-val")} x="848" y="520" fill="#38bdf8" font-size="11" font-weight="700">{t_bp:.0f}</text>
-  <text x="848" y="532" fill="#64748b" font-size="7.5">°C</text>
-  <line x1="896" y1="492" x2="896" y2="562" stroke="#0f2744" stroke-width="0.8"/>
-  <text x="910" y="505" fill="#64748b" font-size="8">Q eau</text>
-  <text{sid("qcond2-val")} x="910" y="520" fill="#38bdf8" font-size="11" font-weight="700">{q_cond:.0f}</text>
-  <text x="910" y="532" fill="#64748b" font-size="7.5">T/h</text>
-  <text x="859" y="560" fill="#1e3a5f" font-size="7"
+  <text x="590" y="505" fill="#64748b" font-size="8">P vide</text>
+  <text{sid("pcond-val")} x="590" y="520" fill="#38bdf8" font-size="11" font-weight="700">{p_cond:.4f}</text>
+  <text x="590" y="532" fill="#64748b" font-size="7.5">bar</text>
+  <line x1="635" y1="492" x2="635" y2="562" stroke="#0f2744" stroke-width="0.8"/>
+  <text x="648" y="505" fill="#64748b" font-size="8">T BP sortie</text>
+  <text{sid("tbp-val")} x="648" y="520" fill="#38bdf8" font-size="11" font-weight="700">{t_bp:.0f}</text>
+  <text x="648" y="532" fill="#64748b" font-size="7.5">°C</text>
+  <line x1="696" y1="492" x2="696" y2="562" stroke="#0f2744" stroke-width="0.8"/>
+  <text x="710" y="505" fill="#64748b" font-size="8">Q eau</text>
+  <text{sid("qcond2-val")} x="710" y="520" fill="#38bdf8" font-size="11" font-weight="700">{q_cond:.0f}</text>
+  <text x="710" y="532" fill="#64748b" font-size="7.5">T/h</text>
+  <text x="659" y="560" fill="#1e3a5f" font-size="7"
         text-anchor="middle">Δh = ṁ × (h_in − h_out) → Eau chaude recyclée</text>
 
   <!-- ════ ARBRE TURBINE → RÉDUCTEUR ════ -->
   <line x1="725" y1="248" x2="785" y2="248"
-        stroke="#3b82f6" stroke-width="6" stroke-dasharray="8,5" class="flow-hp"/>
-  {_instrument_circle(755, 248, "ST", "#60a5fa")}
-  {tag_spd}
+        stroke="#1d4ed8" stroke-width="6" stroke-dasharray="8,5" class="flow-hp"/>
+  {_instrument_circle(755, 248, "ST", "#1d4ed8")}
 
   <!-- ════ RÉDUCTEUR ════ -->
   <rect x="785" y="190" width="100" height="120" rx="10"
@@ -592,50 +742,39 @@ def _build_synoptic_div(data: dict, static_ids: bool) -> html.Div:
   <text{sid("freq-val")} x="835" y="308" fill="#34d399" font-size="9" font-weight="700" text-anchor="middle">{freq:.2f} <tspan fill="#064e3b" font-size="8">Hz · 2 pôles</tspan></text>
 
   <line x1="885" y1="248" x2="945" y2="248"
-        stroke="#10b981" stroke-width="6" stroke-dasharray="8,5" class="flow-hp"/>
-  {_instrument_circle(915, 248, "ST", "#10b981")}
+        stroke="#1d4ed8" stroke-width="6" stroke-dasharray="8,5" class="flow-hp"/>
+  {_instrument_circle(915, 248, "ST", "#1d4ed8")}
   {tag_vit2}
 
   <!-- ════ ALTERNATEUR ════ -->
   <rect id="syn-alt-rect" x="945" y="155" width="165" height="200" rx="12"
         fill="#060d1a" stroke="{alt_col}" stroke-width="2"
         filter="url(#{'gr' if alm_pow else 'gg'})"/>
-  <text x="1027" y="178" fill="#f8fafc" font-size="11" font-weight="700"
+  <text x="1027" y="192" fill="#f8fafc" font-size="11" font-weight="700"
         text-anchor="middle" letter-spacing="1">ALTERNATEUR</text>
-  <text x="1027" y="192" fill="#475569" font-size="8"
+  <text x="1027" y="205" fill="#475569" font-size="8"
         text-anchor="middle">IEC 60034 · Topologie Étoile</text>
-  <circle cx="1027" cy="222" r="24" fill="rgba(16,185,129,0.08)"
-          stroke="{alt_col}" stroke-width="1.5"/>
-  <text{sid("alt-tilde")} x="1027" y="231" fill="{alt_col}" font-size="22" text-anchor="middle"
+  
+  <g transform="translate(1027,248)">
+    <g class="spin">
+      <circle r="36" fill="none" stroke="#10b981" stroke-width="1.5"/>
+      <circle r="15" fill="#10b981"/>
+      <line x1="-36" y1="0" x2="-30" y2="0" stroke="#10b981" stroke-width="2"/>
+      <line x1="30" y1="0" x2="36" y2="0" stroke="#10b981" stroke-width="2"/>
+      <line x1="0" y1="-36" x2="0" y2="-30" stroke="#10b981" stroke-width="2"/>
+      <line x1="0" y1="30" x2="0" y2="36" stroke="#10b981" stroke-width="2"/>
+    </g>
+  </g>
+  <text{sid("alt-tilde")} x="1027" y="260" fill="{alt_col}" font-size="30" text-anchor="middle"
         class="{'pulse' if alm_pow else ''}">~</text>
 
-  <rect x="952" y="254" width="152" height="96" rx="4"
-        fill="rgba(15,23,42,0.75)" stroke="#0f2744" stroke-width="0.8"/>
-  <text x="965" y="269" fill="#64748b" font-size="7.5">P activ.</text>
-  <text{sid("power-val")} x="965" y="283" fill="{'#ef4444' if alm_pow else alt_col}" font-size="13" font-weight="700">{power:.1f}</text>
-  <text x="965" y="294" fill="#64748b" font-size="7">MW</text>
-  <line x1="1006" y1="256" x2="1006" y2="348" stroke="#0f2744" stroke-width="0.8"/>
-  <text x="1014" y="269" fill="#64748b" font-size="7.5">Q réact.</text>
-  <text{sid("qmvar-val")} x="1014" y="283" fill="#818cf8" font-size="13" font-weight="700">{q_mvar:.1f}</text>
-  <text x="1014" y="294" fill="#64748b" font-size="7">MVAR</text>
-  <line x1="1058" y1="256" x2="1058" y2="348" stroke="#0f2744" stroke-width="0.8"/>
-  <text x="1065" y="269" fill="#64748b" font-size="7.5">S appar.</text>
-  <text{sid("smva-val")} x="1065" y="283" fill="#fbbf24" font-size="13" font-weight="700">{s_mva:.1f}</text>
-  <text x="1065" y="294" fill="#64748b" font-size="7">MVA</text>
-  <line x1="954" y1="302" x2="1102" y2="302" stroke="#0f2744" stroke-width="0.8"/>
-  <text x="965" y="316" fill="#64748b" font-size="7.5">cos φ</text>
-  <text{sid("pf-val")} x="965" y="332" fill="{'#ef4444' if alm_pf else '#fbbf24'}" font-size="12" font-weight="700">{pf:.3f}</text>
-  <text x="1014" y="316" fill="#64748b" font-size="7.5">Courant</text>
-  <text{sid("ia-val")} x="1014" y="332" fill="{'#ef4444' if alm_ia else '#10b981'}" font-size="12" font-weight="700">{i_a:.0f}<tspan fill="#64748b" font-size="7"> A</tspan></text>
-  <text x="1065" y="316" fill="#64748b" font-size="7.5">Tension</text>
-  <text{sid("volt-val")} x="1065" y="332" fill="#10b981" font-size="12" font-weight="700">{voltage:.1f}<tspan fill="#64748b" font-size="7"> kV</tspan></text>
-
   {tag_alt_group}
+  {tag_alt_bottom}
 
   <!-- ════ BUS BARRES ÉLECTRIQUE ════ -->
   <line x1="1110" y1="248" x2="1175" y2="248"
         stroke="#10b981" stroke-width="10" class="flow-el"/>
-  {tag_pout}
+
   <rect x="1175" y="180" width="20" height="160" rx="3"
         fill="#0a101a" stroke="#10b981" stroke-width="2"/>
   <text x="1185" y="175" fill="#10b981" font-size="8" text-anchor="middle">BB</text>
@@ -670,6 +809,8 @@ def _build_synoptic_div(data: dict, static_ids: bool) -> html.Div:
   <text{sid("excess-val")} x="1313" y="298" fill="#fbbf24" font-size="12" font-weight="700">{max(0, power-14):.1f}</text>
   <text x="1313" y="309" fill="#64748b" font-size="7.5">MW</text>
   <text x="1305" y="332" fill="#334155" font-size="8" text-anchor="middle">28 kV (1 min) · 40 kA (1 min)</text>
+
+  {_table_svg}
 
   <!-- ════ SOURCE VAPEUR BP ════ -->
   <rect x="18" y="430" width="125" height="85" rx="8"

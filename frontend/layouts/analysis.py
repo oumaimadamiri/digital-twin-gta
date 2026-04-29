@@ -203,9 +203,9 @@ def layout():
                         ], style={"display": "flex", "gap": "8px", "alignItems": "center"}),
                     ], style={"flex": "1"}),
 
-                    # ── Paramètres ─────────────────────────────────────────
+                    # ── Paramètres (filtre CSV uniquement — indépendant de la vue graphe) ─
                     html.Div([
-                        html.Div("Paramètres", className="filter-label"),
+                        html.Div("Paramètres (filtre CSV)", className="filter-label"),
                         dcc.Dropdown(id="param-selector",
                             options=[
                                 {"label": "Pression HP (bar)",     "value": "pressure_hp"},
@@ -215,8 +215,10 @@ def layout():
                                 {"label": "Facteur cosφ",          "value": "power_factor"},
                                 {"label": "Rendement (%)",         "value": "efficiency"},
                                 {"label": "Débit vapeur HP (T/h)", "value": "steam_flow_hp"},
+                                {"label": "Courant (A)",           "value": "current_a"},
                             ],
-                            value=["pressure_hp", "active_power", "turbine_speed"],
+                            value=[],
+                            placeholder="Vide = toutes les colonnes",
                             multi=True,
                             className="custom-dropdown",
                         ),
@@ -243,10 +245,27 @@ def layout():
 
                 # ── Graphique principal (LIVE ou HISTORY) ─────────────────
                 html.Div([
-                    # Header avec indicateur de mode
+                    # Header avec sélecteur mono-paramètre + indicateur de mode
                     html.Div([
-                        html.Div("Évolution temporelle multi-paramètres",
+                        html.Div("Évolution temporelle",
                                  className="card-title", style={"marginBottom": "0"}),
+                        html.Div([
+                            html.Span("Vue :", style={
+                                "color": "#64748b", "fontSize": "10px",
+                                "fontFamily": "Share Tech Mono", "letterSpacing": "1px",
+                                "marginRight": "8px",
+                            }),
+                            dcc.Dropdown(
+                                id="param-view",
+                                options=[],
+                                value=None,
+                                clearable=False,
+                                searchable=False,
+                                className="custom-dropdown",
+                                style={"width": "230px", "fontSize": "12px"},
+                            ),
+                        ], style={"display": "flex", "alignItems": "center", "marginLeft": "auto",
+                                  "marginRight": "16px"}),
                         # Indicateur de mode — mis à jour par callback
                         html.Div(id="analysis-mode-indicator", children=[
                             html.Span("●", style={
@@ -258,7 +277,7 @@ def layout():
                             }),
                         ], style={"display": "flex", "alignItems": "center"}),
                     ], style={"display": "flex", "justifyContent": "space-between",
-                              "alignItems": "center", "marginBottom": "12px"}),
+                              "alignItems": "center", "marginBottom": "12px", "gap": "16px"}),
 
                     dcc.Graph(id="history-chart",
                               figure=create_empty_fig(320, "Sélectionnez une période ou LIVE"),

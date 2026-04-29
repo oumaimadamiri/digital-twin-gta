@@ -3,7 +3,7 @@ api/routes_data.py — Endpoints pour les données temps réel et l'historique
 """
 
 from datetime import datetime
-from typing import Optional
+from typing import List, Optional
 from fastapi import APIRouter, Query, HTTPException
 from fastapi.responses import StreamingResponse, JSONResponse
 import io
@@ -87,11 +87,12 @@ def get_statistics(
 
 @router.get("/export/csv")
 def export_csv(
-    start: Optional[datetime] = Query(None),
-    end:   Optional[datetime] = Query(None),
+    start:  Optional[datetime]   = Query(None),
+    end:    Optional[datetime]   = Query(None),
+    params: Optional[List[str]]  = Query(None, description="Colonnes à exporter (vide = toutes)"),
 ):
-    """Exporte l'historique en CSV."""
-    content  = data_manager.export_csv(start=start, end=end)
+    """Exporte l'historique en CSV. Si `params` est fourni, seules ces colonnes (+ timestamp/status) sont incluses."""
+    content  = data_manager.export_csv(start=start, end=end, params=params)
     filename = f"gta_export_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.csv"
     return StreamingResponse(
         io.BytesIO(content),
@@ -102,11 +103,12 @@ def export_csv(
 
 @router.get("/export/excel")
 def export_excel(
-    start: Optional[datetime] = Query(None),
-    end:   Optional[datetime] = Query(None),
+    start:  Optional[datetime]   = Query(None),
+    end:    Optional[datetime]   = Query(None),
+    params: Optional[List[str]]  = Query(None, description="Colonnes à exporter (vide = toutes)"),
 ):
-    """Exporte l'historique en Excel."""
-    content  = data_manager.export_excel(start=start, end=end)
+    """Exporte l'historique en Excel. Si `params` est fourni, seules ces colonnes (+ timestamp/status) sont incluses."""
+    content  = data_manager.export_excel(start=start, end=end, params=params)
     filename = f"gta_export_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.xlsx"
     return StreamingResponse(
         io.BytesIO(content),
