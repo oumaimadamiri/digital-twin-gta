@@ -72,8 +72,12 @@ window.patchGtaSynoptic = function(data) {
     const vib_aft = data.vib_bearing_aft      ?? 1.8;
     const temp_fwd= data.temp_bearing_fwd     ?? 74.0;
     const temp_aft= data.temp_bearing_aft     ?? 76.0;
-    const oil_p   = data.lube_oil_press       ?? 1.5;
-    const oil_t   = data.lube_oil_temp        ?? 45.0;
+    const oil_p     = data.lube_oil_press       ?? 1.5;
+    const oil_t     = data.lube_oil_temp        ?? 45.0;
+    const oil_tout  = data.lube_oil_temp_out    ?? 60.0;
+    const oil_lvl   = data.lube_oil_tank_level  ?? 80.0;
+    const oil_pump  = data.lube_oil_pump        ?? "MAIN";
+    const oil_dp    = data.lube_oil_filter_dp   ?? 0.3;
     const axial   = data.axial_displacement   ?? 0.2;
     const casing  = data.casing_expansion     ?? 5.0;
 
@@ -459,6 +463,41 @@ window.patchGtaSynoptic = function(data) {
         bxIaRect.setAttribute("fill",   alm_ia ? "rgba(239,68,68,0.12)" : "rgba(15,23,42,0.75)");
         bxIaRect.setAttribute("stroke", alm_ia ? "#ef4444" : "#1e3a5f");
     }
+
+    /* ── Centrale Huile Lubrification ─────────────────────────────────── */
+    const alm_oilp_lube  = oil_p   < 1.2 || oil_p   > 2.5;
+    const alm_oiltin     = oil_t   > 55;
+    const alm_oiltout    = oil_tout > 70;
+    const alm_oillvl     = oil_lvl  < 60;
+    const alm_oildp      = oil_dp   > 0.8;
+    const alm_oilpump    = oil_pump !== "MAIN";
+    const alm_oil_any    = alm_oilp_lube || alm_oiltin || alm_oiltout || alm_oillvl || alm_oildp || alm_oilpump;
+
+    _setText("syn-lube-press-val",    oil_p.toFixed(2)    + " bar");
+    _setText("syn-lube-tin-val",      oil_t.toFixed(1)    + " °C");
+    _setText("syn-lube-tout-val",     oil_tout.toFixed(1) + " °C");
+    _setText("syn-lube-level-val",    oil_lvl.toFixed(0)  + " %");
+    _setText("syn-lube-dpfilter-val", oil_dp.toFixed(2)   + " bar");
+    _setText("syn-lube-pump-val",     oil_pump);
+
+    _setFill("syn-lube-press-val",    alm_oilp_lube ? "#ef4444" : "#fbbf24");
+    _setFill("syn-lube-tin-val",      alm_oiltin    ? "#ef4444" : "#fbbf24");
+    _setFill("syn-lube-tout-val",     alm_oiltout   ? "#ef4444" : "#f97316");
+    _setFill("syn-lube-level-val",    alm_oillvl    ? "#ef4444" : "#10b981");
+    _setFill("syn-lube-dpfilter-val", alm_oildp     ? "#ef4444" : "#a78bfa");
+
+    const pumpColor = oil_pump === "MAIN" ? "#10b981" : oil_pump === "AUX" ? "#f59e0b" : "#ef4444";
+    _setFill("syn-lube-pump-val", pumpColor);
+    _setFill("syn-lube-pump-dot", pumpColor);
+
+    const lubeRect = document.getElementById("syn-lube-rect");
+    if (lubeRect) {
+        lubeRect.setAttribute("stroke", alm_oil_any ? "#ef4444" : "#10b981");
+        lubeRect.setAttribute("filter", `url(#${alm_oil_any ? "gr" : "gg"})`);
+        lubeRect.setAttribute("fill",   alm_oil_any ? "rgba(239,68,68,0.08)" : "rgba(15,23,42,0.85)");
+    }
+    const lubeBlink = document.getElementById("syn-lube-blink");
+    if (lubeBlink) lubeBlink.setAttribute("display", alm_oil_any ? "block" : "none");
 };
 
 /* ── Navigation pagination table ─────────────────────────────────────────── */

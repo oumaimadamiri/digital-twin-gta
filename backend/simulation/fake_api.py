@@ -205,6 +205,35 @@ class FakeAPI:
             computed_sim["valve_v3_target"] = self._state["valve_v3"]
             computed_sim["valve_bp_target"] = self._state["valve_bp"]
 
+            # Appliquer les deltas du scénario sur les champs auxiliaires (non-primaires)
+            # _apply_scenario ne touche que les clés présentes dans _state (entrées primaires).
+            # Ce bloc post-traite les champs calculés (huile, paliers) qui ne sont pas dans _state.
+            if self._active_scenario is not None and self._scenario_start_time is not None:
+                elapsed  = time.time() - self._scenario_start_time
+                progress = min(elapsed / self._active_scenario.duration_s, 1.0)
+                if self._active_scenario.perturbation_type == "step":
+                    aux_factor = 1.0
+                elif self._active_scenario.perturbation_type == "ramp":
+                    aux_factor = progress
+                else:
+                    aux_factor = math.sin(2 * math.pi * self._oscillation_t / OSCILLATION_PERIOD_S)
+
+                for param, delta in self._active_scenario.target_deltas.items():
+                    if (param in computed_sim
+                            and param not in self._state
+                            and param != "power_factor_offset"):
+                        try:
+                            computed_sim[param] = round(float(computed_sim[param]) + delta * aux_factor, 3)
+                        except (TypeError, ValueError):
+                            pass
+
+                # État pompe huile — override progressif pendant scénario 10
+                if self._active_scenario.id == 10:
+                    if progress > 0.7:
+                        computed_sim["lube_oil_pump"] = "OFF"
+                    elif progress > 0.3:
+                        computed_sim["lube_oil_pump"] = "AUX"
+
             if self._power_factor_offset != 0:
                 computed_sim["power_factor"] = round(
                     max(PF_MIN_CLAMP, computed_sim["power_factor"] + self._power_factor_offset), 3

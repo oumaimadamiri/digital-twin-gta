@@ -42,6 +42,12 @@ _SPARK_PARAMS = {
     "current_a":            {"label": "Courant",   "unit": "A",   "color": "#60a5fa", "y_range": [1360, 1485]},
     "apparent_power":       {"label": "S app.",    "unit": "MVA", "color": "#a78bfa", "y_range": [25,    27]},
     "reactive_power":       {"label": "Q réact.",  "unit": "MVAR","color": "#818cf8", "y_range": [12.75,    14]},
+    # Centrale Huile Lubrification
+    "lube_oil_press":       {"label": "P Huile",   "unit": "bar", "color": "#fbbf24", "y_range": [0.5,  3.0]},
+    "lube_oil_temp":        {"label": "T° Huile ↓","unit": "°C",  "color": "#fbbf24", "y_range": [30,   80]},
+    "lube_oil_temp_out":    {"label": "T° Huile ↑","unit": "°C",  "color": "#f97316", "y_range": [40,   90]},
+    "lube_oil_tank_level":  {"label": "Niv. Huile","unit": "%",   "color": "#10b981", "y_range": [50,  100]},
+    "lube_oil_filter_dp":   {"label": "ΔP Filtre", "unit": "bar", "color": "#a78bfa", "y_range": [0.0,  1.0]},
 }
 
 _PARAM_GROUPS = {

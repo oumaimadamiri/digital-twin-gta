@@ -30,6 +30,13 @@ _DEFAULTS = {
     "valve_v2":             100.0,
     "valve_v3":             100.0,
     "valve_bp":             80.0,
+    # Centrale Huile Lubrification
+    "lube_oil_press":       1.5,
+    "lube_oil_temp":        45.0,
+    "lube_oil_temp_out":    60.0,
+    "lube_oil_tank_level":  80.0,
+    "lube_oil_pump":        "MAIN",
+    "lube_oil_filter_dp":   0.3,
 }
 
 
@@ -183,8 +190,12 @@ def _build_synoptic_div(data: dict, static_ids: bool, show_table: bool = True, i
     vib_aft = data.get("vib_bearing_aft", 1.8)
     temp_fwd= data.get("temp_bearing_fwd", 74.0)
     temp_aft= data.get("temp_bearing_aft", 76.0)
-    oil_p   = data.get("lube_oil_press", 1.5)
-    oil_t   = data.get("lube_oil_temp", 45.0)
+    oil_p       = data.get("lube_oil_press",       1.5)
+    oil_t       = data.get("lube_oil_temp",        45.0)
+    oil_t_out   = data.get("lube_oil_temp_out",    60.0)
+    oil_lvl     = data.get("lube_oil_tank_level",  80.0)
+    oil_pump    = data.get("lube_oil_pump",        "MAIN")
+    oil_dp      = data.get("lube_oil_filter_dp",   0.3)
     axial   = data.get("axial_displacement", 0.2)
     casing  = data.get("casing_expansion", 5.0)
     scenario = data.get("scenario")
@@ -827,6 +838,90 @@ def _build_synoptic_div(data: dict, static_ids: bool, show_table: bool = True, i
         stroke="#38bdf8" stroke-width="2" stroke-dasharray="4,4" opacity="0.4"/>
   <text x="240" y="442" fill="#38bdf8" font-size="8" opacity="0.6">
     (démarrage uniquement)
+  </text>
+
+  <!-- ════ CENTRALE HUILE LUBRIFICATION ════ -->
+  <style>.flow-oil{{stroke-dasharray:8,4;animation:flow 2s linear infinite;}}</style>
+  <!-- Lignes d'alimentation huile vers paliers turbine (ambre) -->
+  <polyline points="460,415 460,405 755,405 755,237"
+            fill="none" stroke="#fbbf24" stroke-width="1.5" opacity="0.55"
+            class="flow-oil"/>
+  <polyline points="460,415 460,405 915,405 915,237"
+            fill="none" stroke="#fbbf24" stroke-width="1.5" opacity="0.55"
+            class="flow-oil"/>
+  <text x="608" y="402" fill="#fbbf24" font-size="7" opacity="0.6" text-anchor="middle">huile graissage paliers</text>
+
+  <!-- Cadre principal -->
+  <rect{sid("lube-rect")} x="160" y="415" width="380" height="155" rx="10"
+       fill="rgba(15,23,42,0.85)" stroke="#10b981" stroke-width="1.8"
+       filter="url(#gg)"/>
+  <!-- Alarme blink (cachée par défaut) -->
+  <circle{sid("lube-blink")} cx="527" cy="423" r="5" fill="#ef4444"
+          display="none" class="blink"/>
+
+  <!-- Titre -->
+  <text x="350" y="432" fill="#94a3b8" font-size="9" font-weight="700"
+        text-anchor="middle" letter-spacing="1">CENTRALE HUILE LUBRIFICATION</text>
+  <line x1="165" y1="437" x2="535" y2="437" stroke="#1e3a5f" stroke-width="0.8"/>
+
+  <!-- Pompe (indicateur haut-droit) -->
+  <circle{sid("lube-pump-dot")} cx="492" cy="450" r="5" fill="#10b981"/>
+  <text x="468" y="447" fill="#64748b" font-size="8" text-anchor="end">Pompe</text>
+  <text{sid("lube-pump-val")} x="500" y="454" fill="#10b981" font-size="9"
+       font-weight="700">{oil_pump}</text>
+
+  <!-- Séparateur vertical -->
+  <line x1="345" y1="437" x2="345" y2="567" stroke="#1e3a5f" stroke-width="0.8"/>
+  <!-- Séparateur horizontal -->
+  <line x1="165" y1="500" x2="535" y2="500" stroke="#1e3a5f" stroke-width="0.8"/>
+
+  <!-- ── Ligne 1 : P. Huile | T° Entrée | T° Sortie ── -->
+  <!-- Pression -->
+  <text x="255" y="460" fill="#64748b" font-size="8" text-anchor="middle">P. Huile</text>
+  <text{sid("lube-press-val")} x="255" y="479" fill="{'#ef4444' if oil_p < 1.2 or oil_p > 2.5 else '#fbbf24'}"
+       font-size="17" font-weight="700" text-anchor="middle"
+       {'class="blink"' if oil_p < 1.2 else ''}>{oil_p:.2f}</text>
+  <text x="255" y="492" fill="#64748b" font-size="8" text-anchor="middle">bar</text>
+
+  <!-- T° Entrée paliers -->
+  <text x="440" y="460" fill="#64748b" font-size="8" text-anchor="middle">T° Entrée</text>
+  <text{sid("lube-tin-val")} x="440" y="479" fill="{'#ef4444' if oil_t > 55 else '#fbbf24'}"
+       font-size="17" font-weight="700" text-anchor="middle">{oil_t:.1f}</text>
+  <text x="440" y="492" fill="#64748b" font-size="8" text-anchor="middle">°C</text>
+
+  <!-- T° Sortie paliers -->
+  <text x="350" y="460" fill="#64748b" font-size="8" text-anchor="middle">T° Sortie</text>
+  <text{sid("lube-tout-val")} x="350" y="479" fill="{'#ef4444' if oil_t_out > 70 else '#f97316'}"
+       font-size="17" font-weight="700" text-anchor="middle">{oil_t_out:.1f}</text>
+  <text x="350" y="492" fill="#64748b" font-size="8" text-anchor="middle">°C</text>
+
+  <!-- ── Ligne 2 : Niveau | ΔP Filtre | indicateur paliers ── -->
+  <!-- Niveau réservoir -->
+  <!-- Barre de progression niveau -->
+  <rect x="170" y="520" width="140" height="10" rx="3" fill="#0f2744" stroke="#1e3a5f" stroke-width="0.5"/>
+  <rect x="170" y="520" width="{max(0, min(140, 140 * oil_lvl / 100)):.0f}" height="10" rx="3"
+        fill="{'#ef4444' if oil_lvl < 60 else '#10b981'}" opacity="0.85"/>
+  <text x="240" y="515" fill="#64748b" font-size="8" text-anchor="middle">Niveau réservoir</text>
+  <text{sid("lube-level-val")} x="240" y="545" fill="{'#ef4444' if oil_lvl < 60 else '#10b981'}"
+       font-size="14" font-weight="700" text-anchor="middle">{oil_lvl:.0f} %</text>
+
+  <!-- ΔP Filtre -->
+  <text x="440" y="515" fill="#64748b" font-size="8" text-anchor="middle">ΔP Filtre</text>
+  <text{sid("lube-dpfilter-val")} x="440" y="534" fill="{'#ef4444' if oil_dp > 0.8 else '#a78bfa'}"
+       font-size="17" font-weight="700" text-anchor="middle"
+       {'class="pulse"' if oil_dp > 0.8 else ''}>{oil_dp:.2f}</text>
+  <text x="440" y="547" fill="#64748b" font-size="8" text-anchor="middle">bar</text>
+
+  <!-- Icône pompe (silhouette) -->
+  <circle cx="350" cy="530" r="14" fill="rgba(16,185,129,0.08)" stroke="#10b981" stroke-width="1.2"/>
+  <path d="M340,530 L350,522 L360,530 L350,538 Z" fill="#10b981" opacity="0.7"/>
+  <path d="M350,516 L350,522 M350,538 L350,544 M336,530 L342,530 M358,530 L364,530"
+        stroke="#10b981" stroke-width="1.2" opacity="0.5"/>
+
+  <!-- Ligne décorative bas -->
+  <line x1="165" y1="563" x2="535" y2="563" stroke="#1e3a5f" stroke-width="0.6"/>
+  <text x="350" y="572" fill="#334155" font-size="7" text-anchor="middle">
+    API 614 — Lube Oil System
   </text>
 
 </svg>"""

@@ -170,6 +170,13 @@ SCENARIOS: dict[int, Scenario] = {
             "pressure_hp":     -5.0,  # bar   → conséquence de la réduction de charge
             # Effet sur l'huile de commande → vannes réagissent moins vite
             "valve_v1":        -8.0,  # %     → légère restriction de sécurité
+            # Perturbations huile/paliers (appliquées sur computed_sim dans fake_api)
+            "lube_oil_temp":       +20.0,  # °C → monte vers ~65°C (alarme > 55)
+            "lube_oil_temp_out":   +25.0,  # °C → monte vers ~85°C (alarme > 70)
+            "lube_oil_press":       -0.5,  # bar → descend vers ~1.0 (alarme < 1.2)
+            "lube_oil_filter_dp":   +0.4,  # bar → monte vers ~0.7 (alarme > 0.8)
+            "temp_bearing_fwd":    +15.0,  # °C → palier AV chauffe
+            "temp_bearing_aft":    +15.0,  # °C → palier AR chauffe
         },
         duration_s=180,
     ),

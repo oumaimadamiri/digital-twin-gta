@@ -27,6 +27,9 @@ _RT_FIELDS = frozenset([
     "status", "turbine_speed", "current_a", "pressure_bp_barillet",
     "reactive_power", "apparent_power", "power_factor", "voltage",
     "steam_flow_hp", "pressure_bp_in", "steam_flow_condenser",
+    # centrale huile lubrification (sparkline + historique analyse)
+    "lube_oil_press", "lube_oil_temp", "lube_oil_temp_out",
+    "lube_oil_tank_level", "lube_oil_filter_dp",
 ])
 
 def register(app):

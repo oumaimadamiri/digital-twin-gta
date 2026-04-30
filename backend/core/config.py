@@ -107,6 +107,13 @@ NOMINAL = {
 
     # ── Rendement ──
     "efficiency":   85.0,  # % rendement isentropique HP physique (η_is × 100, ∈ [0,100])
+
+    # ── Centrale Huile Lubrification ──
+    "lube_oil_press":       1.5,   # bar  pression nominale réseau huile
+    "lube_oil_temp":        45.0,  # °C   T° entrée paliers (sortie refroidisseur)
+    "lube_oil_temp_out":    60.0,  # °C   T° sortie paliers (drain retour)
+    "lube_oil_tank_level":  80.0,  # %    niveau réservoir
+    "lube_oil_filter_dp":   0.3,   # bar  ΔP filtre (alarme > 0.8)
 }
 
 # ─────────────────────────────────────────────

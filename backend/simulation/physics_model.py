@@ -479,7 +479,11 @@ class PhysicsModel:
         # 4. Huile de graissage (Pression bar, Temp °C)
         lube_press = 1.5 + random.uniform(-0.02, 0.02) - (temp_fwd - 74) * 0.005 # baisse légère si chaud
         lube_temp = 45.0 + (active_power / 32.0) * 5.0 + random.uniform(-0.5, 0.5)
-        
+        # Sortie paliers : entrée + échauffement (~15°C nominal, monte avec charge)
+        lube_temp_out = lube_temp + 15.0 + (active_power / 32.0) * 3.0 + random.uniform(-0.5, 0.5)
+        lube_tank = 80.0 + random.uniform(-0.3, 0.3)
+        lube_dp = 0.3 + random.uniform(-0.02, 0.02)
+
         # 5. Déplacements & Dilatations (thermique)
         heat_ratio = temperature_hp / T_HP_DESIGN
         axial_disp = 0.2 + (heat_ratio - 1.0) * 2.0 + (active_power / 32.0) * 0.15
@@ -491,8 +495,12 @@ class PhysicsModel:
             "vib_bearing_aft": round(max(0.0, vib_aft), 2),
             "temp_bearing_fwd": round(max(0.0, temp_fwd), 1),
             "temp_bearing_aft": round(max(0.0, temp_aft), 1),
-            "lube_oil_press": round(max(0.0, lube_press), 2),
-            "lube_oil_temp": round(max(0.0, lube_temp), 1),
+            "lube_oil_press":      round(max(0.0, lube_press), 2),
+            "lube_oil_temp":       round(max(0.0, lube_temp), 1),
+            "lube_oil_temp_out":   round(max(0.0, lube_temp_out), 1),
+            "lube_oil_tank_level": round(max(0.0, min(100.0, lube_tank)), 1),
+            "lube_oil_pump":       "MAIN",
+            "lube_oil_filter_dp":  round(max(0.0, lube_dp), 2),
             "axial_displacement": round(axial_disp, 3),
             "casing_expansion": round(max(0.0, expansion), 2),
         }
@@ -598,8 +606,12 @@ class PhysicsModel:
             "vib_bearing_aft":    mech["vib_bearing_aft"],
             "temp_bearing_fwd":   mech["temp_bearing_fwd"],
             "temp_bearing_aft":   mech["temp_bearing_aft"],
-            "lube_oil_press":     mech["lube_oil_press"],
-            "lube_oil_temp":      mech["lube_oil_temp"],
+            "lube_oil_press":      mech["lube_oil_press"],
+            "lube_oil_temp":       mech["lube_oil_temp"],
+            "lube_oil_temp_out":   mech["lube_oil_temp_out"],
+            "lube_oil_tank_level": mech["lube_oil_tank_level"],
+            "lube_oil_pump":       mech["lube_oil_pump"],
+            "lube_oil_filter_dp":  mech["lube_oil_filter_dp"],
             "axial_displacement": mech["axial_displacement"],
             "casing_expansion":   mech["casing_expansion"],
         }
