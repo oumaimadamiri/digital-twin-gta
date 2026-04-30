@@ -14,6 +14,17 @@ from components.gauges import gauge_card, make_gauge, create_empty_fig, GAUGE_CO
 from config import BACKEND
 from datetime import date
 
+_VIEW_PARAM_OPTIONS = [
+    {"label": "Pression HP (bar)", "value": "pressure_hp"},
+    {"label": "Température HP (°C)", "value": "temperature_hp"},
+    {"label": "Vitesse turbine (RPM)", "value": "turbine_speed"},
+    {"label": "Puissance active (MW)", "value": "active_power"},
+    {"label": "Facteur cosφ", "value": "power_factor"},
+    {"label": "Rendement (%)", "value": "efficiency"},
+    {"label": "Débit vapeur HP (T/h)", "value": "steam_flow_hp"},
+    {"label": "Courant (A)", "value": "current_a"},
+]
+
 
 _GAUGES_FAST = ["pressure_hp", "temperature_hp", "active_power",
                 "turbine_speed", "efficiency"]
@@ -257,8 +268,8 @@ def layout():
                             }),
                             dcc.Dropdown(
                                 id="param-view",
-                                options=[],
-                                value=None,
+                                options=_VIEW_PARAM_OPTIONS,
+                                value="active_power",
                                 clearable=False,
                                 searchable=False,
                                 className="custom-dropdown",
@@ -310,6 +321,8 @@ def layout():
 
             ], className="page-content"),
 
+            # Plage exacte (datetime) pour export CSV des filtres rapides
+            dcc.Store(id="csv-export-range", data=None),
             dcc.Interval(id="interval-analysis", interval=10000, n_intervals=0),
         ], className="main-content"),
     ], className="main-content-wrap")

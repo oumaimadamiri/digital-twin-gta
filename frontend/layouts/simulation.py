@@ -129,12 +129,12 @@ def layout():
                 children=[
                     html.Div(
                         id="gta-synoptic-sim",
-                        children=[create_gta_synoptic_static(show_table=False, interactive=False)],
+                        children=[create_gta_synoptic_static(show_table=True, interactive=False)],
                         style={"minHeight": "520px"},
                     ),
                     html.Div([
-                        html.Div("État Système", className="card-title"),
-                        html.Div(id="sim-state-panel"),
+                        html.Div("Scénario", className="card-title"),
+                        html.Div(id="sim-scenario-panel"),
                         html.Button(
                             "■ Arrêter scénario",
                             id="btn-stop-scenario",
@@ -149,10 +149,10 @@ def layout():
                         ),
                     ], style={
                         "position":       "absolute",
-                        "top":         "390px",
+                        "top":            "45px",
                         "right":          "12px",
-                        "minWidth":       "260px",
-                        "maxWidth":       "440px",
+                        "minWidth":       "240px",
+                        "maxWidth":       "320px",
                         "width":          "auto",
                         "background":     "rgba(10,16,26,0.92)",
                         "border":         "1px solid #1e3a5f",

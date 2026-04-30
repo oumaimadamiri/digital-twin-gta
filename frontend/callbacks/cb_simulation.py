@@ -281,130 +281,63 @@ def register(app):
         prevent_initial_call=True,
     )
 
-    # ── MODIFIÉ : update_sim_ui ne reconstruit plus le SVG ──
+    # ── Panneau Scénario : nom + statut uniquement (la table SCADA gère le reste) ──
     @app.callback(
-        Output("sim-state-panel",   "children"),
-        Output("btn-stop-scenario", "style"),
-        # Output("gta-synoptic-sim", "children"),  ← SUPPRIMÉ
+        Output("sim-scenario-panel", "children"),
+        Output("btn-stop-scenario",  "style"),
         Input("store-simulation-data", "data"),
         State("url", "pathname"),
         prevent_initial_call=True,
     )
-    def update_sim_ui(d, pathname):
+    def update_sim_scenario(d, pathname):
         if pathname != "/simulation":
-            return no_update, no_update  # 2 outputs au lieu de 3
+            return no_update, no_update
         d = d or {}
 
-        # synoptic_view = create_gta_synoptic(d)  ← SUPPRIMÉ
         status  = d.get("status", "NORMAL")
         s_color = {"NORMAL": "#10b981", "DEGRADED": "#f59e0b",
                    "CRITICAL": "#ef4444"}.get(status, "#10b981")
-        _scen = d.get("scenario") or "Nominal"
+        _scen       = d.get("scenario") or "Aucun (Nominal)"
         _scen_short = (_scen[:26] + "…") if len(_scen) > 28 else _scen
-        valves = [
-            ("V1", "valve_v1", "#f97316", "Adm. HP"),
-            ("V2", "valve_v2", "#60a5fa", "Équil."),
-            ("V3", "valve_v3", "#60a5fa", "Équil."),
-            ("BP", "valve_bp", "#38bdf8", "Cond."),
-        ]
-        
-        state_panel = html.Div([
-            # Deux colonnes
+        has_scenario = d.get("scenario") is not None
+
+        row_style = {
+            "fontFamily": "Share Tech Mono", "fontSize": "11px",
+            "minHeight": "22px", "display": "flex",
+            "alignItems": "center", "marginBottom": "6px",
+        }
+
+        panel = html.Div([
             html.Div([
-
-                # ── Colonne gauche : statut + vannes ──
-                html.Div([
-                    html.Div([
-                        html.Span("Statut: ", style={"color": "#475569"}),
-                        html.Span(status, style={"color": s_color, "fontWeight": "700"}),
-                    ], style={"fontFamily": "Share Tech Mono", "fontSize": "11px",
-                            "height": "22px", "display": "flex", "alignItems": "center",
-                            "marginBottom": "6px"}),
-                    html.Hr(style={"borderColor": "#2c5ea0", "margin": "10px 5"}),
-                    
-                    *[html.Div([
-                        html.Span(f"{name}:", style={"color": "#475569", "width": "28px",
-                                                    "display": "inline-block"}),
-                        html.Span(f"{d.get(key, 0):.0f}%", style={
-                            "color": col if d.get(key, 0) > 30 else "#ef4444",
-                            "fontWeight": "700",
-                        }),
-                    ], style={"fontFamily": "Share Tech Mono", "fontSize": "11px",
-                            "height": "22px", "display": "flex", "alignItems": "center"})
-                    for name, key, col in [
-                        ("V1", "valve_v1", "#f97316"),
-                        ("V2", "valve_v2", "#60a5fa"),
-                        ("V3", "valve_v3", "#60a5fa"),
-                        ("BP", "valve_bp", "#38bdf8"),
-                    ]],
-                ]),
-
-                # ── Colonne droite : scénario + params ──
-                html.Div([
-                    # ── Nom du scénario ──
-                    html.Div([
-                        html.Span("Scénario: ", style={
-                            "color": "#475569",
-                            "flexShrink": "0",
-                            "fontFamily": "Share Tech Mono",
-                            "fontSize": "11px",
-                        }),
-                        # APRÈS — tronqué à 28 chars + tooltip complet                       
-                        html.Span(
-                            _scen_short,
-                            title=_scen,          # tooltip natif au survol
-                            style={
-                                "color": "#818cf8" if d.get("scenario") else "#64748b",
-                                "fontWeight": "700",
-                                "fontFamily": "Share Tech Mono",
-                                "fontSize": "11px",
-                                "whiteSpace": "nowrap",
-                                "overflow": "hidden",
-                                "textOverflow": "ellipsis",
-                            },
-                        ),
-                    ], style={
-                        "display": "flex",
-                        "alignItems": "flex-start",
-                        "minHeight": "22px",
-                        "marginBottom": "6px",
-                    }),
-                    html.Hr(style={"borderColor": "#2c5ea0", "margin": "10px 5"}),
-
-                    *[html.Div([
-                        html.Span(f"{label}:", style={
-                            "color": "#475569",
-                            "width": "76px",
-                            "flexShrink": "0",
-                            "display": "inline-block",
-                        }),
-                        html.Span(val, style={"color": col, "fontWeight": "700"}),
-                    ], style={"fontFamily": "Share Tech Mono", "fontSize": "11px",
-                            "minHeight": "22px", "display": "flex", "alignItems": "center"})
-                    for label, val, col in [
-                        ("P active",   f"{d.get('active_power', 0):.1f} MW",   "#10b981"),
-                        ("Vitesse",    f"{d.get('turbine_speed', 0):.0f} RPM", "#60a5fa"),
-                        ("Rendement",  f"{d.get('efficiency', 0):.1f} %",      "#38bdf8"),
-                        ("P barillet", f"{d.get('pressure_bp_barillet', 3.0):.2f} bar",
-                                    "#ef4444" if d.get("pressure_bp_barillet", 3.0) > 5.0 else "#a78bfa"),
-                        ("cos φ",      f"{d.get('power_factor', 0):.3f}",      "#fbbf24"),
-                    ]],
-                ]),
-
-            ], style={"display": "flex", "gap": "16px", "minWidth": "0"}),
+                html.Span("Actif: ", style={"color": "#475569", "flexShrink": "0"}),
+                html.Span(
+                    _scen_short,
+                    title=_scen,
+                    style={
+                        "color": "#818cf8" if has_scenario else "#64748b",
+                        "fontWeight": "700",
+                        "whiteSpace": "nowrap",
+                        "overflow": "hidden",
+                        "textOverflow": "ellipsis",
+                    },
+                ),
+            ], style=row_style),
+            html.Div([
+                html.Span("Statut: ", style={"color": "#475569", "flexShrink": "0"}),
+                html.Span(status, style={"color": s_color, "fontWeight": "700"}),
+            ], style=row_style),
         ])
 
-        has_scenario = d.get("scenario") is not None
         stop_style = ({
             "marginTop": "10px",
             "width": "100%",
             "display": "block",
             "fontSize": "11px",
-            "padding": "6px 12px",    # moins de rembourrage
+            "padding": "6px 12px",
             "opacity": "0.85",
         } if has_scenario else {"display": "none"})
 
-        return state_panel, stop_style  # ← 2 valeurs au lieu de 3
+        return panel, stop_style
 
     # ── Historique des scénarios ──────────────────────────────────────
     @app.callback(

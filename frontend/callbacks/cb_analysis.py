@@ -29,6 +29,7 @@ PARAM_COLORS = {
     "power_factor":   "#ffd740",
     "efficiency":     "#00e5ff",
     "steam_flow_hp":  "#ff80ab",
+    "current_a":      "#10b981",
 }
 
 PARAM_LABELS = {
@@ -39,6 +40,7 @@ PARAM_LABELS = {
     "power_factor":   "cosφ",
     "efficiency":     "Rendement (%)",
     "steam_flow_hp":  "Débit HP (T/h)",
+    "current_a":      "Courant (A)",
 }
 
 _DARK_LAYOUT = dict(
@@ -72,40 +74,8 @@ _GAUGES_SLOW = ["reactive_power", "apparent_power", "power_factor",
 
 _ALL_FILTER_IDS = ["qf-live", "qf-1h", "qf-6h", "qf-24h", "qf-7j", "qf-all"]
 
-# Liste maître des options du sélecteur de paramètres (option = clé colonne)
-_ALL_PARAM_OPTIONS = [
-    {"label": "Pression HP (bar)",     "value": "pressure_hp"},
-    {"label": "Température HP (°C)",   "value": "temperature_hp"},
-    {"label": "Vitesse turbine (RPM)", "value": "turbine_speed"},
-    {"label": "Puissance active (MW)", "value": "active_power"},
-    {"label": "Facteur cosφ",          "value": "power_factor"},
-    {"label": "Rendement (%)",         "value": "efficiency"},
-    {"label": "Débit vapeur HP (T/h)", "value": "steam_flow_hp"},
-]
-
 
 def register(app):
-
-    # ══════════════════════════════════════════════════════════════════
-    # Sélecteur mono-paramètre (vue graphe) — options dérivées du filtre
-    # ══════════════════════════════════════════════════════════════════
-    @app.callback(
-        Output("param-view", "options"),
-        Output("param-view", "value"),
-        Input("param-selector", "value"),
-        State("param-view", "value"),
-    )
-    def update_param_view(selected, current):
-        """Filtre vide → toutes les options ; sinon restreint à la sélection.
-        Conserve la valeur courante si encore valide, sinon prend la 1re."""
-        if not selected:
-            opts = _ALL_PARAM_OPTIONS
-        else:
-            opts = [o for o in _ALL_PARAM_OPTIONS if o["value"] in selected]
-        valid = {o["value"] for o in opts}
-        if current in valid:
-            return opts, current
-        return opts, (opts[0]["value"] if opts else None)
 
     # ══════════════════════════════════════════════════════════════════
     # URL CSV dynamique (respecte la sélection + plage)
@@ -115,13 +85,19 @@ def register(app):
         Input("param-selector", "value"),
         Input("date-start",     "value"),
         Input("date-end",       "value"),
+        Input("csv-export-range", "data"),
     )
-    def update_csv_url(params, date_start, date_end):
+    def update_csv_url(params, date_start, date_end, exact_range):
         qs = []
-        if date_start:
-            qs.append(f"start={date_start}T00:00:00")
-        if date_end:
-            qs.append(f"end={date_end}T23:59:59")
+        # Priorité à la plage exacte des filtres rapides (1h/6h/24h/7j).
+        if isinstance(exact_range, dict) and exact_range.get("start") and exact_range.get("end"):
+            qs.append(f"start={exact_range['start']}")
+            qs.append(f"end={exact_range['end']}")
+        else:
+            if date_start:
+                qs.append(f"start={date_start}T00:00:00")
+            if date_end:
+                qs.append(f"end={date_end}T23:59:59")
         if params:
             qs.extend(f"params={p}" for p in params)
         base = f"{BACKEND}/data/export/csv"
@@ -197,6 +173,7 @@ def register(app):
     @app.callback(
         Output("date-start", "value"),
         Output("date-end",   "value"),
+        Output("csv-export-range", "data"),
         [Input(fid, "n_clicks") for fid in _ALL_FILTER_IDS],
         prevent_initial_call=True,
     )
@@ -204,7 +181,7 @@ def register(app):
         triggered = ctx.triggered_id
         # En mode LIVE : pas de filtre date
         if triggered == "qf-live":
-            return no_update, no_update
+            return no_update, no_update, None
 
         now = datetime.utcnow() + timedelta(hours=TIMEZONE_OFFSET)
         end_str = now.strftime("%Y-%m-%d")
@@ -215,11 +192,19 @@ def register(app):
             "qf-7j":  timedelta(days=7),
         }
         if triggered == "qf-all":
-            return None, end_str
+            return None, end_str, None
         delta = mapping.get(triggered)
         if delta:
-            return (now - delta).strftime("%Y-%m-%d"), end_str
-        return no_update, no_update
+            start_dt = now - delta
+            return (
+                start_dt.strftime("%Y-%m-%d"),
+                end_str,
+                {
+                    "start": start_dt.strftime("%Y-%m-%dT%H:%M:%S"),
+                    "end": now.strftime("%Y-%m-%dT%H:%M:%S"),
+                },
+            )
+        return no_update, no_update, no_update
 
     # ══════════════════════════════════════════════════════════════════
     # ÉTAPE 1 — Graphe LIVE (source = store-history WS)

@@ -99,11 +99,13 @@ class DataManager:
             query  = "SELECT * FROM gta_history WHERE 1=1"
             params = []
             if start:
-                query += " AND timestamp >= ?"
-                params.append(start.isoformat())
+                # Compare as datetime, not raw text, and ignore timezone/microseconds
+                # by normalizing stored ISO timestamp to first 19 chars (YYYY-MM-DDTHH:MM:SS).
+                query += " AND datetime(replace(substr(timestamp, 1, 19), 'T', ' ')) >= datetime(?)"
+                params.append(start.strftime("%Y-%m-%d %H:%M:%S"))
             if end:
-                query += " AND timestamp <= ?"
-                params.append(end.isoformat())
+                query += " AND datetime(replace(substr(timestamp, 1, 19), 'T', ' ')) <= datetime(?)"
+                params.append(end.strftime("%Y-%m-%d %H:%M:%S"))
             query += f" ORDER BY timestamp DESC LIMIT {limit}"
 
             rows = conn.execute(query, params).fetchall()

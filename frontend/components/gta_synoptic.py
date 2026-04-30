@@ -521,7 +521,7 @@ def _build_synoptic_div(data: dict, static_ids: bool, show_table: bool = True, i
   <line x1="1180" y1="-15" x2="1155" y2="-15" stroke="#10b981" stroke-width="4"/>
   <text x="1185" y="-12" fill="#94a3b8" font-size="9">Électrique</text>
   <line x1="1265" y1="-15" x2="1240" y2="-15" stroke="#1d4ed8" stroke-width="2" stroke-dasharray="4,2"/>
-  <text x="1270" y="-12" fill="#94a3b8" font-size="9">Équilibrage</text>ù
+  <text x="1270" y="-12" fill="#94a3b8" font-size="9">Mvm Mécanique</text>
 
   <!-- ════ SOURCE VAPEUR HP ════ -->
   <g filter="url(#go)">
