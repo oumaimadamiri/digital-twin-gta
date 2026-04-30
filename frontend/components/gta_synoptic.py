@@ -698,33 +698,33 @@ def _build_synoptic_div(data: dict, static_ids: bool, show_table: bool = True, i
   <line x1="655" y1="390" x2="655" y2="410"
         stroke="#38bdf8" stroke-width="8" stroke-linecap="round" class="flow-bp"/>
   {vsym_vbp}
-  <line x1="655" y1="433" x2="655" y2="500"
+  <line x1="645" y1="415" x2="465" y2="415"
         stroke="#38bdf8" stroke-width="8" class="flow-bp"/>
-  <line x1="655" y1="500" x2="562" y2="500"
+  <line x1="460" y1="415" x2="460" y2="445"
         stroke="#38bdf8" stroke-width="8" class="flow-bp"/>
 
   <!-- ════ CONDENSEUR ════ -->
-  <rect x="562" y="445" width="195" height="125" rx="10"
+  <rect x="290" y="435" width="195" height="125" rx="10"
         fill="#060d1a" stroke="#38bdf8" stroke-width="1.8" filter="url(#gb)"/>
-  <text x="659" y="462" fill="#f8fafc" font-size="11" font-weight="600"
+  <text x="387" y="452" fill="#f8fafc" font-size="11" font-weight="600"
         text-anchor="middle" letter-spacing="1">CONDENSEUR</text>
-  <text x="659" y="474" fill="#64748b" font-size="8" text-anchor="middle">Pression quasi nulle (absolue)</text>
-  <text x="659" y="485" fill="#10b981" font-size="8" font-weight="600"
+  <text x="387" y="464" fill="#64748b" font-size="8" text-anchor="middle">Pression quasi nulle (absolue)</text>
+  <text x="387" y="475" fill="#10b981" font-size="8" font-weight="600"
         text-anchor="middle">① VP HP → Condenseur</text>
-  <rect x="564" y="490" width="192" height="74" rx="4"
+  <rect x="292" y="480" width="192" height="74" rx="4"
         fill="rgba(15,23,42,0.75)" stroke="#0f2744" stroke-width="0.8"/>
-  <text x="590" y="505" fill="#64748b" font-size="8">P vide</text>
-  <text{sid("pcond-val")} x="590" y="520" fill="#38bdf8" font-size="11" font-weight="700">{p_cond:.4f}</text>
-  <text x="590" y="532" fill="#64748b" font-size="7.5">bar</text>
-  <line x1="635" y1="492" x2="635" y2="562" stroke="#0f2744" stroke-width="0.8"/>
-  <text x="648" y="505" fill="#64748b" font-size="8">T BP sortie</text>
-  <text{sid("tbp-val")} x="648" y="520" fill="#38bdf8" font-size="11" font-weight="700">{t_bp:.0f}</text>
-  <text x="648" y="532" fill="#64748b" font-size="7.5">°C</text>
-  <line x1="696" y1="492" x2="696" y2="562" stroke="#0f2744" stroke-width="0.8"/>
-  <text x="710" y="505" fill="#64748b" font-size="8">Q eau</text>
-  <text{sid("qcond2-val")} x="710" y="520" fill="#38bdf8" font-size="11" font-weight="700">{q_cond:.0f}</text>
-  <text x="710" y="532" fill="#64748b" font-size="7.5">T/h</text>
-  <text x="659" y="560" fill="#1e3a5f" font-size="7"
+  <text x="318" y="495" fill="#64748b" font-size="8">P vide</text>
+  <text{sid("pcond-val")} x="318" y="510" fill="#38bdf8" font-size="11" font-weight="700">{p_cond:.4f}</text>
+  <text x="318" y="522" fill="#64748b" font-size="7.5">bar</text>
+  <line x1="363" y1="482" x2="363" y2="552" stroke="#0f2744" stroke-width="0.8"/>
+  <text x="376" y="495" fill="#64748b" font-size="8">T BP sortie</text>
+  <text{sid("tbp-val")} x="376" y="510" fill="#38bdf8" font-size="11" font-weight="700">{t_bp:.0f}</text>
+  <text x="376" y="522" fill="#64748b" font-size="7.5">°C</text>
+  <line x1="424" y1="482" x2="424" y2="552" stroke="#0f2744" stroke-width="0.8"/>
+  <text x="438" y="495" fill="#64748b" font-size="8">Q eau</text>
+  <text{sid("qcond2-val")} x="438" y="510" fill="#38bdf8" font-size="11" font-weight="700">{q_cond:.0f}</text>
+  <text x="438" y="522" fill="#64748b" font-size="7.5">T/h</text>
+  <text x="387" y="550" fill="#1e3a5f" font-size="7"
         text-anchor="middle">Δh = ṁ × (h_in − h_out) → Eau chaude recyclée</text>
 
   <!-- ════ ARBRE TURBINE → RÉDUCTEUR ════ -->
@@ -836,91 +836,100 @@ def _build_synoptic_div(data: dict, static_ids: bool, show_table: bool = True, i
         text-anchor="middle">226 <tspan fill="#64748b" font-size="8" font-weight="400">°C</tspan></text>
   <line x1="143" y1="472" x2="385" y2="358"
         stroke="#38bdf8" stroke-width="2" stroke-dasharray="4,4" opacity="0.4"/>
-  <text x="240" y="442" fill="#38bdf8" font-size="8" opacity="0.6">
+  <text x="180" y="412" fill="#38bdf8" font-size="8" opacity="0.6">
     (démarrage uniquement)
   </text>
 
   <!-- ════ CENTRALE HUILE LUBRIFICATION ════ -->
   <style>.flow-oil{{stroke-dasharray:8,4;animation:flow 2s linear infinite;}}</style>
-  <!-- Lignes d'alimentation huile vers paliers turbine (ambre) -->
-  <polyline points="460,415 460,405 755,405 755,237"
-            fill="none" stroke="#fbbf24" stroke-width="1.5" opacity="0.55"
-            class="flow-oil"/>
-  <polyline points="460,415 460,405 915,405 915,237"
-            fill="none" stroke="#fbbf24" stroke-width="1.5" opacity="0.55"
-            class="flow-oil"/>
-  <text x="608" y="402" fill="#fbbf24" font-size="7" opacity="0.6" text-anchor="middle">huile graissage paliers</text>
+  
+  <!-- Ligne vers Palier Avant (P. AV) -->
+  <polyline points="720,560 720,480 755,480 755,237" 
+          fill="none" stroke="#fbbf24" stroke-width="1.5" opacity="0.55"
+          class="flow-oil"/>
+
+  <!-- Ligne vers Palier Arrière (P. AR) -->
+  <polyline points="760,560 760,480 915,480 915,237" 
+          fill="none" stroke="#fbbf24" stroke-width="1.5" opacity="0.55"
+          class="flow-oil"/>
 
   <!-- Cadre principal -->
-  <rect{sid("lube-rect")} x="160" y="415" width="380" height="155" rx="10"
+  <rect{sid("lube-rect")} x="550" y="445" width="380" height="155" rx="10"
        fill="rgba(15,23,42,0.85)" stroke="#10b981" stroke-width="1.8"
        filter="url(#gg)"/>
   <!-- Alarme blink (cachée par défaut) -->
-  <circle{sid("lube-blink")} cx="527" cy="423" r="5" fill="#ef4444"
+  <circle{sid("lube-blink")} cx="917" cy="453" r="5" fill="#ef4444"
           display="none" class="blink"/>
 
   <!-- Titre -->
-  <text x="350" y="432" fill="#94a3b8" font-size="9" font-weight="700"
+  <text x="740" y="462" fill="#94a3b8" font-size="9" font-weight="700"
         text-anchor="middle" letter-spacing="1">CENTRALE HUILE LUBRIFICATION</text>
-  <line x1="165" y1="437" x2="535" y2="437" stroke="#1e3a5f" stroke-width="0.8"/>
+  <line x1="555" y1="467" x2="925" y2="467" stroke="#1e3a5f" stroke-width="0.8"/>
 
   <!-- Pompe (indicateur haut-droit) -->
-  <circle{sid("lube-pump-dot")} cx="492" cy="450" r="5" fill="#10b981"/>
-  <text x="468" y="447" fill="#64748b" font-size="8" text-anchor="end">Pompe</text>
-  <text{sid("lube-pump-val")} x="500" y="454" fill="#10b981" font-size="9"
+  <circle{sid("lube-pump-dot")} cx="882" cy="480" r="5" fill="#10b981"/>
+  <text x="858" y="477" fill="#64748b" font-size="8" text-anchor="end">Pompe</text>
+  <text{sid("lube-pump-val")} x="890" y="484" fill="#10b981" font-size="9"
        font-weight="700">{oil_pump}</text>
 
   <!-- Séparateur vertical -->
-  <line x1="345" y1="437" x2="345" y2="567" stroke="#1e3a5f" stroke-width="0.8"/>
+  <line x1="735" y1="467" x2="735" y2="597" stroke="#1e3a5f" stroke-width="0.8"/>
   <!-- Séparateur horizontal -->
-  <line x1="165" y1="500" x2="535" y2="500" stroke="#1e3a5f" stroke-width="0.8"/>
+  <line x1="555" y1="530" x2="925" y2="530" stroke="#1e3a5f" stroke-width="0.8"/>
 
   <!-- ── Ligne 1 : P. Huile | T° Entrée | T° Sortie ── -->
   <!-- Pression -->
-  <text x="255" y="460" fill="#64748b" font-size="8" text-anchor="middle">P. Huile</text>
-  <text{sid("lube-press-val")} x="255" y="479" fill="{'#ef4444' if oil_p < 1.2 or oil_p > 2.5 else '#fbbf24'}"
+  <text x="645" y="490" fill="#64748b" font-size="8" text-anchor="middle">P. Huile</text>
+  <text{sid("lube-press-val")} x="645" y="509" fill="{'#ef4444' if oil_p < 1.2 or oil_p > 2.5 else '#fbbf24'}"
        font-size="17" font-weight="700" text-anchor="middle"
        {'class="blink"' if oil_p < 1.2 else ''}>{oil_p:.2f}</text>
-  <text x="255" y="492" fill="#64748b" font-size="8" text-anchor="middle">bar</text>
+  <text x="645" y="520" fill="#64748b" font-size="8" text-anchor="middle">bar</text>
 
   <!-- T° Entrée paliers -->
-  <text x="440" y="460" fill="#64748b" font-size="8" text-anchor="middle">T° Entrée</text>
-  <text{sid("lube-tin-val")} x="440" y="479" fill="{'#ef4444' if oil_t > 55 else '#fbbf24'}"
+  <text x="830" y="490" fill="#64748b" font-size="8" text-anchor="middle">T° Entrée</text>
+  <text{sid("lube-tin-val")} x="830" y="509" fill="{'#ef4444' if oil_t > 55 else '#fbbf24'}"
        font-size="17" font-weight="700" text-anchor="middle">{oil_t:.1f}</text>
-  <text x="440" y="492" fill="#64748b" font-size="8" text-anchor="middle">°C</text>
+  <text x="830" y="520" fill="#64748b" font-size="8" text-anchor="middle">°C</text>
 
   <!-- T° Sortie paliers -->
-  <text x="350" y="460" fill="#64748b" font-size="8" text-anchor="middle">T° Sortie</text>
-  <text{sid("lube-tout-val")} x="350" y="479" fill="{'#ef4444' if oil_t_out > 70 else '#f97316'}"
+  <text x="740" y="490" fill="#64748b" font-size="8" text-anchor="middle">T° Sortie</text>
+  <text{sid("lube-tout-val")} x="740" y="509" fill="{'#ef4444' if oil_t_out > 70 else '#f97316'}"
        font-size="17" font-weight="700" text-anchor="middle">{oil_t_out:.1f}</text>
-  <text x="350" y="492" fill="#64748b" font-size="8" text-anchor="middle">°C</text>
+  <text x="740" y="520" fill="#64748b" font-size="8" text-anchor="middle">°C</text>
 
   <!-- ── Ligne 2 : Niveau | ΔP Filtre | indicateur paliers ── -->
   <!-- Niveau réservoir -->
   <!-- Barre de progression niveau -->
-  <rect x="170" y="520" width="140" height="10" rx="3" fill="#0f2744" stroke="#1e3a5f" stroke-width="0.5"/>
-  <rect x="170" y="520" width="{max(0, min(140, 140 * oil_lvl / 100)):.0f}" height="10" rx="3"
+  <rect x="560" y="550" width="140" height="10" rx="3" fill="#0f2744" stroke="#1e3a5f" stroke-width="0.5"/>
+  <rect x="560" y="550" width="{max(0, min(140, 140 * oil_lvl / 100)):.0f}" height="10" rx="3"
         fill="{'#ef4444' if oil_lvl < 60 else '#10b981'}" opacity="0.85"/>
-  <text x="240" y="515" fill="#64748b" font-size="8" text-anchor="middle">Niveau réservoir</text>
-  <text{sid("lube-level-val")} x="240" y="545" fill="{'#ef4444' if oil_lvl < 60 else '#10b981'}"
+  <text x="630" y="545" fill="#64748b" font-size="8" text-anchor="middle">Niveau réservoir</text>
+  <text{sid("lube-level-val")} x="630" y="575" fill="{'#ef4444' if oil_lvl < 60 else '#10b981'}"
        font-size="14" font-weight="700" text-anchor="middle">{oil_lvl:.0f} %</text>
 
   <!-- ΔP Filtre -->
-  <text x="440" y="515" fill="#64748b" font-size="8" text-anchor="middle">ΔP Filtre</text>
-  <text{sid("lube-dpfilter-val")} x="440" y="534" fill="{'#ef4444' if oil_dp > 0.8 else '#a78bfa'}"
+  <text x="830" y="545" fill="#64748b" font-size="8" text-anchor="middle">ΔP Filtre</text>
+  <text{sid("lube-dpfilter-val")} x="830" y="564" fill="{'#ef4444' if oil_dp > 0.8 else '#a78bfa'}"
        font-size="17" font-weight="700" text-anchor="middle"
        {'class="pulse"' if oil_dp > 0.8 else ''}>{oil_dp:.2f}</text>
-  <text x="440" y="547" fill="#64748b" font-size="8" text-anchor="middle">bar</text>
+  <text x="830" y="577" fill="#64748b" font-size="8" text-anchor="middle">bar</text>
 
   <!-- Icône pompe (silhouette) -->
-  <circle cx="350" cy="530" r="14" fill="rgba(16,185,129,0.08)" stroke="#10b981" stroke-width="1.2"/>
-  <path d="M340,530 L350,522 L360,530 L350,538 Z" fill="#10b981" opacity="0.7"/>
-  <path d="M350,516 L350,522 M350,538 L350,544 M336,530 L342,530 M358,530 L364,530"
-        stroke="#10b981" stroke-width="1.2" opacity="0.5"/>
+  <circle cx="740" cy="560" r="14" fill="rgba(16,185,129,0.08)" stroke="#10b981" stroke-width="1.2"/>
+  
+<!-- Losange centré dans le cercle - Version corrigée -->
+<path d="M730,560 L740,552 L750,560 L740,568 Z" 
+      fill="#10b981" opacity="0.7"/>
+
+<!-- Traits / détails de la pompe -->
+<path d="M740,546 L740,552 M740,568 L740,574 M726,560 L732,560 M748,560 L754,560"
+      stroke="#10b981" 
+      stroke-width="1.2" 
+      opacity="0.5"/>
 
   <!-- Ligne décorative bas -->
-  <line x1="165" y1="563" x2="535" y2="563" stroke="#1e3a5f" stroke-width="0.6"/>
-  <text x="350" y="572" fill="#334155" font-size="7" text-anchor="middle">
+  <line x1="555" y1="593" x2="925" y2="593" stroke="#1e3a5f" stroke-width="0.6"/>
+  <text x="740" y="602" fill="#334155" font-size="7" text-anchor="middle">
     API 614 — Lube Oil System
   </text>
 
