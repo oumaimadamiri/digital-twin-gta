@@ -448,7 +448,7 @@ def _build_synoptic_div(data: dict, static_ids: bool, show_table: bool = True, i
   </g>""" if show_table else ""
 
     svg = f"""
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="-20 -38 1430 615"
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-20 -38 1430 650"
      width="100%" height="100%"
      style="font-family:'Share Tech Mono',monospace;background:transparent">
   <defs>
@@ -926,13 +926,7 @@ def _build_synoptic_div(data: dict, static_ids: bool, show_table: bool = True, i
       stroke="#10b981" 
       stroke-width="1.2" 
       opacity="0.5"/>
-
-  <!-- Ligne décorative bas -->
-  <line x1="555" y1="593" x2="925" y2="593" stroke="#1e3a5f" stroke-width="0.6"/>
-  <text x="740" y="602" fill="#334155" font-size="7" text-anchor="middle">
-    API 614 — Lube Oil System
-  </text>
-
+ 
 </svg>"""
 
     div_kwargs = {"id": "gta-synoptic-inner"} if static_ids else {}
