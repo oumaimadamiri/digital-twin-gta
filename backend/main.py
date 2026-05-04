@@ -22,6 +22,8 @@ from api.routes_data       import router as data_router
 from api.routes_simulation import router as simulation_router
 from api.routes_ai         import router as ai_router
 from api.routes_settings   import router as settings_router
+from api.routes_audit      import router as audit_router
+from api.routes_control    import router as control_router
 
 
 # ─────────────────────────────────────────────
@@ -194,6 +196,8 @@ app.include_router(data_router)
 app.include_router(simulation_router)
 app.include_router(ai_router)
 app.include_router(settings_router)
+app.include_router(audit_router)
+app.include_router(control_router)
 
 
 @app.get("/", tags=["Health"])

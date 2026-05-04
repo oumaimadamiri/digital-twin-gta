@@ -142,19 +142,24 @@ def register(app):
         State("slider-v2", "value"),
         State("slider-v3", "value"),
         State("slider-bp", "value"),
+        State("store-operator-name", "data"),
         prevent_initial_call=True,
     )
-    def apply_valves(_, v1, v2, v3, vbp):
+    def apply_valves(_, v1, v2, v3, vbp, operator):
+        operator = operator or "Opérateur"
         try:
-            _session.post(
-                f"{BACKEND}/simulation/valves",
-                json={"valve_v1": v1, "valve_v2": v2, "valve_v3": v3,
-                       "valve_bp": vbp},
+            r = _session.post(
+                f"{BACKEND}/simulation/valves?operator={operator}",
+                json={"valve_v1": v1, "valve_v2": v2, "valve_v3": v3, "valve_bp": vbp},
                 timeout=2,
             )
+            data = r.json() if r.status_code == 200 else {}
+            rejections = data.get("rejections", {})
             ts = datetime.now().strftime("%H:%M:%S")
-            return (f"[{ts}] Vannes appliquées — "
-                    f"V1:{v1}%  V2:{v2}%  V3:{v3}% BP:{vbp}%")
+            msg = f"[{ts}] Vannes → V1:{v1}%  V2:{v2}%  V3:{v3}%  BP:{vbp}%"
+            if rejections:
+                msg += f" | ⚠ Refusé: {'; '.join(f'{k}={m}' for k,m in rejections.items())}"
+            return msg
         except Exception as e:
             return f"Erreur : {e}"
 
@@ -166,11 +171,13 @@ def register(app):
         Output("slider-v3", "value"),
         Output("slider-bp", "value"),
         Input("btn-reset", "n_clicks"),
+        State("store-operator-name", "data"),
         prevent_initial_call=True,
     )
-    def reset_system(_):
+    def reset_system(_, operator):
+        operator = operator or "Opérateur"
         try:
-            _session.post(f"{BACKEND}/simulation/reset",
+            _session.post(f"{BACKEND}/simulation/reset?operator={operator}",
                           json={"confirm": True}, timeout=2)
             ts = datetime.now().strftime("%H:%M:%S")
             return f"[{ts}] Système réinitialisé à l'état nominal", 100, 100, 100, 80
@@ -181,9 +188,10 @@ def register(app):
     @app.callback(
         Output("scenario-feedback", "children", allow_duplicate=True),
         Input({"type": "btn-scenario", "index": dash.ALL}, "n_clicks"),
+        State("store-operator-name", "data"),
         prevent_initial_call=True,
     )
-    def trigger_dynamic_scenario(n_clicks_list):
+    def trigger_dynamic_scenario(n_clicks_list, operator):
         ctx = dash.callback_context
         if not ctx.triggered:
             return no_update
@@ -201,9 +209,10 @@ def register(app):
         if not clicked_value:
             return no_update
 
+        operator = operator or "Opérateur"
         try:
             r = _session.post(
-                f"{BACKEND}/simulation/scenario",
+                f"{BACKEND}/simulation/scenario?operator={operator}",
                 json={"scenario_id": scenario_id},
                 timeout=2,
             )
@@ -218,11 +227,13 @@ def register(app):
     @app.callback(
         Output("scenario-feedback", "children", allow_duplicate=True),
         Input("btn-stop-scenario", "n_clicks"),
+        State("store-operator-name", "data"),
         prevent_initial_call=True,
     )
-    def stop_scenario(_):
+    def stop_scenario(_, operator):
+        operator = operator or "Opérateur"
         try:
-            _session.post(f"{BACKEND}/simulation/stop", timeout=2)
+            _session.post(f"{BACKEND}/simulation/stop?operator={operator}", timeout=2)
             ts = datetime.now().strftime("%H:%M:%S")
             return f"[{ts}] Scénario arrêté manuellement"
         except Exception as e:

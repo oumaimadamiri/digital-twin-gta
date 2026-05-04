@@ -1,6 +1,7 @@
 """
 api/routes_settings.py — Endpoints configuration et alertes
 """
+import json as _json
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
@@ -21,9 +22,17 @@ def get_thresholds():
 
 
 @router.put("/thresholds")
-def update_thresholds(body: ThresholdUpdate):
+def update_thresholds(body: ThresholdUpdate, operator: str = "Opérateur"):
     """Met à jour les seuils d'alarme à chaud."""
+    old = alert_manager.get_thresholds()
     alert_manager.update_thresholds(body.thresholds)
+    data_manager.log_operator_action(
+        user=operator,
+        action_type="THRESHOLD_UPDATE",
+        target=",".join(body.thresholds.keys()),
+        value_before=_json.dumps({k: old.get(k) for k in body.thresholds}),
+        value_after=_json.dumps(body.thresholds),
+    )
     return {"status": "updated", "thresholds": alert_manager.get_thresholds()}
 
 
@@ -34,8 +43,14 @@ def get_all_alerts(limit: int = 100, only_active: bool = False):
 
 
 @router.post("/alerts/{alert_id}/acknowledge")
-def acknowledge_alert(alert_id: int):
-    """Acquitte une alerte par son ID."""
-    data_manager.acknowledge_alert(alert_id)
-    alert_manager.clear_alerts()
+def acknowledge_alert(alert_id: int, operator: str = "Opérateur"):
+    """Acquitte une alerte par son ID (sans effacer les autres alertes actives)."""
+    data_manager.acknowledge_alert(alert_id, user=operator)
+    data_manager.log_operator_action(
+        user=operator,
+        action_type="ALERT_ACK",
+        target=f"alert_{alert_id}",
+        value_before="NON_ACQUITTÉ",
+        value_after="ACQUITTÉ",
+    )
     return {"status": "acknowledged", "alert_id": alert_id}

@@ -6,7 +6,7 @@ Gère l'écriture/lecture dans Redis (temps réel) et SQLite (historique).
 import json
 import io
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import List, Optional
 
 import pandas as pd
@@ -194,12 +194,70 @@ class DataManager:
             rows = conn.execute(query).fetchall()
             return [dict(row) for row in rows]
 
-    def acknowledge_alert(self, alert_id: int):
+    def acknowledge_alert(self, alert_id: int, user: str = "Opérateur"):
+        from core.config import TIMEZONE_OFFSET
+        ack_ts = (datetime.utcnow() + timedelta(hours=TIMEZONE_OFFSET)).isoformat()
         with get_db() as conn:
             conn.execute(
-                "UPDATE alerts SET acknowledged = 1 WHERE id = ?", (alert_id,)
+                "UPDATE alerts SET acknowledged = 1, ack_ts = ?, ack_user = ? WHERE id = ?",
+                (ack_ts, user, alert_id),
             )
             conn.commit()
+
+    # ──────────────────────────────────────────
+    # JOURNAL OPÉRATEUR
+    # ──────────────────────────────────────────
+
+    def log_operator_action(
+        self,
+        user: str,
+        action_type: str,
+        target: str = None,
+        value_before: str = None,
+        value_after: str = None,
+        source: str = "OPERATOR",
+        notes: str = None,
+    ):
+        """Persiste une action opérateur dans le journal d'audit."""
+        from core.config import TIMEZONE_OFFSET
+        ts = (datetime.utcnow() + timedelta(hours=TIMEZONE_OFFSET)).isoformat()
+        with get_db() as conn:
+            conn.execute(
+                """INSERT INTO operator_actions
+                   (ts, user, action_type, target, value_before, value_after, source, notes)
+                   VALUES (?,?,?,?,?,?,?,?)""",
+                (ts, user, action_type, target, value_before, value_after, source, notes),
+            )
+            conn.commit()
+        logger.info("[JOURNAL] %s | %s | %s | %s → %s", user, action_type, target, value_before, value_after)
+
+    def get_operator_actions(
+        self,
+        start: Optional[datetime] = None,
+        end: Optional[datetime] = None,
+        user: Optional[str] = None,
+        limit: int = 200,
+    ) -> List[dict]:
+        """Récupère le journal des actions opérateur."""
+        with get_db() as conn:
+            query = "SELECT * FROM operator_actions WHERE 1=1"
+            params = []
+            if start:
+                query += " AND datetime(replace(substr(ts,1,19),'T',' ')) >= datetime(?)"
+                params.append(start.strftime("%Y-%m-%d %H:%M:%S"))
+            if end:
+                query += " AND datetime(replace(substr(ts,1,19),'T',' ')) <= datetime(?)"
+                params.append(end.strftime("%Y-%m-%d %H:%M:%S"))
+            if user:
+                query += " AND user = ?"
+                params.append(user)
+            query += f" ORDER BY ts DESC LIMIT {limit}"
+            rows = conn.execute(query, params).fetchall()
+            return [dict(row) for row in rows]
+
+    def export_operator_actions_csv(self, start=None, end=None, user=None) -> bytes:
+        data = self.get_operator_actions(start=start, end=end, user=user, limit=10_000)
+        return pd.DataFrame(data).to_csv(index=False).encode("utf-8")
 
 
 # Instance globale

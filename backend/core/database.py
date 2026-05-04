@@ -128,6 +128,33 @@ def init_db():
             CREATE INDEX IF NOT EXISTS idx_alerts_acknowledged
             ON alerts (acknowledged)
         """)
+
+        # ── Migration : colonnes acquittement ──────────────────────────
+        cursor.execute("PRAGMA table_info(alerts)")
+        alert_cols = [row[1] for row in cursor.fetchall()]
+        if "ack_ts" not in alert_cols:
+            conn.execute("ALTER TABLE alerts ADD COLUMN ack_ts TEXT")
+        if "ack_user" not in alert_cols:
+            conn.execute("ALTER TABLE alerts ADD COLUMN ack_user TEXT")
+
+        # ── Journal opérateur (audit trail) ───────────────────────────
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS operator_actions (
+                id           INTEGER PRIMARY KEY AUTOINCREMENT,
+                ts           TEXT    NOT NULL,
+                user         TEXT    NOT NULL DEFAULT 'Opérateur',
+                action_type  TEXT    NOT NULL,
+                target       TEXT,
+                value_before TEXT,
+                value_after  TEXT,
+                source       TEXT    DEFAULT 'OPERATOR',
+                notes        TEXT
+            )
+        """)
+        conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_operator_actions_ts
+            ON operator_actions (ts DESC)
+        """)
         conn.commit()
 
 

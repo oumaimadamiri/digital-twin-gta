@@ -13,6 +13,8 @@ from core.config import (
 from models.gta_parameters import GTAParameters, StatusEnum
 from simulation.physics_model import PhysicsModel
 from simulation.scenarios import get_scenario, Scenario
+from simulation.valve_controller import valve_controller as _valve_controller
+from simulation.controller import controller as _controller
 
 
 logger = logging.getLogger("gta.simulation")
@@ -27,11 +29,20 @@ class FakeAPI:
         self.physics = PhysicsModel()
         self._running = False
 
-        # État courant des paramètres primaires (modifiables)
+        # Contrôleur d'actionneurs (rampe, sécurité, butées)
+        self._vc = _valve_controller
+        # Sync positions initiales du contrôleur avec les valeurs nominales
+        for _key, _nom in [("v1","valve_v1"),("v2","valve_v2"),("v3","valve_v3"),("bp","valve_bp")]:
+            self._vc._valves[_key].current = NOMINAL.get(_nom, self._vc._valves[_key].config.default)
+            self._vc._valves[_key].target  = NOMINAL.get(_nom, self._vc._valves[_key].config.default)
+
+        # État courant des paramètres primaires non-vanne (modifiables)
         self._state = {
             "pressure_hp":    NOMINAL["pressure_hp"],
             "temperature_hp": NOMINAL["temperature_hp"],
             "steam_flow_hp":  NOMINAL["steam_flow_hp"],
+            # Les positions vannes sont gérées par self._vc ; conservées ici
+            # uniquement comme base pour les deltas de scénarios.
             "valve_v1":       NOMINAL["valve_v1"],
             "valve_v2":       NOMINAL["valve_v2"],
             "valve_v3":       NOMINAL["valve_v3"],
@@ -63,16 +74,13 @@ class FakeAPI:
         """Enregistre un callback appelé à chaque nouveau snapshot."""
         self._on_new_data = callback
 
-    def set_valves(self, v1=None, v2=None, v3=None, v_bp=None):
-        """Modifie les vannes depuis l'API (commande opérateur)."""
-        if v1 is not None:
-            self._state["valve_v1"] = float(v1)
-        if v2 is not None:
-            self._state["valve_v2"] = float(v2)
-        if v3 is not None:
-            self._state["valve_v3"] = float(v3)
-        if v_bp is not None:
-            self._state["valve_bp"] = float(v_bp)
+    def set_valves(self, v1=None, v2=None, v3=None, v_bp=None) -> dict:
+        """Délègue la commande vannes au contrôleur d'actionneurs (rampe + sécurité)."""
+        return self._vc.set_all(v1=v1, v2=v2, v3=v3, valve_bp=v_bp)
+
+    def get_valve_positions(self) -> dict:
+        """Retourne l'état complet des vannes (position courante, cible, statut)."""
+        return self._vc.get_state()
 
     def trigger_scenario(self, scenario_id: int):
         """Active un scénario de perturbation."""
@@ -109,6 +117,7 @@ class FakeAPI:
             "valve_v3":       NOMINAL["valve_v3"],
             "valve_bp":       NOMINAL["valve_bp"],
         }
+        self._vc.reset_to_nominal()
         self._active_scenario      = None
         self._scenario_start_time  = None
         self._power_factor_offset  = 0.0
@@ -145,7 +154,15 @@ class FakeAPI:
 
     def _generate_dual(self) -> tuple[GTAParameters, GTAParameters]:
         """Calcule l'état nominal (stable) et l'état simulé (avec pannes)."""
-        # logger.debug("Génération snapshot dual...")
+        dt = FAKE_API_INTERVAL_MS / 1000.0
+
+        # Superviseur Contrôle Commande : calcule la consigne V1 en AUTO avant le ramp
+        last_power = self._last_params.active_power if self._last_params else 0.0
+        _controller.update(dt, current_power_mw=last_power)
+
+        # Avancer le contrôleur d'actionneurs (applique les rampes de positionnement)
+        self._vc.update(dt)
+        actual = self._vc.get_positions()  # positions réelles après rampe {v1,v2,v3,bp}
         
         # 1) État NOMINAL (Physique pure, sans scénarios, avec bruit minimal)
         state_nom = {
@@ -182,8 +199,14 @@ class FakeAPI:
             logger.error(f"Erreur lors de la création de params_nom: {e}")
             raise
 
-        # 2) État SIMULÉ (Vannes manuelles + Scénarios + Bruit)
+        # 2) État SIMULÉ (Vannes contrôlées avec rampe + Scénarios + Bruit)
         state_sim = self._state.copy()
+        # Remplacer les positions de vannes par les positions réelles du contrôleur
+        state_sim["valve_v1"] = actual["v1"]
+        state_sim["valve_v2"] = actual["v2"]
+        state_sim["valve_v3"] = actual["v3"]
+        state_sim["valve_bp"] = actual["bp"]
+
         scenario_name = None
         if self._active_scenario is not None:
             state_sim, scenario_name = self._apply_scenario(state_sim)
@@ -199,11 +222,11 @@ class FakeAPI:
                 valve_v3       = state_sim["valve_v3"],
                 valve_bp       = state_sim["valve_bp"],
             )
-            # Ajout des targets vannes (avant application du bruit d'actuation)
-            computed_sim["valve_v1_target"] = self._state["valve_v1"]
-            computed_sim["valve_v2_target"] = self._state["valve_v2"]
-            computed_sim["valve_v3_target"] = self._state["valve_v3"]
-            computed_sim["valve_bp_target"] = self._state["valve_bp"]
+            # Targets depuis le contrôleur (consignes opérateur)
+            computed_sim["valve_v1_target"] = self._vc._valves["v1"].target
+            computed_sim["valve_v2_target"] = self._vc._valves["v2"].target
+            computed_sim["valve_v3_target"] = self._vc._valves["v3"].target
+            computed_sim["valve_bp_target"] = self._vc._valves["bp"].target
 
             # Appliquer les deltas du scénario sur les champs auxiliaires (non-primaires)
             # _apply_scenario ne touche que les clés présentes dans _state (entrées primaires).
@@ -231,6 +254,7 @@ class FakeAPI:
                 if self._active_scenario.id == 10:
                     if progress > 0.7:
                         computed_sim["lube_oil_pump"] = "OFF"
+                        _controller.auto_trip_for_scenario(10, operator="SYSTÈME")
                     elif progress > 0.3:
                         computed_sim["lube_oil_pump"] = "AUX"
 
@@ -240,6 +264,10 @@ class FakeAPI:
                 )
             status_sim = self._compute_status(computed_sim)
             
+            # Fusionner l'état superviseur Contrôle Commande dans le snapshot simulé
+            ctrl_snap = _controller.snapshot()
+            computed_sim.update(ctrl_snap)
+
             params_sim = GTAParameters(
                 timestamp = datetime.utcnow() + timedelta(hours=TIMEZONE_OFFSET),
                 scenario  = scenario_name,

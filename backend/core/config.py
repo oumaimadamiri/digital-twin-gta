@@ -200,3 +200,15 @@ PHYSICS_P_OUT_RATIO    = float(os.getenv("PHYSICS_P_OUT_RATIO",    0.075))
 # déterminé par la conception mécanique. Pas de vanne opérateur.
 # ─────────────────────────────────────────────
 EXTRACTION_RATIO = float(os.getenv("EXTRACTION_RATIO", 0.38))
+
+# ─────────────────────────────────────────────
+# CONTRÔLE COMMANDE — PID & SÉQUENCES
+# ─────────────────────────────────────────────
+PID_POWER_KP      = float(os.getenv("PID_POWER_KP",  2.0))   # Gain proportionnel (MW → V1%)
+PID_POWER_KI      = float(os.getenv("PID_POWER_KI",  0.5))   # Gain intégral
+PID_POWER_KD      = float(os.getenv("PID_POWER_KD",  0.05))  # Gain dérivé
+PID_POWER_OUT_MIN = 0.0    # V1 minimum (%)
+PID_POWER_OUT_MAX = 100.0  # V1 maximum (%)
+
+SEQUENCE_START_DURATION_S = float(os.getenv("SEQUENCE_START_DURATION_S", 120.0))  # start_turbine : 0→24 MW
+SEQUENCE_STOP_DURATION_S  = float(os.getenv("SEQUENCE_STOP_DURATION_S",   90.0))  # stop_turbine  : courant→0

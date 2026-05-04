@@ -21,9 +21,11 @@ from layouts.simulation import layout as simulation_layout
 from layouts.analysis   import layout as analysis_layout
 from layouts.ai_module  import layout as ai_layout
 from layouts.settings   import layout as settings_layout
+from layouts.audit      import layout as audit_layout
+from layouts.control    import layout as control_layout
 
 # ── Import des callbacks ────────────────────────────────────────────
-from callbacks import cb_dashboard, cb_simulation, cb_analysis, cb_ai, cb_settings, cb_data
+from callbacks import cb_dashboard, cb_simulation, cb_analysis, cb_ai, cb_settings, cb_data, cb_audit, cb_control
 
 # ── Mode debug (désactivé en production) ────────────────────────────
 DEBUG = os.getenv("DASH_DEBUG", "false").lower() == "true"
@@ -70,8 +72,9 @@ app.layout = html.Div([
     # NOUVEAU : mode Analyse ("live" = temps réel WS, "history" = HTTP historique)
     dcc.Store(id="analysis-mode",         data="history"),
 
-    # Ajouter dans app.layout, avec les autres dcc.Store
     dcc.Store(id="store-dash-panel-tab", data=0),
+    # Nom de l'opérateur courant (sélectionnable dans Settings)
+    dcc.Store(id="store-operator-name", data="Opérateur"),
 
     # Intervalles (uniquement pour horloge et alertes, données viennent du WS)
     dcc.Interval(id="interval-fast", interval=1000, n_intervals=0, disabled=True),   # 1s  — horloge
@@ -92,9 +95,11 @@ def display_page(pathname):
     routes = {
         "/":           dashboard_layout,
         "/simulation": simulation_layout,
+        "/control":    control_layout,
         "/analysis":   analysis_layout,
         "/ai":         ai_layout,
         "/settings":   settings_layout,
+        "/journal":    audit_layout,
     }
     layout_fn = routes.get(pathname, dashboard_layout)
     return layout_fn()
@@ -103,9 +108,11 @@ def display_page(pathname):
 cb_data.register(app)
 cb_dashboard.register(app)
 cb_simulation.register(app)
+cb_control.register(app)
 cb_analysis.register(app)
 cb_ai.register(app)
 cb_settings.register(app)
+cb_audit.register(app)
 
 # ── Lancement ───────────────────────────────────────────────────────
 if __name__ == "__main__":

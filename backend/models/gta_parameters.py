@@ -93,6 +93,19 @@ class GTAParameters(BaseModel):
     status:     StatusEnum = StatusEnum.NORMAL
     scenario:   Optional[str] = None
 
+    # ── Contrôle Commande (renseigné sur params_sim uniquement) ──
+    control_mode:        str            = Field("MANUAL", description="Mode opérateur: MANUAL | AUTO")
+    setpoint_power_mw:   Optional[float] = Field(None,    description="Consigne puissance active (MW)")
+    pid_kp:              Optional[float] = Field(None,    description="Gain PID proportionnel")
+    pid_ki:              Optional[float] = Field(None,    description="Gain PID intégral")
+    pid_kd:              Optional[float] = Field(None,    description="Gain PID dérivé")
+    pid_error:           Optional[float] = Field(None,    description="Erreur PID courante (MW)")
+    pid_output:          Optional[float] = Field(None,    description="Sortie PID (% V1 target)")
+    sequence_state:      str            = Field("IDLE",   description="État séquence: IDLE|STARTING|STOPPING|TRIPPED")
+    sequence_progress:   Optional[float] = Field(None,   description="Progression séquence (0..1)")
+    tripped:             bool           = Field(False,    description="Arrêt d'urgence actif")
+    interlock_warnings:  list           = Field(default_factory=list, description="Avertissements interlocks actifs")
+
     class Config:
         use_enum_values = True
 

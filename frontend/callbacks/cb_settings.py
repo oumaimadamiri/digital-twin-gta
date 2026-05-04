@@ -30,6 +30,15 @@ PARAMS_META = {
 def register(app):
 
     @app.callback(
+        Output("store-operator-name", "data"),
+        Input("btn-save-profile", "n_clicks"),
+        State("profile-name", "value"),
+        prevent_initial_call=True,
+    )
+    def save_operator_name(_, name):
+        return name or "Opérateur"
+
+    @app.callback(
         Output("thresholds-rows-container", "children"),
         Input("url", "pathname"),
     )
