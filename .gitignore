@@ -33,3 +33,5 @@ backend/data/*.zip
 
 Claude.md
 .claude/settings.local.json
+*.md
+*.dio

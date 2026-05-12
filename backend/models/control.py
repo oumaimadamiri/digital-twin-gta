@@ -61,6 +61,37 @@ class ValveControlCommand(BaseModel):
     operator: str = "Opérateur"
 
 
+# ── AVR / Excitation ──
+
+class AVRMode(str, Enum):
+    OFF    = "OFF"
+    VOLTAGE = "VOLTAGE"
+    COSPHI  = "COSPHI"
+    MANUAL  = "MANUAL"
+
+
+class AVRModeCommand(BaseModel):
+    mode:     AVRMode
+    operator: str = "Opérateur"
+
+
+class AVRSetpointCommand(BaseModel):
+    voltage_kv: Optional[float] = Field(None, ge=9.0, le=12.0, description="Consigne tension (kV)")
+    cosphi:     Optional[float] = Field(None, ge=0.7, le=1.0,  description="Consigne cos φ")
+    operator:   str = "Opérateur"
+
+
+class AVRGainsCommand(BaseModel):
+    k_a:      float = Field(..., ge=0,     description="Gain K_A du régulateur")
+    t_a:      float = Field(..., ge=0.001, description="Constante de temps T_A (s)")
+    operator: str   = "Opérateur"
+
+
+class AVRManualCommand(BaseModel):
+    e_fd_pu:  float = Field(..., ge=0.0, le=5.0, description="Tension excitation manuelle (p.u.)")
+    operator: str   = "Opérateur"
+
+
 class ControlState(BaseModel):
     mode:                    ControlMode   = ControlMode.MANUAL
     setpoint_power_mw:       Optional[float] = None
@@ -76,3 +107,11 @@ class ControlState(BaseModel):
     tripped:                 bool  = False
     interlock_warnings:      list  = []
     valve_state:             dict  = {}
+    # AVR
+    avr_mode:             str            = "VOLTAGE"
+    avr_voltage_setpoint: float          = 10.5
+    avr_cosphi_setpoint:  float          = 0.85
+    avr_e_fd_pu:          float          = 1.0
+    avr_saturated:        bool           = False
+    avr_k_a:              float          = 200.0
+    avr_t_a:              float          = 0.05

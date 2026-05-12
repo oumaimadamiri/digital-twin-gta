@@ -95,6 +95,7 @@ class GTAParameters(BaseModel):
 
     # ── Contrôle Commande (renseigné sur params_sim uniquement) ──
     control_mode:        str            = Field("MANUAL", description="Mode opérateur: MANUAL | AUTO")
+    machine_state:       str            = Field("GRID_CONNECTED", description="État machine: STOPPED|ROLLING|SYNCHRONIZING|GRID_CONNECTED|TRIPPED")
     setpoint_power_mw:   Optional[float] = Field(None,    description="Consigne puissance active (MW)")
     pid_kp:              Optional[float] = Field(None,    description="Gain PID proportionnel")
     pid_ki:              Optional[float] = Field(None,    description="Gain PID intégral")
@@ -105,6 +106,14 @@ class GTAParameters(BaseModel):
     sequence_progress:   Optional[float] = Field(None,   description="Progression séquence (0..1)")
     tripped:             bool           = Field(False,    description="Arrêt d'urgence actif")
     interlock_warnings:  list           = Field(default_factory=list, description="Avertissements interlocks actifs")
+
+    # ── AVR / Excitation (renseigné sur params_sim uniquement) ──
+    avr_mode:      str            = Field("VOLTAGE", description="Mode AVR: OFF|VOLTAGE|COSPHI|MANUAL")
+    avr_setpoint:  Optional[float] = Field(None,    description="Consigne AVR (kV ou cos φ selon mode)")
+    avr_e_fd_pu:   Optional[float] = Field(None,    description="Tension d'excitation E_fd (p.u.)")
+    avr_saturated: Optional[bool]  = Field(None,    description="Saturation E_fd active")
+    avr_k_a:       Optional[float] = Field(None,    description="Gain régulateur K_A")
+    avr_t_a:       Optional[float] = Field(None,    description="Constante de temps T_A (s)")
 
     class Config:
         use_enum_values = True

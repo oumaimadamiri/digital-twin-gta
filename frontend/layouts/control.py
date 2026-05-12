@@ -342,6 +342,128 @@ def _pid_card():
     )
 
 
+# ── Carte AVR / Excitation ───────────────────────────────────────────
+
+def _avr_card():
+    def avr_input(label, input_id, default, min_val, max_val, step, unit=""):
+        return html.Div([
+            html.Span(label, style={"fontSize": "10px", "color": "#94a3b8",
+                                    "fontFamily": "Share Tech Mono", "minWidth": "90px"}),
+            dcc.Input(
+                id=input_id, type="number", value=default,
+                min=min_val, max=max_val, step=step,
+                style={
+                    "width": "80px", "background": "#0f2744",
+                    "border": "1px solid #1e3a5f", "borderRadius": "4px",
+                    "color": "#e2e8f0", "padding": "4px 6px",
+                    "fontSize": "12px", "fontFamily": "Share Tech Mono",
+                },
+            ),
+            html.Span(unit, style={"fontSize": "10px", "color": "#a855f7",
+                                   "fontFamily": "Share Tech Mono", "marginLeft": "4px"}),
+        ], style={"display": "flex", "alignItems": "center", "gap": "8px", "marginBottom": "8px"})
+
+    return _card(
+        _section_header("RÉGULATION TENSION / COS φ — AVR", "#a855f7"),
+        html.Div(id="ctrl-avr-overlay", children=[
+            # Indicateurs temps réel
+            html.Div([
+                html.Div([
+                    html.Span("V_term : ", style={"color": "#94a3b8", "fontSize": "10px",
+                                                   "fontFamily": "Share Tech Mono"}),
+                    html.Span(id="ctrl-avr-vt-val", children="—",
+                              style={"color": "#a855f7", "fontSize": "11px",
+                                     "fontFamily": "Share Tech Mono"}),
+                    html.Span(" kV", style={"color": "#64748b", "fontSize": "10px",
+                                            "fontFamily": "Share Tech Mono"}),
+                ]),
+                html.Div([
+                    html.Span("E_fd : ", style={"color": "#94a3b8", "fontSize": "10px",
+                                                 "fontFamily": "Share Tech Mono"}),
+                    html.Span(id="ctrl-avr-efd-val", children="—",
+                              style={"color": "#a855f7", "fontSize": "11px",
+                                     "fontFamily": "Share Tech Mono"}),
+                    html.Span(" p.u.", style={"color": "#64748b", "fontSize": "10px",
+                                              "fontFamily": "Share Tech Mono"}),
+                ]),
+                html.Div([
+                    html.Span("cos φ : ", style={"color": "#94a3b8", "fontSize": "10px",
+                                                  "fontFamily": "Share Tech Mono"}),
+                    html.Span(id="ctrl-avr-cosphi-val", children="—",
+                              style={"color": "#a855f7", "fontSize": "11px",
+                                     "fontFamily": "Share Tech Mono"}),
+                ]),
+                html.Div(id="ctrl-avr-sat-badge", children="", style={
+                    "fontSize": "9px", "fontFamily": "Share Tech Mono",
+                    "fontWeight": "700", "letterSpacing": "0.5px",
+                    "padding": "2px 6px", "borderRadius": "4px",
+                }),
+            ], style={"display": "flex", "gap": "20px", "flexWrap": "wrap",
+                      "marginBottom": "12px", "padding": "8px",
+                      "background": "rgba(168,85,247,0.05)",
+                      "borderRadius": "6px", "border": "1px solid rgba(168,85,247,0.15)"}),
+
+            # Mode AVR
+            html.Div([
+                _label("MODE AVR"),
+                dcc.RadioItems(
+                    id="ctrl-avr-mode",
+                    options=[
+                        {"label": "  OFF",     "value": "OFF"},
+                        {"label": "  TENSION", "value": "VOLTAGE"},
+                        {"label": "  cos φ",   "value": "COSPHI"},
+                        {"label": "  MANUEL",  "value": "MANUAL"},
+                    ],
+                    value="VOLTAGE",
+                    inline=True,
+                    labelStyle={"fontFamily": "Share Tech Mono", "fontSize": "11px",
+                                "color": "#cbd5e1", "cursor": "pointer", "marginRight": "12px"},
+                    inputStyle={"marginRight": "4px"},
+                ),
+            ], style={"marginBottom": "10px"}),
+
+            # Consignes
+            avr_input("V_set (kV)  :", "ctrl-avr-vset",      10.5, 9.0, 12.0, 0.1,  "kV"),
+            avr_input("cos φ cible :", "ctrl-avr-cosphi-set", 0.85, 0.7, 1.0,  0.01, ""),
+            avr_input("E_fd manuel :", "ctrl-avr-efd-manual", 1.0,  0.5, 2.5,  0.05, "p.u."),
+
+            html.Div([
+                html.Button("▶ Appliquer AVR", id="ctrl-btn-avr",
+                            className="btn btn-outline",
+                            style={"fontSize": "10px", "padding": "5px 12px",
+                                   "borderColor": "#a855f7", "color": "#a855f7"}),
+            ], style={"textAlign": "right", "marginBottom": "6px"}),
+
+            html.Div(id="ctrl-avr-status", style={
+                "fontSize": "10px", "color": "#a855f7",
+                "fontFamily": "Share Tech Mono", "marginBottom": "8px",
+            }),
+
+            # Réglage avancé K_a / T_a
+            html.Details([
+                html.Summary("Réglage avancé K_A / T_A", style={
+                    "fontSize": "11px", "color": "#a855f7",
+                    "fontFamily": "Share Tech Mono", "cursor": "pointer",
+                    "letterSpacing": "0.5px",
+                }),
+                html.Div([
+                    avr_input("K_A (gain) :", "ctrl-avr-ka", 200.0, 0, 1000, 10, ""),
+                    avr_input("T_A (s) :",    "ctrl-avr-ta", 0.05,  0.001, 5.0, 0.01, "s"),
+                    html.Button("▶ Appliquer gains", id="ctrl-btn-avr-gains",
+                                className="btn btn-outline",
+                                style={"fontSize": "10px", "padding": "4px 10px",
+                                       "borderColor": "#a855f7", "color": "#a855f7",
+                                       "marginTop": "6px"}),
+                    html.Div(id="ctrl-avr-gains-status", style={
+                        "fontSize": "10px", "color": "#a855f7",
+                        "fontFamily": "Share Tech Mono", "marginTop": "4px",
+                    }),
+                ], style={"marginTop": "8px"}),
+            ]),
+        ]),
+    )
+
+
 # ── Carte Interlocks ─────────────────────────────────────────────────
 
 def _interlocks_card():
@@ -423,6 +545,7 @@ def layout():
                     _setpoints_card(),
                     _sequences_card(),
                     _pid_card(),
+                    _avr_card(),
                 ], style={"flex": "1", "minWidth": "0"}),
 
                 # Colonne droite

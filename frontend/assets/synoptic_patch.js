@@ -242,6 +242,30 @@ window.patchGtaSynoptic = function(data) {
         else poutGroup.classList.remove("blink");
     }
 
+    /* ── AVR / Excitation ── */
+    const avr_efd  = data.avr_e_fd_pu   ?? 1.00;
+    const avr_mode = data.avr_mode      ?? "VOLTAGE";
+    const avr_sat  = !!data.avr_saturated;
+    const AVR_COL  = { VOLTAGE: "#a855f7", COSPHI: "#a855f7", MANUAL: "#fbbf24", OFF: "#64748b" };
+    const avr_col  = AVR_COL[avr_mode] || "#a855f7";
+
+    const avrRect = document.getElementById("syn-avr-rect");
+    if (avrRect) {
+        avrRect.setAttribute("stroke", avr_sat ? "#ef4444" : avr_col);
+        avrRect.setAttribute("filter", avr_sat ? "url(#gr)" : "url(#gp)");
+    }
+    _setText("syn-avr-efd-val", avr_efd.toFixed(2));
+    _setFill("syn-avr-efd-val", avr_sat ? "#ef4444" : avr_col);
+    _setText("syn-avr-mode-val", avr_mode);
+    _setFill("syn-avr-mode-val", avr_col);
+    const avrModeRect = document.getElementById("syn-avr-mode-rect");
+    if (avrModeRect) avrModeRect.setAttribute("stroke", avr_col);
+    const satLed = document.getElementById("syn-avr-sat-led");
+    if (satLed) {
+        satLed.setAttribute("fill",   avr_sat ? "#ef4444" : "#1e293b");
+        satLed.setAttribute("stroke", avr_sat ? "#ef4444" : avr_col);
+    }
+
     /* ── Réseau MT : excédent ── */
     _setText("syn-excess-val", Math.max(0, power - 14).toFixed(1));
 

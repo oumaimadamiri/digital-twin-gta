@@ -212,3 +212,69 @@ PID_POWER_OUT_MAX = 100.0  # V1 maximum (%)
 
 SEQUENCE_START_DURATION_S = float(os.getenv("SEQUENCE_START_DURATION_S", 120.0))  # start_turbine : 0→24 MW
 SEQUENCE_STOP_DURATION_S  = float(os.getenv("SEQUENCE_STOP_DURATION_S",   90.0))  # stop_turbine  : courant→0
+
+# ─────────────────────────────────────────────
+# DYNAMIQUE ROTOR — Swing equation (premier ordre)
+#   τ = J / D  →  constante de temps de la vitesse
+#   J = 1000 kg·m²  D = 80 N·m·s/rad  →  τ ≈ 12.5 s
+# ─────────────────────────────────────────────
+J_INERTIA               = float(os.getenv("J_INERTIA",              1000.0))  # kg·m²
+D_DAMPING               = float(os.getenv("D_DAMPING",                80.0))  # N·m·s/rad
+SPEED_SYNC_THRESHOLD_RPM = float(os.getenv("SPEED_SYNC_THRESHOLD_RPM",  50.0))  # RPM — fenêtre de synchronisation
+SPEED_SYNC_HOLD_S        = float(os.getenv("SPEED_SYNC_HOLD_S",          5.0))  # s — durée minimum en SYNCHRONIZING avant couplage auto
+TAU_GRID                 = float(os.getenv("TAU_GRID",                    3.0))  # s — constante de temps effective couplée réseau (raideur réseau)
+SPEED_TRIP_THRESHOLD_RPM = float(os.getenv("SPEED_TRIP_THRESHOLD_RPM",  200.0))  # RPM — seuil perte de synchronisme → découplage auto
+
+# ─────────────────────────────────────────────
+# PID VITESSE (ROLLING phase — Governor)
+#   Sortie : cible V1 (%)  /  Entrée : erreur en RPM
+# ─────────────────────────────────────────────
+PID_SPEED_KP     = float(os.getenv("PID_SPEED_KP",   0.05))
+PID_SPEED_KI     = float(os.getenv("PID_SPEED_KI",   0.01))
+PID_SPEED_KD     = float(os.getenv("PID_SPEED_KD",   0.005))
+PID_SPEED_OUT_MIN = 0.0
+PID_SPEED_OUT_MAX = 100.0
+
+# ─────────────────────────────────────────────
+# PROTECTIONS AUTOMATIQUES — Seuils de déclenchement
+# (distincts des THRESHOLDS d'alarme, plus stricts)
+# ─────────────────────────────────────────────
+
+# Tier 1 — TRIP (V1=0, mode MANUAL)
+PROT_OVERSPEED_1_RPM     = float(os.getenv("PROT_OVERSPEED_1_RPM",    7080.0))  # 110% nominal
+PROT_OVERSPEED_2_RPM     = float(os.getenv("PROT_OVERSPEED_2_RPM",    7400.0))  # 115% nominal
+PROT_LUBE_OIL_PRESS_BAR  = float(os.getenv("PROT_LUBE_OIL_PRESS_BAR",   0.8))  # bar
+PROT_VIB_TRIP_MMS        = float(os.getenv("PROT_VIB_TRIP_MMS",          7.1))  # mm/s  zone D ISO 10816
+PROT_AXIAL_DISP_MM       = float(os.getenv("PROT_AXIAL_DISP_MM",         0.8))  # mm
+PROT_BEARING_TEMP_TRIP_C = float(os.getenv("PROT_BEARING_TEMP_TRIP_C", 110.0))  # °C
+PROT_PRESSURE_HP_MAX_BAR = float(os.getenv("PROT_PRESSURE_HP_MAX_BAR",  70.0))  # bar
+PROT_TEMP_HP_MAX_C       = float(os.getenv("PROT_TEMP_HP_MAX_C",       510.0))  # °C
+PROT_VOLTAGE_MAX_KV      = float(os.getenv("PROT_VOLTAGE_MAX_KV",      11.55))  # kV  (110%)
+PROT_CURRENT_MAX_A       = float(os.getenv("PROT_CURRENT_MAX_A",       3500.0))  # A
+PROT_REVERSE_POWER_MW    = float(os.getenv("PROT_REVERSE_POWER_MW",     -0.5))  # MW
+
+# Tier 2 — DISCONNECT (GRID_CONNECTED → ROLLING)
+PROT_SYNC_LOSS_RPM       = float(os.getenv("PROT_SYNC_LOSS_RPM",       200.0))  # RPM
+PROT_FREQ_DEVIATION_HZ   = float(os.getenv("PROT_FREQ_DEVIATION_HZ",     1.0))  # Hz
+PROT_EXCITATION_MIN_PU   = float(os.getenv("PROT_EXCITATION_MIN_PU",     0.5))  # p.u.
+
+# Tier 3 — ALARM (sans action automatique)
+PROT_VIB_ALARM_MMS       = float(os.getenv("PROT_VIB_ALARM_MMS",         4.5))  # mm/s  zone C
+PROT_BEARING_TEMP_ALARM_C = float(os.getenv("PROT_BEARING_TEMP_ALARM_C",  95.0))  # °C
+PROT_OIL_LEVEL_MIN_PCT   = float(os.getenv("PROT_OIL_LEVEL_MIN_PCT",    30.0))  # %
+PROT_OIL_FILTER_DP_BAR   = float(os.getenv("PROT_OIL_FILTER_DP_BAR",     0.8))  # bar
+PROT_VOLTAGE_MIN_KV      = float(os.getenv("PROT_VOLTAGE_MIN_KV",        9.97))  # kV  (95%)
+
+# ─────────────────────────────────────────────
+# AVR / EXCITATION — IEEE Type 1 simplifié
+# Modèle : 1er ordre G(s) = K_A / (1 + T_A·s)
+# Discrétisation ZOH analytique (stable pour tout dt ≥ T_A)
+# ─────────────────────────────────────────────
+AVR_ENABLED          = True          # False → fallback formule algébrique legacy
+AVR_K_A              = float(os.getenv("AVR_K_A",  200.0))   # Gain régulateur
+AVR_T_A              = float(os.getenv("AVR_T_A",   0.05))   # Constante de temps (s)
+AVR_E_FD_MIN         = 0.5           # Saturation basse (p.u.) — évite déexcitation totale
+AVR_E_FD_MAX         = 2.5           # Saturation haute (p.u.)
+AVR_VOLTAGE_SETPOINT = float(os.getenv("AVR_VOLTAGE_SETPOINT", 10.5))   # kV
+AVR_COSPHI_SETPOINT  = float(os.getenv("AVR_COSPHI_SETPOINT",  0.85))   # cos φ cible
+AVR_Q_SENSITIVITY    = float(os.getenv("AVR_Q_SENSITIVITY",    10.0))   # MVAR par p.u. E_fd (déviation / 1.0)

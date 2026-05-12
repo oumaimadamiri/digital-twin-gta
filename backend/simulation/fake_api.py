@@ -15,6 +15,9 @@ from simulation.physics_model import PhysicsModel
 from simulation.scenarios import get_scenario, Scenario
 from simulation.valve_controller import valve_controller as _valve_controller
 from simulation.controller import controller as _controller
+from simulation.avr_controller import avr_controller as _avr
+from simulation.dynamics import rotor_dynamics as _rotor
+from simulation.protection import protection_system as _prot
 
 
 logger = logging.getLogger("gta.simulation")
@@ -62,6 +65,10 @@ class FakeAPI:
 
         # Dernier snapshot calculé
         self._last_params: GTAParameters | None = None
+        self._last_nominal_power: float = 0.0
+        # Puissance et vitesse simulées du dernier tick — utilisées par les PIDs
+        self._last_simulated_power: float = 0.0
+        self._last_simulated_speed: float = NOMINAL["turbine_speed"]
 
         # Callback appelé à chaque nouveau snapshot
         self._on_new_data = None
@@ -122,6 +129,8 @@ class FakeAPI:
         self._scenario_start_time  = None
         self._power_factor_offset  = 0.0
         self._oscillation_t        = 0.0
+        self._last_simulated_speed = NOMINAL["turbine_speed"]
+        _rotor.lock_to_grid()
 
     def get_current(self) -> GTAParameters | None:
         return self._last_params
@@ -157,8 +166,19 @@ class FakeAPI:
         dt = FAKE_API_INTERVAL_MS / 1000.0
 
         # Superviseur Contrôle Commande : calcule la consigne V1 en AUTO avant le ramp
-        last_power = self._last_params.active_power if self._last_params else 0.0
-        _controller.update(dt, current_power_mw=last_power)
+        # Utilise la puissance et la vitesse SIMULÉES du tick précédent → les PIDs voient les perturbations
+        _controller.update(
+            dt,
+            current_power_mw=self._last_simulated_power,
+            current_speed_rpm=self._last_simulated_speed,
+        )
+
+        # AVR : intègre E_fd depuis les mesures du tick précédent (un tick de délai → pas de couplage circulaire)
+        _avr.update(
+            dt,
+            v_term_kv=getattr(self._last_params, "voltage",       NOMINAL.get("voltage",       10.5)),
+            cosphi   =getattr(self._last_params, "power_factor",   NOMINAL.get("power_factor",  0.85)),
+        )
 
         # Avancer le contrôleur d'actionneurs (applique les rampes de positionnement)
         self._vc.update(dt)
@@ -264,9 +284,18 @@ class FakeAPI:
                 )
             status_sim = self._compute_status(computed_sim)
             
-            # Fusionner l'état superviseur Contrôle Commande dans le snapshot simulé
+            # Dynamique rotor : inertie TOUJOURS active (swing equation)
+            # En GRID_CONNECTED : raideur réseau (TAU_GRID), légères déviations visibles
+            # En ROLLING/STOPPED : inertie libre (TAU = J/D = 12.5 s)
+            algebraic_speed = computed_sim.get("turbine_speed", NOMINAL["turbine_speed"])
+            _rotor.update(dt, target_speed_rpm=algebraic_speed)
+            computed_sim["turbine_speed"]  = _rotor.speed_rpm
+            computed_sim["grid_frequency"] = _rotor.frequency_hz
+
+            # Fusionner l'état superviseur Contrôle Commande + AVR dans le snapshot simulé
             ctrl_snap = _controller.snapshot()
             computed_sim.update(ctrl_snap)
+            computed_sim.update(_avr.snapshot())
 
             params_sim = GTAParameters(
                 timestamp = datetime.utcnow() + timedelta(hours=TIMEZONE_OFFSET),
@@ -274,10 +303,17 @@ class FakeAPI:
                 status    = status_sim,
                 **computed_sim
             )
+
+            # Couche de protections automatiques — après création du snapshot
+            _prot.check_all(params_sim, _controller, _avr)
+
         except Exception as e:
             logger.error(f"Erreur lors de la création de params_sim: {e}")
             raise
 
+        self._last_nominal_power    = params_nom.active_power
+        self._last_simulated_power  = params_sim.active_power
+        self._last_simulated_speed  = params_sim.turbine_speed
         return params_nom, params_sim
 
     def _apply_scenario(self, state: dict) -> tuple[dict, str]:

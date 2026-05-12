@@ -69,19 +69,25 @@ def register(app):
         Output("ctrl-seq-bar",           "style"),
         Output("ctrl-seq-label",         "children"),
         Output("ctrl-interlocks-list",   "children"),
+        # AVR
+        Output("ctrl-avr-vt-val",        "children"),
+        Output("ctrl-avr-efd-val",       "children"),
+        Output("ctrl-avr-cosphi-val",    "children"),
+        Output("ctrl-avr-sat-badge",     "children"),
+        Output("ctrl-avr-sat-badge",     "style"),
         Input("ctrl-state-interval",     "n_intervals"),
         Input("url",                     "pathname"),
         prevent_initial_call=False,
     )
     def poll_control_state(n, pathname):
         if pathname != "/control":
-            return (no_update,) * 10
+            return (no_update,) * 15
 
         state, err = _get("/control/state")
         if err or not state:
-            return (no_update,) * 10
+            return (no_update,) * 15
 
-        mode    = state.get("mode", "MANUAL")
+        mode    = state.get("control_mode", "MANUAL")
         tripped = state.get("tripped", False)
 
         # Badge mode
@@ -151,12 +157,33 @@ def register(app):
             }),
         ], style={"marginTop": "4px"}))
 
+        # AVR
+        avr_vt     = state.get("avr_v_term")
+        avr_efd    = state.get("avr_e_fd_pu")
+        avr_cphi   = state.get("avr_cosphi")
+        avr_sat    = state.get("avr_saturated", False)
+        avr_vt_str   = f"{avr_vt:.3f}"  if avr_vt  is not None else "—"
+        avr_efd_str  = f"{avr_efd:.4f}" if avr_efd  is not None else "—"
+        avr_cphi_str = f"{avr_cphi:.3f}" if avr_cphi is not None else "—"
+        if avr_sat and avr_efd is not None:
+            sat_label = "SAT MAX" if avr_efd >= 2.4 else "SAT MIN"
+            sat_style = {
+                "fontSize": "9px", "fontFamily": "Share Tech Mono", "fontWeight": "700",
+                "letterSpacing": "0.5px", "padding": "2px 6px", "borderRadius": "4px",
+                "color": "#ef4444", "background": "rgba(239,68,68,0.15)",
+                "border": "1px solid #ef4444",
+            }
+        else:
+            sat_label = ""
+            sat_style = {"fontSize": "9px", "padding": "2px 6px"}
+
         return (
             mode, mode_style,
             tripped_style, reset_btn_style,
             pid_err_str, pid_out_str,
             seq_wrap, bar_style, seq_lbl,
             interlock_children,
+            avr_vt_str, avr_efd_str, avr_cphi_str, sat_label, sat_style,
         )
 
     # ── Dialogue confirmation AU ─────────────────────────────────────
@@ -333,6 +360,56 @@ def register(app):
             return _status_err(f"Erreur : {err}")
         return _status_ok(f"✓ PID : Kp={kp} Ki={ki} Kd={kd}")
 
+    # ── AVR — mode + setpoints ──────────────────────────────────────
+    @app.callback(
+        Output("ctrl-avr-status", "children"),
+        Input("ctrl-btn-avr", "n_clicks"),
+        State("ctrl-avr-mode",      "value"),
+        State("ctrl-avr-vset",      "value"),
+        State("ctrl-avr-cosphi-set","value"),
+        State("ctrl-avr-efd-manual","value"),
+        State("store-operator-name","data"),
+        prevent_initial_call=True,
+    )
+    def apply_avr(n, mode, vset, cosphi_set, efd_manual, operator):
+        if not n:
+            return no_update
+        op = operator or "Opérateur"
+        _, err = _post("/control/avr/mode", {"mode": mode, "operator": op})
+        if err:
+            return _status_err(f"Mode AVR : {err}")
+        if mode == "MANUAL" and efd_manual is not None:
+            _post("/control/avr/manual", {"e_fd_pu": efd_manual, "operator": op})
+        body = {}
+        if vset       is not None: body["voltage_kv"] = vset
+        if cosphi_set is not None: body["cosphi"]     = cosphi_set
+        if body:
+            data, err2 = _post("/control/avr/setpoint", {**body, "operator": op})
+            if err2:
+                return _status_err(f"Consigne AVR : {err2}")
+        label = vset if mode == "VOLTAGE" else (cosphi_set if mode == "COSPHI" else efd_manual)
+        return _status_ok(f"✓ AVR {mode} → {label}")
+
+    # ── AVR — gains K_A / T_A ────────────────────────────────────────
+    @app.callback(
+        Output("ctrl-avr-gains-status", "children"),
+        Input("ctrl-btn-avr-gains", "n_clicks"),
+        State("ctrl-avr-ka",         "value"),
+        State("ctrl-avr-ta",         "value"),
+        State("store-operator-name", "data"),
+        prevent_initial_call=True,
+    )
+    def apply_avr_gains(n, ka, ta, operator):
+        if not n:
+            return no_update
+        if any(v is None for v in [ka, ta]):
+            return _status_err("Renseignez K_A et T_A.")
+        data, err = _post("/control/avr/gains",
+                          {"k_a": ka, "t_a": ta, "operator": operator or "Opérateur"})
+        if err:
+            return _status_err(f"Erreur : {err}")
+        return _status_ok(f"✓ Gains AVR : K_A={ka}  T_A={ta} s")
+
     # ── Acquitter tout ───────────────────────────────────────────────
     @app.callback(
         Output("ctrl-alarms-list", "children"),
@@ -390,6 +467,10 @@ def register(app):
             "SEQUENCE_COMPLETED": "#22c55e",
             "PID_TUNE":         "#f59e0b",
             "ALERT_ACK":        "#64748b",
+            "AVR_MODE_CHANGE":    "#a855f7",
+            "AVR_SETPOINT_CHANGE":"#a855f7",
+            "AVR_GAINS_CHANGE":   "#a855f7",
+            "AVR_EFD_MANUAL":     "#a855f7",
         }
 
         rows = []

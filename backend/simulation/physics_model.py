@@ -14,10 +14,13 @@ Améliorations vs version initiale :
   8. Signaux électriques calculés : I(A), Q(MVAR), S(MVA)
 """
 
+import logging
 import math
 import json
 import os
 from iapws import IAPWS97
+
+logger = logging.getLogger("gta.physics")
 
 from core.config import (
     NOMINAL, PHYSICS_ETA_IS_HP, PHYSICS_ETA_IS_BP,
@@ -54,7 +57,10 @@ def _isentropic_expansion(T_in_C: float, P_in_bar: float,
         delta_h_real  = max(0.0, eta_is) * max(0.0, delta_h_ideal)
         h_out_real    = state_in.h - delta_h_real
         return h_out_real, delta_h_real
-    except Exception:
+    except Exception as e:
+        logger.warning(
+            f"IAPWS97 échec _isentropic_expansion(T={T_in_C}, P_in={P_in_bar}, P_out={P_out_bar}): {e}"
+        )
         return 0.0, 0.0   # état thermodynamiquement invalide → pas de travail
 
 
@@ -72,7 +78,10 @@ def _isentropic_expansion_from_h(h_in_kJkg: float, P_in_bar: float,
         delta_h_real  = max(0.0, eta_is) * max(0.0, delta_h_ideal)
         h_out_real    = state_in.h - delta_h_real
         return h_out_real, delta_h_real
-    except Exception:
+    except Exception as e:
+        logger.warning(
+            f"IAPWS97 échec _isentropic_expansion_from_h(h_in={h_in_kJkg}, P_in={P_in_bar}, P_out={P_out_bar}): {e}"
+        )
         return h_in_kJkg, 0.0
 
 class PhysicsModel:
@@ -146,8 +155,10 @@ class PhysicsModel:
                     self.ALPHA_TEMP = coeffs["alpha_temp"]
                 if "c_stodola" in coeffs:
                     self.C_STODOLA = coeffs["c_stodola"]
-            except Exception:
-                pass   # Utilise les valeurs par défaut si lecture échoue
+            except Exception as e:
+                logger.warning(
+                    f"Calibration non chargée depuis {CALIBRATION_COEFFS}: {e} — valeurs par défaut utilisées"
+                )
 
     # ──────────────────────────────────────────
     # RENDEMENT ISENTROPIQUE CORRIGÉ PAR T_HP
@@ -555,9 +566,32 @@ class PhysicsModel:
         charge_site    = min(active_power, self.CHARGE_SITE_MW)
         excedent_reseau = max(0.0, active_power - self.CHARGE_SITE_MW)
 
-        # ── Électrique ──
-        power_factor   = self.compute_power_factor(active_power)
-        elec           = self.compute_electrical_signals(active_power, power_factor)
+        # ── Électrique (branche AVR dynamique vs formule algébrique legacy) ──
+        from core.config import AVR_ENABLED, AVR_Q_SENSITIVITY
+        from simulation.avr_controller import avr_controller as _avr
+        if AVR_ENABLED and _avr.mode != "OFF" and active_power > 0:
+            e_fd      = _avr.e_fd_pu
+            # V_term réagit à E_fd (sensibilité linéaire, ~±5% autour du nominal)
+            v_term_kv = round(max(9.0, min(12.0,
+                               self.VOLTAGE_KV * (0.95 + 0.05 * e_fd))), 3)
+            # Q linéarisé : Q_base (à cos φ=0.85) + sensibilité * déviation E_fd
+            q_base    = active_power * math.tan(math.acos(0.85))
+            q_mvar    = round(max(-20.0, min(35.0,
+                               q_base + AVR_Q_SENSITIVITY * (e_fd - 1.0))), 3)
+            s_mva     = round(math.sqrt(active_power**2 + q_mvar**2), 3)
+            power_factor = round(
+                max(0.01, min(1.0, active_power / s_mva)) if s_mva > 0 else 0.85, 3
+            )
+            elec = {
+                "apparent_power":     s_mva,
+                "apparent_power_max": 41.0,
+                "reactive_power":     q_mvar,
+                "current_a":          round((s_mva * 1e6) / (self.SQRT3 * v_term_kv * 1000.0), 1),
+                "voltage":            v_term_kv,
+            }
+        else:
+            power_factor = self.compute_power_factor(active_power)
+            elec         = self.compute_electrical_signals(active_power, power_factor)
 
         # ── Mécanique & Auxiliaires ──
         mech = self.compute_mechanical_auxiliaries(turbine_speed, temperature_hp, active_power)

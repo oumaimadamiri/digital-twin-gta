@@ -470,6 +470,12 @@ def _build_synoptic_div(data: dict, static_ids: bool, show_table: bool = True, i
       <feComposite in="g" in2="b" operator="in" result="sg"/>
       <feMerge><feMergeNode in="sg"/><feMergeNode in="SourceGraphic"/></feMerge>
     </filter>
+    <filter id="gp" x="-25%" y="-25%" width="150%" height="150%">
+      <feGaussianBlur stdDeviation="6" result="b"/>
+      <feFlood flood-color="#a855f7" flood-opacity="0.35" result="g"/>
+      <feComposite in="g" in2="b" operator="in" result="sg"/>
+      <feMerge><feMergeNode in="sg"/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
     <marker id="arr" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto">
       <path d="M0,0 L0,6 L6,3 Z" fill="#94a3b8"/>
     </marker>
@@ -756,6 +762,28 @@ def _build_synoptic_div(data: dict, static_ids: bool, show_table: bool = True, i
         stroke="#1d4ed8" stroke-width="6" stroke-dasharray="8,5" class="flow-hp"/>
   {_instrument_circle(915, 248, "ST", "#1d4ed8")}
   {tag_vit2}
+
+  <!-- ════ EXCITATRICE / AVR ════ -->
+  <rect id="syn-avr-rect" x="945" y="78" width="165" height="70" rx="10"
+        fill="#0a101a" stroke="#a855f7" stroke-width="1.8" filter="url(#gp)"/>
+  <text x="1027" y="96" fill="#f8fafc" font-size="10.5" font-weight="700"
+        text-anchor="middle" letter-spacing="1.2">EXCITATRICE / AVR</text>
+  <text x="1027" y="107" fill="#475569" font-size="7.5"
+        text-anchor="middle">IEEE Type 1 — K_a·1/(1+T_a·s)</text>
+  <text x="958" y="123" fill="#64748b" font-size="7">E_fd</text>
+  <text id="syn-avr-efd-val" x="958" y="137" fill="#a855f7"
+        font-size="12" font-weight="700">1.00</text>
+  <text x="983" y="137" fill="#64748b" font-size="6.5">p.u.</text>
+  <rect id="syn-avr-mode-rect" x="1001" y="116" width="62" height="22" rx="4"
+        fill="rgba(168,85,247,0.15)" stroke="#a855f7" stroke-width="0.8"/>
+  <text id="syn-avr-mode-val" x="1032" y="131" fill="#a855f7"
+        font-size="8.5" font-weight="700" text-anchor="middle">VOLTAGE</text>
+  <circle id="syn-avr-sat-led" cx="1089" cy="126" r="5"
+          fill="#1e293b" stroke="#a855f7" stroke-width="1"/>
+  <text x="1089" y="142" fill="#64748b" font-size="6.5" text-anchor="middle">SAT</text>
+  <line x1="1027" y1="148" x2="1027" y2="155"
+        stroke="#a855f7" stroke-width="2" stroke-dasharray="3,2" opacity="0.8"/>
+  <text x="1037" y="154" fill="#a855f7" font-size="6.5" font-weight="700">E_fd ↓</text>
 
   <!-- ════ ALTERNATEUR ════ -->
   <rect id="syn-alt-rect" x="945" y="155" width="165" height="200" rx="12"

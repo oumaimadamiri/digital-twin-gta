@@ -129,7 +129,7 @@ class ValveController:
         clamped = max(config.min_opening, min(config.max_opening, target_pct))
 
         # ── Règle 1 : valve_bp ≥ 5% si V1 > 10% ──
-        if valve_id == "bp" and clamped < 5.0:
+        if valve_id == "bp" and target_pct < 5.0:
             if self._valves["v1"].current > 10.0:
                 return {
                     "accepted": False,
