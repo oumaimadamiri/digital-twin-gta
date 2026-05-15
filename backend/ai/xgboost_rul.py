@@ -39,7 +39,11 @@ class XGBoostRUL:
         features = self._compute_features(history)
 
         if self._model is not None:
-            rul_days = float(self._model.predict([features])[0])
+            try:
+                feat_vec = self._features_to_vec(features)
+                rul_days = float(self._model.predict(np.array([feat_vec]))[0])
+            except Exception:
+                rul_days = self._estimate_statistical(history, features)
         else:
             rul_days = self._estimate_statistical(history, features)
 
@@ -54,6 +58,10 @@ class XGBoostRUL:
             "degradation_score":    round(features.get("degradation_index", 0), 3),
             "critical_parameter":   features.get("worst_param", "N/A"),
         }
+
+    def _features_to_vec(self, features: dict) -> list:
+        """Retourne une liste de floats numériques dans un ordre stable (exclut les champs non numériques)."""
+        return [float(v) for k, v in sorted(features.items()) if k != "worst_param"]
 
     def _compute_features(self, history: list[dict]) -> dict:
         """
@@ -109,7 +117,7 @@ class XGBoostRUL:
         """Entraîne le modèle XGBoost (appelé depuis train_models.py)."""
         try:
             import xgboost as xgb
-            features_list = [list(self._compute_features([row]).values()) for row in X]
+            features_list = [self._features_to_vec(self._compute_features([row])) for row in X]
             self._model   = xgb.XGBRegressor(n_estimators=100, max_depth=4)
             self._model.fit(features_list, y)
             os.makedirs(os.path.dirname(XGBOOST_PATH), exist_ok=True)

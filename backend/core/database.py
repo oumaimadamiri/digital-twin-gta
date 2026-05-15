@@ -155,6 +155,15 @@ def init_db():
             CREATE INDEX IF NOT EXISTS idx_operator_actions_ts
             ON operator_actions (ts DESC)
         """)
+
+        # ── Stockage clé-valeur générique (persistance état simulation) ──
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS kv_store (
+                key        TEXT PRIMARY KEY,
+                value      TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+        """)
         conn.commit()
 
 

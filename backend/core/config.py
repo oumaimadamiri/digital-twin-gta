@@ -278,3 +278,83 @@ AVR_E_FD_MAX         = 2.5           # Saturation haute (p.u.)
 AVR_VOLTAGE_SETPOINT = float(os.getenv("AVR_VOLTAGE_SETPOINT", 10.5))   # kV
 AVR_COSPHI_SETPOINT  = float(os.getenv("AVR_COSPHI_SETPOINT",  0.85))   # cos φ cible
 AVR_Q_SENSITIVITY    = float(os.getenv("AVR_Q_SENSITIVITY",    10.0))   # MVAR par p.u. E_fd (déviation / 1.0)
+
+# ─────────────────────────────────────────────
+# PHASE 0 — A.1 : PID pression HP (régule via V1)
+# ─────────────────────────────────────────────
+PID_PRESSURE_KP            = float(os.getenv("PID_PRESSURE_KP",   1.20))   # %/bar
+PID_PRESSURE_KI            = float(os.getenv("PID_PRESSURE_KI",   0.25))   # %/(bar·s)
+PID_PRESSURE_KD            = float(os.getenv("PID_PRESSURE_KD",   0.05))
+PID_PRESSURE_OUT_MIN       = 0.0
+PID_PRESSURE_OUT_MAX       = 100.0
+PRESSURE_HP_SETPOINT_BAR   = float(os.getenv("PRESSURE_HP_SETPOINT_BAR", 60.0))  # défaut = nominal
+
+# ─────────────────────────────────────────────
+# PHASE 0 — A.2 : Saturation tanh sur Q réactive
+# ─────────────────────────────────────────────
+Q_TANH_SCALE_MVAR          = float(os.getenv("Q_TANH_SCALE_MVAR", 25.0))   # enveloppe de saturation (MVAR)
+
+# ─────────────────────────────────────────────
+# PHASE 0 — A.4 : Dégradation Weibull + compteur heures GRID
+# ─────────────────────────────────────────────
+DEGRADATION_ENABLED              = os.getenv("DEGRADATION_ENABLED", "true").lower() == "true"
+DEGRADATION_SHAPE                = float(os.getenv("DEGRADATION_SHAPE",             2.5))     # k Weibull (>1 = usure accélérée)
+DEGRADATION_SCALE_H              = float(os.getenv("DEGRADATION_SCALE_H",        8000.0))    # h, vie caractéristique
+DEGRADATION_MAX_EFF_DRIFT_PCT    = float(os.getenv("DEGRADATION_MAX_EFF_DRIFT_PCT",  -3.5))  # % rendement (asymptote)
+DEGRADATION_MAX_VIB_DRIFT_MMS   = float(os.getenv("DEGRADATION_MAX_VIB_DRIFT_MMS",   4.0))  # mm/s vibration (asymptote)
+DEGRADATION_MAX_BEARING_DRIFT_C  = float(os.getenv("DEGRADATION_MAX_BEARING_DRIFT_C", 8.0)) # °C paliers (asymptote)
+DEGRADATION_PERSIST_INTERVAL_S   = int(os.getenv("DEGRADATION_PERSIST_INTERVAL_S",   60))   # cadence sauvegarde SQLite
+
+# ─────────────────────────────────────────────
+# PHASE 1 — B.1 : Droop primaire (régulation primaire fréquence)
+# ─────────────────────────────────────────────
+DROOP_ENABLED      = os.getenv("DROOP_ENABLED", "true").lower() == "true"
+DROOP_R            = float(os.getenv("DROOP_R",            0.04))   # 4 % statisme
+DROOP_FREQ_REF_HZ  = float(os.getenv("DROOP_FREQ_REF_HZ", 50.0))   # référence réseau
+DROOP_DEADBAND_HZ  = float(os.getenv("DROOP_DEADBAND_HZ",  0.02))   # bande morte anti-bruit
+DROOP_MAX_DELTA_MW = float(os.getenv("DROOP_MAX_DELTA_MW",  6.0))   # saturation ±25 % P_nom
+
+# ─────────────────────────────────────────────
+# PHASE 1 — B.2 : Limiteurs AVR (OEL / UEL / SCL)
+# ─────────────────────────────────────────────
+AVR_OEL_THRESHOLD_PU  = float(os.getenv("AVR_OEL_THRESHOLD_PU",  2.2))    # p.u. seuil sur-excitation
+AVR_OEL_TIMER_S       = float(os.getenv("AVR_OEL_TIMER_S",       10.0))   # délai inverse-time OEL
+AVR_UEL_MIN_Q_RATIO   = float(os.getenv("AVR_UEL_MIN_Q_RATIO",  -0.30))   # Q/S_max plancher sous-excitation
+AVR_UEL_E_FD_FLOOR_PU = float(os.getenv("AVR_UEL_E_FD_FLOOR_PU", 0.85))  # plancher E_fd UEL
+AVR_SCL_THRESHOLD_A   = float(os.getenv("AVR_SCL_THRESHOLD_A", 3300.0))   # A seuil courant stator
+AVR_SCL_TIMER_S       = float(os.getenv("AVR_SCL_TIMER_S",       30.0))   # délai inverse-time SCL
+AVR_SCL_REDUCTION_PU  = float(os.getenv("AVR_SCL_REDUCTION_PU",   0.10))  # pu/s réduction E_fd SCL
+
+# ─────────────────────────────────────────────
+# PHASE 1 — B.3 : Désurchauffeur (Attemperator)
+# ─────────────────────────────────────────────
+ATTEMPERATOR_ENABLED   = os.getenv("ATTEMPERATOR_ENABLED", "true").lower() == "true"
+ATTEMP_KP              = float(os.getenv("ATTEMP_KP",    0.40))   # %/°C
+ATTEMP_KI              = float(os.getenv("ATTEMP_KI",    0.10))   # %/(°C·s)
+ATTEMP_KD              = float(os.getenv("ATTEMP_KD",    0.02))
+ATTEMP_OUT_MIN         = 0.0
+ATTEMP_OUT_MAX         = 100.0
+ATTEMP_T_HP_SETPOINT_C = float(os.getenv("ATTEMP_T_HP_SETPOINT_C", 440.0))  # °C (= nominal)
+ATTEMP_MAX_COOLING_C   = float(os.getenv("ATTEMP_MAX_COOLING_C",    60.0))   # -60 °C à 100 % injection
+ATTEMP_TAU_S           = float(os.getenv("ATTEMP_TAU_S",             8.0))   # constante thermique
+
+# ─────────────────────────────────────────────
+# PHASE 1 — B.4 : Condenseur (hotwell + groupe vide)
+# ─────────────────────────────────────────────
+CONDENSER_ENABLED              = os.getenv("CONDENSER_ENABLED", "true").lower() == "true"
+COND_LEVEL_KP                  = float(os.getenv("COND_LEVEL_KP",   1.5))
+COND_LEVEL_KI                  = float(os.getenv("COND_LEVEL_KI",   0.3))
+COND_LEVEL_KD                  = float(os.getenv("COND_LEVEL_KD",   0.0))
+COND_LEVEL_SETPOINT_PCT        = float(os.getenv("COND_LEVEL_SETPOINT_PCT",  50.0))
+COND_LEVEL_OUT_MIN             = 0.0
+COND_LEVEL_OUT_MAX             = 100.0
+COND_VACUUM_KP                 = float(os.getenv("COND_VACUUM_KP",  0.8))
+COND_VACUUM_KI                 = float(os.getenv("COND_VACUUM_KI",  0.2))
+COND_VACUUM_KD                 = float(os.getenv("COND_VACUUM_KD",  0.05))
+COND_VACUUM_SETPOINT_MBAR      = float(os.getenv("COND_VACUUM_SETPOINT_MBAR", 64.0))
+COND_VACUUM_OUT_MIN            = 0.0
+COND_VACUUM_OUT_MAX            = 100.0
+COND_INFLOW_GAIN_PCT_PER_TH    = float(os.getenv("COND_INFLOW_GAIN_PCT_PER_TH",   0.05))
+COND_PUMP_GAIN_PCT_PER_PCT     = float(os.getenv("COND_PUMP_GAIN_PCT_PER_PCT",    0.08))
+COND_VACUUM_LOAD_MBAR_PER_TH   = float(os.getenv("COND_VACUUM_LOAD_MBAR_PER_TH",  0.4))
+COND_VACUUM_EJECTOR_MBAR_PER_PCT = float(os.getenv("COND_VACUUM_EJECTOR_MBAR_PER_PCT", 0.5))

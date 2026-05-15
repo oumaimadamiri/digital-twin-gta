@@ -97,7 +97,8 @@ window.patchGtaSynoptic = function(data) {
     const alm_spd  = _alarm(speed, 6300, 6550);
     const alm_pow  = power > 30.0;
     const alm_pf   = _alarm(pf, 0.82, 0.86);
-    const alm_eff  = eff < 85.0;
+    const alm_eff  = eff < 51.0 || eff > 65.0;
+    const warn_eff = !alm_eff && (eff < 55.0 || eff > 61.0);
     const alm_pbar_bp = p_bar_bp > 5.0;
     const alm_ia   = i_a > 3000;
 
@@ -163,7 +164,7 @@ window.patchGtaSynoptic = function(data) {
     _setText("syn-speed-val", speed.toFixed(0));
     _setFill("syn-speed-val", alm_spd ? "#ef4444" : "#60a5fa");
     _setText("syn-eff-val", eff.toFixed(1));
-    _setFill("syn-eff-val", alm_eff ? "#ef4444" : "#10b981");
+    _setFill("syn-eff-val", alm_eff ? "#ef4444" : warn_eff ? "#f59e0b" : "#10b981");
 
     _setText("syn-pbp-val",   p_bp_in.toFixed(2));
     _setText("syn-qcond-val", q_cond.toFixed(0));
@@ -353,7 +354,7 @@ window.patchGtaSynoptic = function(data) {
     _setText("syn-tbl-spd",  speed.toFixed(0));
     _setFill("syn-tbl-spd",  alm_spd  ? "#ef4444" : "#818cf8");
     _setText("syn-tbl-eff",  eff.toFixed(1));
-    _setFill("syn-tbl-eff",  alm_eff  ? "#ef4444" : "#38bdf8");
+    _setFill("syn-tbl-eff",  alm_eff ? "#ef4444" : warn_eff ? "#f59e0b" : "#38bdf8");
     _setText("syn-tbl-v1",   v_v1.toFixed(0));
     _setFill("syn-tbl-v1",   alm_v1   ? "#ef4444" : "#f97316");
     _setText("syn-tbl-vbp",  v_bp.toFixed(0));
@@ -427,12 +428,12 @@ window.patchGtaSynoptic = function(data) {
         const ts = bxEffEl.querySelector("tspan");
         bxEffEl.childNodes[0].textContent = eff.toFixed(1) + " ";
         if (ts) ts.textContent = "%";
-        bxEffEl.setAttribute("fill", alm_eff ? "#ef4444" : "#e2e8f0");
+        bxEffEl.setAttribute("fill", alm_eff ? "#ef4444" : warn_eff ? "#f59e0b" : "#e2e8f0");
     }
     const bxEffRect = document.getElementById("syn-bx-eff-rect");
     if (bxEffRect) {
-        bxEffRect.setAttribute("fill",   alm_eff ? "rgba(239,68,68,0.12)" : "rgba(15,23,42,0.75)");
-        bxEffRect.setAttribute("stroke", alm_eff ? "#ef4444" : "#1e3a5f");
+        bxEffRect.setAttribute("fill",   alm_eff ? "rgba(239,68,68,0.12)" : warn_eff ? "rgba(245,158,11,0.12)" : "rgba(15,23,42,0.75)");
+        bxEffRect.setAttribute("stroke", alm_eff ? "#ef4444" : warn_eff ? "#f59e0b" : "#1e3a5f");
     }
 
     const bxVibEl = document.getElementById("syn-bx-vib-val");

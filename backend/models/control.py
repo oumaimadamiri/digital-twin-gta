@@ -12,6 +12,11 @@ class ControlMode(str, Enum):
     AUTO   = "AUTO"
 
 
+class RegulationTarget(str, Enum):
+    POWER    = "POWER"     # PID puissance asservit V1 (défaut)
+    PRESSURE = "PRESSURE"  # PID pression HP asservit V1
+
+
 class SequenceState(str, Enum):
     IDLE     = "IDLE"
     STARTING = "STARTING"
@@ -23,6 +28,11 @@ class Setpoints(BaseModel):
     power_mw:         Optional[float] = Field(None, ge=0, le=30,   description="Consigne puissance active (MW)")
     speed_rpm:        Optional[float] = Field(None, ge=0, le=7000,  description="Consigne vitesse (RPM) — informatif")
     pressure_hp_bar:  Optional[float] = Field(None, ge=0, le=80,   description="Consigne pression HP (bar) — informatif")
+
+
+class RegulationTargetRequest(BaseModel):
+    target:   RegulationTarget
+    operator: str = "Opérateur"
 
 
 class ModeCommand(BaseModel):
@@ -90,6 +100,30 @@ class AVRGainsCommand(BaseModel):
 class AVRManualCommand(BaseModel):
     e_fd_pu:  float = Field(..., ge=0.0, le=5.0, description="Tension excitation manuelle (p.u.)")
     operator: str   = "Opérateur"
+
+
+# ── Désurchauffeur (Phase 1 — B.3) ──
+
+class AttemperatorSetpointCommand(BaseModel):
+    setpoint_c: float = Field(..., ge=300.0, le=520.0, description="Consigne T° HP désurchauffeur (°C)")
+    operator: str = "Opérateur"
+
+
+class AttemperatorEnableCommand(BaseModel):
+    enabled: bool
+    operator: str = "Opérateur"
+
+
+# ── Condenseur (Phase 1 — B.4) ──
+
+class CondLevelSetpointCommand(BaseModel):
+    setpoint_pct: float = Field(..., ge=10.0, le=90.0, description="Consigne niveau hotwell (%)")
+    operator: str = "Opérateur"
+
+
+class CondVacuumSetpointCommand(BaseModel):
+    setpoint_mbar: float = Field(..., ge=20.0, le=150.0, description="Consigne vide condenseur (mbar)")
+    operator: str = "Opérateur"
 
 
 class ControlState(BaseModel):

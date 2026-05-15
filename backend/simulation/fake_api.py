@@ -18,6 +18,10 @@ from simulation.controller import controller as _controller
 from simulation.avr_controller import avr_controller as _avr
 from simulation.dynamics import rotor_dynamics as _rotor
 from simulation.protection import protection_system as _prot
+from simulation.degradation import degradation as _degradation
+from simulation.attemperator import attemperator as _attemp
+from simulation.condenser import condenser as _cond
+from core.config import DEGRADATION_ENABLED, ATTEMPERATOR_ENABLED, CONDENSER_ENABLED
 
 
 logger = logging.getLogger("gta.simulation")
@@ -66,9 +70,10 @@ class FakeAPI:
         # Dernier snapshot calculé
         self._last_params: GTAParameters | None = None
         self._last_nominal_power: float = 0.0
-        # Puissance et vitesse simulées du dernier tick — utilisées par les PIDs
-        self._last_simulated_power: float = 0.0
-        self._last_simulated_speed: float = NOMINAL["turbine_speed"]
+        # Puissance, vitesse et pression HP simulées du dernier tick — utilisées par les PIDs
+        self._last_simulated_power:       float = 0.0
+        self._last_simulated_speed:       float = NOMINAL["turbine_speed"]
+        self._last_simulated_pressure_hp: float = NOMINAL["pressure_hp"]
 
         # Callback appelé à chaque nouveau snapshot
         self._on_new_data = None
@@ -171,13 +176,18 @@ class FakeAPI:
             dt,
             current_power_mw=self._last_simulated_power,
             current_speed_rpm=self._last_simulated_speed,
+            current_pressure_hp_bar=self._last_simulated_pressure_hp,
+            current_freq_hz=_rotor.frequency_hz,
         )
 
         # AVR : intègre E_fd depuis les mesures du tick précédent (un tick de délai → pas de couplage circulaire)
         _avr.update(
             dt,
-            v_term_kv=getattr(self._last_params, "voltage",       NOMINAL.get("voltage",       10.5)),
-            cosphi   =getattr(self._last_params, "power_factor",   NOMINAL.get("power_factor",  0.85)),
+            v_term_kv  =getattr(self._last_params, "voltage",         NOMINAL.get("voltage",       10.5)),
+            cosphi     =getattr(self._last_params, "power_factor",     NOMINAL.get("power_factor",  0.85)),
+            i_stator_a =getattr(self._last_params, "current_a",        0.0),
+            q_mvar     =getattr(self._last_params, "reactive_power",   0.0),
+            s_max_mva  =NOMINAL.get("apparent_power_max", 41.0),
         )
 
         # Avancer le contrôleur d'actionneurs (applique les rampes de positionnement)
@@ -231,6 +241,11 @@ class FakeAPI:
         if self._active_scenario is not None:
             state_sim, scenario_name = self._apply_scenario(state_sim)
         state_sim = self._add_noise(state_sim)
+
+        # Désurchauffeur — module T_HP avant IAPWS97 (Phase 1 — B.3)
+        if ATTEMPERATOR_ENABLED:
+            t_out, _inj = _attemp.step(state_sim["temperature_hp"], dt)
+            state_sim["temperature_hp"] = t_out
 
         try:
             computed_sim = self.physics.compute_all(
@@ -292,6 +307,37 @@ class FakeAPI:
             computed_sim["turbine_speed"]  = _rotor.speed_rpm
             computed_sim["grid_frequency"] = _rotor.frequency_hz
 
+            # Dégradation Weibull — dérive lente rendement / vibration / paliers
+            if DEGRADATION_ENABLED:
+                _drift = _degradation.update(
+                    dt, _controller.machine_state == "GRID_CONNECTED"
+                )
+                computed_sim["efficiency"] = round(
+                    max(0.0, computed_sim["efficiency"] + _drift["eff_drift_pct"]), 3
+                )
+                computed_sim["vib_bearing_fwd"] = round(
+                    computed_sim.get("vib_bearing_fwd", 2.1) + _drift["vib_drift_mms"], 3
+                )
+                computed_sim["vib_bearing_aft"] = round(
+                    computed_sim.get("vib_bearing_aft", 1.8) + _drift["vib_drift_mms"], 3
+                )
+                computed_sim["temp_bearing_fwd"] = round(
+                    computed_sim.get("temp_bearing_fwd", 74.0) + _drift["bearing_temp_drift_c"], 2
+                )
+                computed_sim["temp_bearing_aft"] = round(
+                    computed_sim.get("temp_bearing_aft", 76.0) + _drift["bearing_temp_drift_c"], 2
+                )
+
+            # Désurchauffeur snapshot (Phase 1 — B.3)
+            if ATTEMPERATOR_ENABLED:
+                computed_sim.update(_attemp.snapshot())
+
+            # Condenseur (Phase 1 — B.4)
+            if CONDENSER_ENABLED:
+                computed_sim.update(
+                    _cond.step(dt, computed_sim.get("steam_flow_condenser", 0.0))
+                )
+
             # Fusionner l'état superviseur Contrôle Commande + AVR dans le snapshot simulé
             ctrl_snap = _controller.snapshot()
             computed_sim.update(ctrl_snap)
@@ -311,9 +357,10 @@ class FakeAPI:
             logger.error(f"Erreur lors de la création de params_sim: {e}")
             raise
 
-        self._last_nominal_power    = params_nom.active_power
-        self._last_simulated_power  = params_sim.active_power
-        self._last_simulated_speed  = params_sim.turbine_speed
+        self._last_nominal_power         = params_nom.active_power
+        self._last_simulated_power       = params_sim.active_power
+        self._last_simulated_speed       = params_sim.turbine_speed
+        self._last_simulated_pressure_hp = params_sim.pressure_hp
         return params_nom, params_sim
 
     def _apply_scenario(self, state: dict) -> tuple[dict, str]:

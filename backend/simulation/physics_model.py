@@ -567,17 +567,23 @@ class PhysicsModel:
         excedent_reseau = max(0.0, active_power - self.CHARGE_SITE_MW)
 
         # ── Électrique (branche AVR dynamique vs formule algébrique legacy) ──
-        from core.config import AVR_ENABLED, AVR_Q_SENSITIVITY
+        from core.config import AVR_ENABLED, AVR_Q_SENSITIVITY, Q_TANH_SCALE_MVAR, NOMINAL
         from simulation.avr_controller import avr_controller as _avr
         if AVR_ENABLED and _avr.mode != "OFF" and active_power > 0:
             e_fd      = _avr.e_fd_pu
             # V_term réagit à E_fd (sensibilité linéaire, ~±5% autour du nominal)
             v_term_kv = round(max(9.0, min(12.0,
                                self.VOLTAGE_KV * (0.95 + 0.05 * e_fd))), 3)
-            # Q linéarisé : Q_base (à cos φ=0.85) + sensibilité * déviation E_fd
-            q_base    = active_power * math.tan(math.acos(0.85))
-            q_mvar    = round(max(-20.0, min(35.0,
-                               q_base + AVR_Q_SENSITIVITY * (e_fd - 1.0))), 3)
+            # cos φ dynamique : consigne AVR courante (évite le hardcode 0.85)
+            cosphi_target = float(getattr(_avr, "cosphi_set", NOMINAL["power_factor"]))
+            cosphi_target = max(0.70, min(0.99, cosphi_target))
+            q_base        = active_power * math.tan(math.acos(cosphi_target))
+            # Saturation tanh : régime linéaire pour petites excursions E_fd,
+            # saturation douce à ±Q_TANH_SCALE_MVAR pour grandes excursions
+            # (remplace l'ancien hard-clamp [-20, +35] MVAR)
+            delta_q_raw = AVR_Q_SENSITIVITY * (e_fd - 1.0)
+            delta_q_sat = Q_TANH_SCALE_MVAR * math.tanh(delta_q_raw / Q_TANH_SCALE_MVAR)
+            q_mvar      = round(q_base + delta_q_sat, 3)
             s_mva     = round(math.sqrt(active_power**2 + q_mvar**2), 3)
             power_factor = round(
                 max(0.01, min(1.0, active_power / s_mva)) if s_mva > 0 else 0.85, 3

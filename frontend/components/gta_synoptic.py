@@ -19,7 +19,7 @@ _DEFAULTS = {
     "steam_flow_condenser": 74.0,
     "pressure_condenser":   0.0064,
     "turbine_speed":        6435.0,
-    "efficiency":           92.0,
+    "efficiency":           58.0,
     "active_power":         24.0,
     "power_factor":         0.85,
     "reactive_power":       21.4,
@@ -96,19 +96,19 @@ def _valve_symbol_static(cx, cy, pct, target, name, col, vid, size=18, orient="t
         <line x1="{cx+size}" y1="{cy}" x2="{cx+size+10}" y2="{cy}" stroke="{col}" stroke-width="2"/>
         <path d="M {cx+size+10} {cy-size+2} Q {cx+size+18} {cy} {cx+size+10} {cy+size-2} Z" fill="{col}" opacity="0.3" stroke="{col}" stroke-width="1"/>
         """
-        tgt_txt = f'<text id="{vid}-tgt" x="{cx+size+22}" y="{cy-8}" fill="#94a3b8" font-size="7.5" text-anchor="start" font-family="Share Tech Mono">Cible: {target:.0f}%</text>'
+        tgt_txt = f'<text id="{vid}-tgt" x="{cx+size+22}" y="{cy-8}" fill="#94a3b8" font-size="9" text-anchor="start" font-family="Share Tech Mono">Cible: {target:.0f}%</text>'
     elif orient == "left":
         actuator = f"""
         <line x1="{cx-size}" y1="{cy}" x2="{cx-size-10}" y2="{cy}" stroke="{col}" stroke-width="2"/>
         <path d="M {cx-size-10} {cy-size+2} Q {cx-size-18} {cy} {cx-size-10} {cy+size-2} Z" fill="{col}" opacity="0.3" stroke="{col}" stroke-width="1"/>
         """
-        tgt_txt = f'<text id="{vid}-tgt" x="{cx-size-22}" y="{cy-8}" fill="#94a3b8" font-size="7.5" text-anchor="end" font-family="Share Tech Mono">Cible: {target:.0f}%</text>'
+        tgt_txt = f'<text id="{vid}-tgt" x="{cx-size-22}" y="{cy-8}" fill="#94a3b8" font-size="9" text-anchor="end" font-family="Share Tech Mono">Cible: {target:.0f}%</text>'
     else:
         actuator = f"""
         <line x1="{cx}" y1="{cy-size}" x2="{cx}" y2="{cy-size-5}" stroke="{col}" stroke-width="2"/>
         <path d="M {cx-size+2} {cy-size-5} Q {cx} {cy-size-12} {cx+size-2} {cy-size-5} Z" fill="{col}" opacity="0.3" stroke="{col}" stroke-width="1"/>
         """
-        tgt_txt = f'<text id="{vid}-tgt" x="{cx}" y="{cy-size-12}" fill="#94a3b8" font-size="7.5" text-anchor="middle" font-family="Share Tech Mono">Cible: {target:.0f}%</text>'
+        tgt_txt = f'<text id="{vid}-tgt" x="{cx}" y="{cy-size-12}" fill="#94a3b8" font-size="9" text-anchor="middle" font-family="Share Tech Mono">Cible: {target:.0f}%</text>'
 
     return f"""
     {tgt_txt}
@@ -169,7 +169,7 @@ def _build_synoptic_div(data: dict, static_ids: bool, show_table: bool = True, i
     q_cond   = data.get("steam_flow_condenser",  74.0)
     p_cond   = data.get("pressure_condenser",  0.0064)
     speed   = data.get("turbine_speed",   6435.0)
-    eff     = data.get("efficiency",        92.0)
+    eff     = data.get("efficiency",        58.0)
     power   = data.get("active_power",      24.0)
     pf      = data.get("power_factor",       0.85)
     q_mvar  = data.get("reactive_power",    21.4)
@@ -212,7 +212,8 @@ def _build_synoptic_div(data: dict, static_ids: bool, show_table: bool = True, i
     alm_spd  = _alarm(speed, 6300, 6550)
     alm_pow  = power > 30.0
     alm_pf   = _alarm(pf, 0.82, 0.86)
-    alm_eff  = eff < 85.0
+    alm_eff  = eff < 51.0 or eff > 65.0
+    warn_eff = (not alm_eff) and (eff < 55.0 or eff > 61.0)
     alm_pbar_bp = p_bar_bp > 5.0
     alm_ia   = i_a > 3000
 
@@ -226,9 +227,9 @@ def _build_synoptic_div(data: dict, static_ids: bool, show_table: bool = True, i
 
     # ── Couleurs table État Système ──────────────────────────────────────────
     c_tbl_php  = "#ef4444" if alm_php else "#f97316"
-    c_tbl_thp  = "#ef4444" if alm_thp else "#ef8c34"
+    c_tbl_thp  = "#ef4444" if alm_thp else "#f97316"
     c_tbl_spd  = "#ef4444" if alm_spd else "#818cf8"
-    c_tbl_eff  = "#ef4444" if eff < 85 else "#38bdf8"
+    c_tbl_eff  = "#ef4444" if alm_eff else "#f59e0b" if warn_eff else "#38bdf8"
     c_tbl_v1   = "#ef4444" if v1 < 30  else "#f97316"
     c_tbl_vbp  = "#ef4444" if v_bp < 30 else "#38bdf8"
     c_tbl_pbar = "#ef4444" if p_bar_bp > 5.0 else "#a78bfa"
@@ -448,7 +449,7 @@ def _build_synoptic_div(data: dict, static_ids: bool, show_table: bool = True, i
   </g>""" if show_table else ""
 
     svg = f"""
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="-20 -38 1430 650"
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-20 -52 1430 664"
      width="100%" height="100%"
      style="font-family:'Share Tech Mono',monospace;background:transparent">
   <defs>
@@ -597,15 +598,15 @@ def _build_synoptic_div(data: dict, static_ids: bool, show_table: bool = True, i
   <text x="340" y="358" fill="#f97316" font-size="8" text-anchor="middle" font-weight="700">Vanne Eq. Bas (~7%)</text>
 
   <!-- ════ BLOC DÉPLACEMENT & DILATATION ════ -->
-  <rect x="385" y="76" width="135" height="42" rx="4"
+  <rect x="385" y="74" width="140" height="52" rx="4"
         fill="rgba(15,23,42,0.75)" stroke="#64748b" stroke-width="0.8"/>
-  <text x="452" y="88" fill="#94a3b8" font-size="8.5" text-anchor="middle" font-weight="700">DILATATION THERMIQUE</text>
-  <text x="420" y="100" fill="#64748b" font-size="7" text-anchor="middle">Déplac. Axial</text>
-  <text{sid("axial-val")} x="420" y="112" fill="#38bdf8" font-size="11" font-weight="700" text-anchor="middle">+{axial:.2f}</text>
-  <text x="440" y="112" fill="#64748b" font-size="7">mm</text>
-  <text x="485" y="100" fill="#64748b" font-size="7" text-anchor="middle">Corps</text>
-  <text{sid("casing-val")} x="485" y="112" fill="#38bdf8" font-size="11" font-weight="700" text-anchor="middle">{casing:.1f}</text>
-  <text x="505" y="112" fill="#64748b" font-size="7">mm</text>
+  <text x="455" y="87" fill="#94a3b8" font-size="8.5" text-anchor="middle" font-weight="700">DILATATION THERMIQUE</text>
+  <text x="418" y="100" fill="#64748b" font-size="8" text-anchor="middle">Déplac. Axial</text>
+  <text{sid("axial-val")} x="418" y="115" fill="#38bdf8" font-size="11" font-weight="700" text-anchor="middle">+{axial:.2f}</text>
+  <text x="438" y="115" fill="#64748b" font-size="8">mm</text>
+  <text x="490" y="100" fill="#64748b" font-size="8" text-anchor="middle">Corps</text>
+  <text{sid("casing-val")} x="490" y="115" fill="#38bdf8" font-size="11" font-weight="700" text-anchor="middle">{casing:.1f}</text>
+  <text x="510" y="115" fill="#64748b" font-size="8">mm</text>
 
   <!-- ════ BLOC TURBINE HP/BP ════ -->
   <g class="{turb_cls}">
@@ -650,19 +651,19 @@ def _build_synoptic_div(data: dict, static_ids: bool, show_table: bool = True, i
     </g></g>
     <circle cx="656" cy="300" r="5" fill="#38bdf8"/>
     <text x="664" y="310" fill="#38bdf8" font-size="8">Ext. BP</text>
-    <rect x="735" y="178" width="40" height="58" rx="4" fill="rgba(15,23,42,0.85)" stroke="#64748b" stroke-width="0.8"/>
-    <text x="755" y="188" fill="#cbd5e1" font-size="7" font-weight="700" text-anchor="middle">P. AV</text>
-    <text{sid("vibfwd-val")} x="755" y="202" fill="{'#ef4444' if vib_fwd > 4.5 else '#fbbf24'}" font-size="10" font-weight="700" text-anchor="middle">{vib_fwd:.1f}</text>
-    <text x="755" y="210" fill="#64748b" font-size="6" text-anchor="middle">mm/s</text>
-    <text{sid("tempfwd-val")} x="755" y="222" fill="#38bdf8" font-size="9" text-anchor="middle">{temp_fwd:.0f}</text>
-    <text x="755" y="230" fill="#64748b" font-size="6" text-anchor="middle">°C</text>
+    <rect x="735" y="175" width="44" height="66" rx="4" fill="rgba(15,23,42,0.85)" stroke="#64748b" stroke-width="0.8"/>
+    <text x="757" y="187" fill="#cbd5e1" font-size="9" font-weight="700" text-anchor="middle">P. AV</text>
+    <text{sid("vibfwd-val")} x="757" y="202" fill="{'#ef4444' if vib_fwd > 4.5 else '#fbbf24'}" font-size="11" font-weight="700" text-anchor="middle">{vib_fwd:.1f}</text>
+    <text x="757" y="213" fill="#64748b" font-size="8" text-anchor="middle">mm/s</text>
+    <text{sid("tempfwd-val")} x="757" y="228" fill="#38bdf8" font-size="10" text-anchor="middle">{temp_fwd:.0f}</text>
+    <text x="757" y="239" fill="#64748b" font-size="8" text-anchor="middle">°C</text>
 
-    <rect x="895" y="178" width="40" height="58" rx="4" fill="rgba(15,23,42,0.85)" stroke="#64748b" stroke-width="0.8"/>
-    <text x="915" y="188" fill="#cbd5e1" font-size="7" font-weight="700" text-anchor="middle">P. AR</text>
-    <text{sid("vibaft-val")} x="915" y="202" fill="{'#ef4444' if vib_aft > 4.5 else '#fbbf24'}" font-size="10" font-weight="700" text-anchor="middle">{vib_aft:.1f}</text>
-    <text x="915" y="210" fill="#64748b" font-size="6" text-anchor="middle">mm/s</text>
-    <text{sid("tempaft-val")} x="915" y="222" fill="#38bdf8" font-size="9" text-anchor="middle">{temp_aft:.0f}</text>
-    <text x="915" y="230" fill="#64748b" font-size="6" text-anchor="middle">°C</text>
+    <rect x="895" y="175" width="44" height="66" rx="4" fill="rgba(15,23,42,0.85)" stroke="#64748b" stroke-width="0.8"/>
+    <text x="917" y="187" fill="#cbd5e1" font-size="9" font-weight="700" text-anchor="middle">P. AR</text>
+    <text{sid("vibaft-val")} x="917" y="202" fill="{'#ef4444' if vib_aft > 4.5 else '#fbbf24'}" font-size="11" font-weight="700" text-anchor="middle">{vib_aft:.1f}</text>
+    <text x="917" y="213" fill="#64748b" font-size="8" text-anchor="middle">mm/s</text>
+    <text{sid("tempaft-val")} x="917" y="228" fill="#38bdf8" font-size="10" text-anchor="middle">{temp_aft:.0f}</text>
+    <text x="917" y="239" fill="#64748b" font-size="8" text-anchor="middle">°C</text>
     <line x1="395" y1="248" x2="720" y2="248"
           stroke="#1d4ed8" stroke-width="4" stroke-dasharray="8,5" class="flow-hp" opacity="0.5"/>   
   </g>
@@ -764,26 +765,26 @@ def _build_synoptic_div(data: dict, static_ids: bool, show_table: bool = True, i
   {tag_vit2}
 
   <!-- ════ EXCITATRICE / AVR ════ -->
-  <rect id="syn-avr-rect" x="945" y="78" width="165" height="70" rx="10"
+  <rect id="syn-avr-rect" x="945" y="33" width="165" height="70" rx="10"
         fill="#0a101a" stroke="#a855f7" stroke-width="1.8" filter="url(#gp)"/>
-  <text x="1027" y="96" fill="#f8fafc" font-size="10.5" font-weight="700"
+  <text x="1027" y="51" fill="#f8fafc" font-size="10.5" font-weight="700"
         text-anchor="middle" letter-spacing="1.2">EXCITATRICE / AVR</text>
-  <text x="1027" y="107" fill="#475569" font-size="7.5"
+  <text x="1027" y="62" fill="#475569" font-size="7.5"
         text-anchor="middle">IEEE Type 1 — K_a·1/(1+T_a·s)</text>
-  <text x="958" y="123" fill="#64748b" font-size="7">E_fd</text>
-  <text id="syn-avr-efd-val" x="958" y="137" fill="#a855f7"
+  <text x="958" y="78" fill="#64748b" font-size="7">E_fd</text>
+  <text id="syn-avr-efd-val" x="958" y="92" fill="#a855f7"
         font-size="12" font-weight="700">1.00</text>
-  <text x="983" y="137" fill="#64748b" font-size="6.5">p.u.</text>
-  <rect id="syn-avr-mode-rect" x="1001" y="116" width="62" height="22" rx="4"
+  <text x="983" y="92" fill="#64748b" font-size="6.5">p.u.</text>
+  <rect id="syn-avr-mode-rect" x="1001" y="71" width="62" height="22" rx="4"
         fill="rgba(168,85,247,0.15)" stroke="#a855f7" stroke-width="0.8"/>
-  <text id="syn-avr-mode-val" x="1032" y="131" fill="#a855f7"
+  <text id="syn-avr-mode-val" x="1032" y="86" fill="#a855f7"
         font-size="8.5" font-weight="700" text-anchor="middle">VOLTAGE</text>
-  <circle id="syn-avr-sat-led" cx="1089" cy="126" r="5"
+  <circle id="syn-avr-sat-led" cx="1089" cy="81" r="5"
           fill="#1e293b" stroke="#a855f7" stroke-width="1"/>
-  <text x="1089" y="142" fill="#64748b" font-size="6.5" text-anchor="middle">SAT</text>
-  <line x1="1027" y1="148" x2="1027" y2="155"
+  <text x="1089" y="97" fill="#64748b" font-size="6.5" text-anchor="middle">SAT</text>
+  <line x1="1027" y1="103" x2="1027" y2="155"
         stroke="#a855f7" stroke-width="2" stroke-dasharray="3,2" opacity="0.8"/>
-  <text x="1037" y="154" fill="#a855f7" font-size="6.5" font-weight="700">E_fd ↓</text>
+  <text x="1037" y="132" fill="#a855f7" font-size="6.5" font-weight="700">E_fd ↓</text>
 
   <!-- ════ ALTERNATEUR ════ -->
   <rect id="syn-alt-rect" x="945" y="155" width="165" height="200" rx="12"
@@ -1001,19 +1002,19 @@ def _valve_symbol(cx, cy, pct, target, name, col, size=18, orient="top"):
         <line x1="{cx+size}" y1="{cy}" x2="{cx+size+10}" y2="{cy}" stroke="{col}" stroke-width="2"/>
         <path d="M {cx+size+10} {cy-size+2} Q {cx+size+18} {cy} {cx+size+10} {cy+size-2} Z" fill="{col}" opacity="0.3" stroke="{col}" stroke-width="1"/>
         """
-        tgt_txt = f'<text x="{cx+size+22}" y="{cy-8}" fill="#94a3b8" font-size="7.5" text-anchor="start" font-family="Share Tech Mono">Cible: {target:.0f}%</text>'
+        tgt_txt = f'<text x="{cx+size+22}" y="{cy-8}" fill="#94a3b8" font-size="9" text-anchor="start" font-family="Share Tech Mono">Cible: {target:.0f}%</text>'
     elif orient == "left":
         actuator = f"""
         <line x1="{cx-size}" y1="{cy}" x2="{cx-size-10}" y2="{cy}" stroke="{col}" stroke-width="2"/>
         <path d="M {cx-size-10} {cy-size+2} Q {cx-size-18} {cy} {cx-size-10} {cy+size-2} Z" fill="{col}" opacity="0.3" stroke="{col}" stroke-width="1"/>
         """
-        tgt_txt = f'<text x="{cx-size-22}" y="{cy-8}" fill="#94a3b8" font-size="7.5" text-anchor="end" font-family="Share Tech Mono">Cible: {target:.0f}%</text>'
+        tgt_txt = f'<text x="{cx-size-22}" y="{cy-8}" fill="#94a3b8" font-size="9" text-anchor="end" font-family="Share Tech Mono">Cible: {target:.0f}%</text>'
     else:
         actuator = f"""
         <line x1="{cx}" y1="{cy-size}" x2="{cx}" y2="{cy-size-5}" stroke="{col}" stroke-width="2"/>
         <path d="M {cx-size+2} {cy-size-5} Q {cx} {cy-size-12} {cx+size-2} {cy-size-5} Z" fill="{col}" opacity="0.3" stroke="{col}" stroke-width="1"/>
         """
-        tgt_txt = f'<text x="{cx}" y="{cy-size-12}" fill="#94a3b8" font-size="7.5" text-anchor="middle" font-family="Share Tech Mono">Cible: {target:.0f}%</text>'
+        tgt_txt = f'<text x="{cx}" y="{cy-size-12}" fill="#94a3b8" font-size="9" text-anchor="middle" font-family="Share Tech Mono">Cible: {target:.0f}%</text>'
 
     return f"""
     {tgt_txt}

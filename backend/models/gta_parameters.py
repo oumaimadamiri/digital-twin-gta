@@ -114,6 +114,23 @@ class GTAParameters(BaseModel):
     avr_saturated: Optional[bool]  = Field(None,    description="Saturation E_fd active")
     avr_k_a:       Optional[float] = Field(None,    description="Gain régulateur K_A")
     avr_t_a:       Optional[float] = Field(None,    description="Constante de temps T_A (s)")
+    # Limiteurs OEL/UEL/SCL (Phase 1 — B.2)
+    avr_oel_active: Optional[bool]  = Field(False, description="Limiteur sur-excitation actif")
+    avr_uel_active: Optional[bool]  = Field(False, description="Limiteur sous-excitation actif")
+    avr_scl_active: Optional[bool]  = Field(False, description="Limiteur courant stator actif")
+    avr_i_stator_a: Optional[float] = Field(None,  description="Courant stator mesuré (A)")
+    # Désurchauffeur (Phase 1 — B.3)
+    attemp_enabled:       Optional[bool]  = Field(True,  description="Désurchauffeur actif")
+    attemp_setpoint_c:    Optional[float] = Field(440.0, description="Consigne T° HP désurchauffeur (°C)")
+    attemp_injection_pct: Optional[float] = Field(0.0,   description="% injection eau désurchauffe")
+    # Condenseur (Phase 1 — B.4)
+    condenser_enabled:          Optional[bool]  = Field(True,  description="Régulation condenseur active")
+    condenser_level_pct:        Optional[float] = Field(50.0,  description="Niveau hotwell (%)")
+    condenser_vacuum_mbar:      Optional[float] = Field(64.0,  description="Vide condenseur (mbar)")
+    condenser_pump_pct:         Optional[float] = Field(50.0,  description="% commande pompe extraction")
+    condenser_ejector_pct:      Optional[float] = Field(50.0,  description="% commande éjecteur vide")
+    condenser_level_setpoint:   Optional[float] = Field(50.0,  description="Consigne niveau hotwell (%)")
+    condenser_vacuum_setpoint:  Optional[float] = Field(64.0,  description="Consigne vide condenseur (mbar)")
 
     class Config:
         use_enum_values = True

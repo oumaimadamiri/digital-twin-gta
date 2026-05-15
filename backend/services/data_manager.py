@@ -259,6 +259,38 @@ class DataManager:
         data = self.get_operator_actions(start=start, end=end, user=user, limit=10_000)
         return pd.DataFrame(data).to_csv(index=False).encode("utf-8")
 
+    # ──────────────────────────────────────────
+    # KV STORE — persistance générique
+    # ──────────────────────────────────────────
+
+    def get_kv(self, key: str) -> Optional[str]:
+        """Lit une valeur persistée par clé. Retourne None si absente."""
+        try:
+            with get_db() as conn:
+                row = conn.execute(
+                    "SELECT value FROM kv_store WHERE key = ?", (key,)
+                ).fetchone()
+            return row[0] if row else None
+        except Exception as exc:
+            logger.warning("get_kv(%s) échec : %s", key, exc)
+            return None
+
+    def set_kv(self, key: str, value: str) -> None:
+        """Persiste une valeur par clé (upsert idempotent)."""
+        try:
+            ts = datetime.utcnow().isoformat()
+            with get_db() as conn:
+                conn.execute(
+                    """INSERT INTO kv_store(key, value, updated_at) VALUES(?,?,?)
+                       ON CONFLICT(key) DO UPDATE SET
+                           value      = excluded.value,
+                           updated_at = excluded.updated_at""",
+                    (key, str(value), ts),
+                )
+                conn.commit()
+        except Exception as exc:
+            logger.warning("set_kv(%s) échec : %s", key, exc)
+
 
 # Instance globale
 data_manager = DataManager()

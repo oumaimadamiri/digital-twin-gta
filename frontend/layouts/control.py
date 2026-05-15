@@ -543,9 +543,9 @@ def layout():
                 html.Div([
                     _mode_card(),
                     _setpoints_card(),
+                    _avr_card(),
                     _sequences_card(),
                     _pid_card(),
-                    _avr_card(),
                 ], style={"flex": "1", "minWidth": "0"}),
 
                 # Colonne droite

@@ -22,6 +22,9 @@ import logging
 from core.config import (
     AVR_K_A, AVR_T_A, AVR_E_FD_MIN, AVR_E_FD_MAX,
     AVR_VOLTAGE_SETPOINT, AVR_COSPHI_SETPOINT, NOMINAL,
+    AVR_OEL_THRESHOLD_PU, AVR_OEL_TIMER_S,
+    AVR_UEL_MIN_Q_RATIO, AVR_UEL_E_FD_FLOOR_PU,
+    AVR_SCL_THRESHOLD_A, AVR_SCL_TIMER_S, AVR_SCL_REDUCTION_PU,
 )
 from services.data_manager import data_manager
 
@@ -44,20 +47,35 @@ class AVRController:
         self._last_v_term = float(NOMINAL.get("voltage", 10.5))
         self._last_cosphi = float(NOMINAL.get("power_factor", 0.85))
 
+        # Limiteurs OEL / UEL / SCL (Phase 1 — B.2)
+        self.oel_active = False
+        self.uel_active = False
+        self.scl_active = False
+        self._oel_timer = 0.0      # s accumulés au-dessus du seuil
+        self._scl_timer = 0.0
+        self._last_i_stator = 0.0
+
     # ──────────────────────────────────────────────────────
     # TICK — appelée depuis fake_api._generate_dual()
     # ──────────────────────────────────────────────────────
 
-    def update(self, dt: float, v_term_kv: float, cosphi: float) -> None:
+    def update(
+        self, dt: float, v_term_kv: float, cosphi: float,
+        i_stator_a: float = 0.0, q_mvar: float = 0.0, s_max_mva: float | None = None,
+    ) -> None:
         """Intègre E_fd pour un tick de durée dt (s). Utilise les mesures du tick précédent."""
-        self._last_v_term = v_term_kv
-        self._last_cosphi = cosphi
+        self._last_v_term   = v_term_kv
+        self._last_cosphi   = cosphi
+        self._last_i_stator = i_stator_a
 
         if self.mode == "OFF":
             return
 
         if self.mode == "MANUAL":
-            clamped = max(AVR_E_FD_MIN, min(AVR_E_FD_MAX, self.e_fd_manual))
+            # Les limiteurs s'appliquent aussi en MANUAL (protection machine maintenue)
+            e_fd = max(AVR_E_FD_MIN, min(AVR_E_FD_MAX, self.e_fd_manual))
+            e_fd = self._apply_limiters(e_fd, dt, i_stator_a, q_mvar, s_max_mva)
+            clamped = max(AVR_E_FD_MIN, min(AVR_E_FD_MAX, e_fd))
             self.saturated = (clamped != self.e_fd_manual)
             self.e_fd_pu   = clamped
             return
@@ -79,9 +97,53 @@ class AVRController:
         alpha    = math.exp(-dt / max(self.t_a, 1e-3))
         e_fd_new = self.e_fd_pu * alpha + target * (1.0 - alpha)
 
+        # Limiteurs OEL / UEL / SCL — appliqués avant le hard clamp
+        e_fd_new = self._apply_limiters(e_fd_new, dt, i_stator_a, q_mvar, s_max_mva)
+
         clamped        = max(AVR_E_FD_MIN, min(AVR_E_FD_MAX, e_fd_new))
         self.saturated = (clamped != e_fd_new)
         self.e_fd_pu   = clamped
+
+    def _apply_limiters(
+        self, e_fd_in: float, dt: float,
+        i_stator_a: float, q_mvar: float, s_max: float | None,
+    ) -> float:
+        """OEL / UEL / SCL — peuvent forcer E_fd avant le hard clamp [E_FD_MIN, E_FD_MAX].
+
+        Ordre : OEL (rabat si sur-excité) → UEL (relève si sous-excité) → SCL (réduit si I trop fort).
+        """
+        e_fd = e_fd_in
+
+        # OEL — inverse-time : accumule quand E_fd > seuil
+        if e_fd > AVR_OEL_THRESHOLD_PU:
+            self._oel_timer = min(self._oel_timer + dt, AVR_OEL_TIMER_S * 2)
+        else:
+            self._oel_timer = max(0.0, self._oel_timer - dt)
+        self.oel_active = self._oel_timer >= AVR_OEL_TIMER_S
+        if self.oel_active:
+            e_fd = min(e_fd, AVR_OEL_THRESHOLD_PU)
+
+        # UEL — instantané : Q/S_max trop négatif → relève le plancher E_fd
+        if s_max and s_max > 0.0:
+            q_ratio = q_mvar / s_max
+            if q_ratio < AVR_UEL_MIN_Q_RATIO:
+                self.uel_active = True
+                e_fd = max(e_fd, AVR_UEL_E_FD_FLOOR_PU)
+            else:
+                self.uel_active = False
+        else:
+            self.uel_active = False
+
+        # SCL — inverse-time : accumule quand I_stator > seuil
+        if i_stator_a > AVR_SCL_THRESHOLD_A:
+            self._scl_timer = min(self._scl_timer + dt, AVR_SCL_TIMER_S * 2)
+        else:
+            self._scl_timer = max(0.0, self._scl_timer - dt)
+        self.scl_active = self._scl_timer >= AVR_SCL_TIMER_S
+        if self.scl_active:
+            e_fd = max(AVR_E_FD_MIN, e_fd - AVR_SCL_REDUCTION_PU * dt)
+
+        return e_fd
 
     # ──────────────────────────────────────────────────────
     # COMMANDES (appelées depuis les routes HTTP)
@@ -158,6 +220,11 @@ class AVRController:
             "avr_t_a":       self.t_a,
             "avr_v_term":    round(self._last_v_term, 3),
             "avr_cosphi":    round(self._last_cosphi, 3),
+            # Limiteurs OEL/UEL/SCL (Phase 1 — B.2)
+            "avr_oel_active": self.oel_active,
+            "avr_uel_active": self.uel_active,
+            "avr_scl_active": self.scl_active,
+            "avr_i_stator_a": round(self._last_i_stator, 1),
         }
 
 

@@ -12,11 +12,17 @@ from models.control import (
     ModeCommand, SetpointsCommand, PIDTuningCommand,
     SequenceCommand, EmergencyTripCommand, ValveControlCommand, ControlState,
     AVRModeCommand, AVRSetpointCommand, AVRGainsCommand, AVRManualCommand,
+    RegulationTargetRequest,
+    AttemperatorSetpointCommand, AttemperatorEnableCommand,
+    CondLevelSetpointCommand, CondVacuumSetpointCommand,
 )
 from simulation.controller import controller
 from simulation.avr_controller import avr_controller
 from simulation.valve_controller import valve_controller
 from simulation.protection import protection_system
+from simulation.degradation import degradation
+from simulation.attemperator import attemperator
+from simulation.condenser import condenser
 from services.data_manager import data_manager
 
 router = APIRouter(prefix="/control", tags=["Contrôle Commande"])
@@ -181,7 +187,33 @@ def inhibit_protection(name: str, inhibited: bool = True, operator: str = Query(
     return result
 
 
-# ── Couplage / Découplage réseau ─────────────────────────────────────────────
+# ── Régulation cible (POWER / PRESSURE) ──────────────────────────────────────
+
+@router.post("/regulation-target")
+def set_regulation_target(req: RegulationTargetRequest):
+    """Bascule entre régulation POWER (puissance → V1) et PRESSURE (pression HP → V1).
+    Réservé à l'état GRID_CONNECTED."""
+    result = controller.set_regulation_target(req.target.value, operator=req.operator)
+    if not result.get("accepted"):
+        raise HTTPException(status_code=409, detail=result["message"])
+    return result
+
+
+# ── Dégradation Weibull ───────────────────────────────────────────────────────
+
+@router.get("/degradation")
+def get_degradation():
+    """Retourne l'état courant du modèle de dégradation Weibull."""
+    return degradation.snapshot()
+
+
+@router.post("/degradation/reset")
+def reset_degradation(operator: str = Query("Opérateur")):
+    """Remet le compteur d'heures GRID à zéro (maintenance / test)."""
+    return degradation.reset(operator=operator)
+
+
+# ── Couplage / Découplage réseau ──────────────────────────────────────────────
 
 @router.post("/grid/synchronize")
 def grid_synchronize(operator: str = Query("Opérateur")):
@@ -235,3 +267,43 @@ def set_avr_manual(cmd: AVRManualCommand):
     """Fixe E_fd directement en mode MANUAL."""
     result = avr_controller.set_e_fd_manual(cmd.e_fd_pu, operator=cmd.operator)
     return result
+
+
+# ── Désurchauffeur (Phase 1 — B.3) ───────────────────────────────────────────
+
+@router.get("/attemperator")
+def get_attemperator():
+    """Retourne l'état courant du désurchauffeur."""
+    return attemperator.snapshot()
+
+
+@router.post("/attemperator/setpoint")
+def set_attemp_setpoint(cmd: AttemperatorSetpointCommand):
+    """Fixe la consigne T° vapeur HP du désurchauffeur (°C)."""
+    return attemperator.set_setpoint(cmd.setpoint_c, operator=cmd.operator)
+
+
+@router.post("/attemperator/enabled")
+def set_attemp_enabled(cmd: AttemperatorEnableCommand):
+    """Active ou désactive le désurchauffeur."""
+    return attemperator.set_enabled(cmd.enabled, operator=cmd.operator)
+
+
+# ── Condenseur (Phase 1 — B.4) ────────────────────────────────────────────────
+
+@router.get("/condenser")
+def get_condenser():
+    """Retourne l'état courant du condenseur."""
+    return condenser.snapshot()
+
+
+@router.post("/condenser/level-setpoint")
+def set_cond_level_sp(cmd: CondLevelSetpointCommand):
+    """Fixe la consigne niveau hotwell (%)."""
+    return condenser.set_level_setpoint(cmd.setpoint_pct, operator=cmd.operator)
+
+
+@router.post("/condenser/vacuum-setpoint")
+def set_cond_vacuum_sp(cmd: CondVacuumSetpointCommand):
+    """Fixe la consigne vide condenseur (mbar)."""
+    return condenser.set_vacuum_setpoint(cmd.setpoint_mbar, operator=cmd.operator)
