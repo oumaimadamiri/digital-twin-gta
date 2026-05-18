@@ -49,6 +49,7 @@ class PIDTuningCommand(BaseModel):
     kp:       float = Field(..., ge=0, description="Gain proportionnel")
     ki:       float = Field(..., ge=0, description="Gain intégral")
     kd:       float = Field(..., ge=0, description="Gain dérivé")
+    loop:     str   = Field("power", description="Boucle cible : power | speed | pressure")
     operator: str   = "Opérateur"
 
 

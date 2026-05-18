@@ -213,19 +213,22 @@ class Controller:
         logger.info("[Controller] Régulation → %s (par %s)", target, operator)
         return {"accepted": True, "regulation_target": target, "bumpless_seed": round(current_v1, 2)}
 
-    def set_pid_gains(self, kp: float, ki: float, kd: float, operator: str = "Opérateur") -> dict:
+    def set_pid_gains(self, kp: float, ki: float, kd: float,
+                      operator: str = "Opérateur", loop: str = "power") -> dict:
         import json
-        before = json.dumps({"kp": self._pid.kp, "ki": self._pid.ki, "kd": self._pid.kd})
-        self._pid.kp = kp
-        self._pid.ki = ki
-        self._pid.kd = kd
-        self._pid.reset()
+        pid_map = {"power": self._pid, "speed": self._pid_speed, "pressure": self._pid_pressure}
+        pid = pid_map.get(loop, self._pid)
+        before = json.dumps({"kp": pid.kp, "ki": pid.ki, "kd": pid.kd})
+        pid.kp = kp
+        pid.ki = ki
+        pid.kd = kd
+        pid.reset()
         after = json.dumps({"kp": kp, "ki": ki, "kd": kd})
         data_manager.log_operator_action(
             user=operator, action_type="PID_TUNE",
-            target="pid_gains", value_before=before, value_after=after,
+            target=f"pid_{loop}_gains", value_before=before, value_after=after,
         )
-        return {"accepted": True, "kp": kp, "ki": ki, "kd": kd}
+        return {"accepted": True, "loop": loop, "kp": kp, "ki": ki, "kd": kd}
 
     # ──────────────────────────────────────────────────────
     # COMMANDES ARRÊT D'URGENCE
@@ -644,6 +647,10 @@ class Controller:
             "pid_speed_kp":        self._pid_speed.kp,
             "pid_speed_ki":        self._pid_speed.ki,
             "pid_speed_kd":        self._pid_speed.kd,
+            # Gains PID pression HP
+            "pid_pressure_kp":     self._pid_pressure.kp,
+            "pid_pressure_ki":     self._pid_pressure.ki,
+            "pid_pressure_kd":     self._pid_pressure.kd,
             # Régulation pression HP (Phase 0 — A.1)
             "regulation_target":        self._regulation_target,
             "setpoint_pressure_hp_bar": self._setpoint_pressure_hp_bar,

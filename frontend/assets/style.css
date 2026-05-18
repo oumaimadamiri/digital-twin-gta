@@ -1180,6 +1180,155 @@ input[type="date"].custom-input::-webkit-calendar-picker-indicator {
   color: var(--text2);
 }
 
+/* ============================================================
+   COCKPIT 3 ZONES — contrôle commande
+   ============================================================ */
+
+/* Bandeau sticky */
+.ctrl-sticky-banner {
+  position: sticky;
+  top: 50px;
+  z-index: 50;
+  backdrop-filter: blur(10px);
+  background: rgba(10, 16, 26, 0.97);
+}
+
+/* Machine stepper */
+.machine-stepper {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: nowrap;
+}
+
+.stepper-pill {
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-family: "Share Tech Mono", monospace;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  transition: all 0.3s ease;
+  white-space: nowrap;
+}
+
+.stepper-pill-done {
+  background: rgba(34, 197, 94, 0.12);
+  color: #22c55e;
+  border: 1px solid #22c55e;
+}
+
+.stepper-pill-active {
+  background: rgba(245, 158, 11, 0.2);
+  color: #f59e0b;
+  border: 1px solid #f59e0b;
+  animation: stepper-pulse 1.5s ease-in-out infinite;
+}
+
+.stepper-pill-future {
+  background: rgba(30, 58, 95, 0.2);
+  color: #64748b;
+  border: 1px solid #1e3a5f;
+}
+
+.stepper-pill-tripped {
+  background: rgba(239, 68, 68, 0.2);
+  color: #ef4444;
+  border: 2px solid #ef4444;
+  animation: stepper-pulse 0.8s ease-in-out infinite;
+}
+
+.stepper-chevron {
+  color: #334155;
+  font-size: 14px;
+  line-height: 1;
+  user-select: none;
+}
+
+@keyframes stepper-pulse {
+  0%, 100% { transform: scale(1);    opacity: 1; }
+  50%       { transform: scale(1.06); opacity: 0.85; }
+}
+
+/* Journal scroll interne Zone C */
+.zone-c-journal {
+  max-height: 280px;
+  overflow-y: auto;
+}
+
+/* Responsive — empiler les 3 zones sous 900 px (tablettes) */
+@media (max-width: 900px) {
+  .ctrl-3-zones {
+    flex-direction: column !important;
+  }
+  .ctrl-3-zones > div {
+    flex: 1 1 100% !important;
+  }
+}
+
+/* === Carte Phase de démarrage — timeline verticale === */
+.startup-timeline {
+  display: flex;
+  flex-direction: column;
+}
+.startup-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-height: 36px;
+}
+.startup-step-graphic {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex-shrink: 0;
+  padding-top: 2px;
+}
+.startup-pill {
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  border: 2px solid #1e3a5f;
+  background: #0a0f1a;
+  transition: all 0.3s ease;
+  flex-shrink: 0;
+}
+.startup-pill-done   { border-color: #22c55e; background: #22c55e;
+                       box-shadow: 0 0 5px rgba(34,197,94,0.5); }
+.startup-pill-active { border-color: #f59e0b; background: #f59e0b;
+                       animation: stepper-pulse 1.5s ease-in-out infinite; }
+.startup-pill-future { border-color: #1e3a5f; background: #0a0f1a; }
+.startup-pill-tripped{ border-color: #ef4444; background: rgba(239,68,68,0.2); }
+.startup-connector {
+  width: 2px;
+  flex: 1;
+  min-height: 12px;
+  background: #1e3a5f;
+  margin: 2px 0;
+}
+.startup-step-content  { display: flex; flex-direction: column; padding-bottom: 6px; }
+.startup-step-label    { font-size: 11px; color: #e2e8f0; font-weight: 600;
+                         font-family: "Share Tech Mono"; letter-spacing: 0.3px; }
+.startup-step-label-done   { color: #22c55e; }
+.startup-step-label-active { color: #f59e0b; }
+.startup-step-label-future { color: #475569; }
+.startup-step-indicator    { font-size: 10px; color: #64748b;
+                             font-family: "Share Tech Mono"; margin-top: 1px; }
+.startup-bar-track { background: #0f2744; border-radius: 4px;
+                     overflow: hidden; height: 5px; }
+.startup-bar-fill  { background: #22c55e; height: 100%;
+                     transition: width 0.5s ease; width: 0%; }
+.startup-elapsed   { font-size: 10px; color: #475569; font-family: "Share Tech Mono";
+                     text-align: right; margin-top: 4px; }
+.startup-trip-banner {
+  background: rgba(239,68,68,0.1); color: #ef4444;
+  border: 1px solid rgba(239,68,68,0.4); border-radius: 6px;
+  padding: 5px 10px; font-size: 10px; font-family: "Share Tech Mono";
+  font-weight: 700; letter-spacing: 0.5px; text-align: center;
+  margin-bottom: 10px;
+}
+/* ============================================================ */
+
 .dash-panel-tab--active {
   color: var(--blue-bright);
   border-bottom-color: var(--blue);

@@ -59,8 +59,9 @@ def set_setpoints(cmd: SetpointsCommand):
 
 @router.post("/pid")
 def tune_pid(cmd: PIDTuningCommand):
-    """Règle les gains PID du régulateur de puissance."""
-    result = controller.set_pid_gains(cmd.kp, cmd.ki, cmd.kd, operator=cmd.operator)
+    """Règle les gains PID : power (défaut), speed ou pressure."""
+    result = controller.set_pid_gains(cmd.kp, cmd.ki, cmd.kd,
+                                      operator=cmd.operator, loop=cmd.loop)
     return result
 
 

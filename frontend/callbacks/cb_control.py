@@ -1,20 +1,27 @@
 """
-callbacks/cb_control.py — Callbacks page Contrôle Commande GTA
+callbacks/cb_control.py — Callbacks page Contrôle Commande GTA (Cockpit 3 zones)
 """
 import requests
-from dash import Input, Output, State, html, no_update, ctx
+from dash import Input, Output, State, html, no_update, ctx, clientside_callback, ALL, MATCH
 from config import BACKEND
 from components.alert_banner import alert_item, alerts_panel
 
 _session = requests.Session()
 
+_GREYED = {"opacity": "0.4", "pointerEvents": "none", "filter": "grayscale(0.5)"}
+_ACTIVE = {}
+
+_STATE_ORDER = ["STOPPED", "ROLLING", "SYNCHRONIZING", "GRID_CONNECTED"]
+
 
 def _status_ok(text):
-    return html.Span(text, style={"color": "#22c55e", "fontFamily": "Share Tech Mono", "fontSize": "11px"})
+    return html.Span(text, style={"color": "#22c55e", "fontFamily": "Share Tech Mono",
+                                  "fontSize": "11px"})
 
 
 def _status_err(text):
-    return html.Span(text, style={"color": "#ef4444", "fontFamily": "Share Tech Mono", "fontSize": "11px"})
+    return html.Span(text, style={"color": "#ef4444", "fontFamily": "Share Tech Mono",
+                                  "fontSize": "11px"})
 
 
 def _post(path, json_body=None, params=None):
@@ -37,7 +44,26 @@ def _get(path, params=None):
 
 def register(app):
 
-    # ── Mise à jour temps réel : état système depuis WebSocket nominal ──
+    # ── Horloge bandeau (clientside — aucun appel réseau) ────────────
+    clientside_callback(
+        """
+        function(n) {
+            return new Date().toLocaleTimeString('fr-FR', {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+        }
+        """,
+        Output("ctrl-banner-clock", "children"),
+        Input("ctrl-state-interval", "n_intervals"),
+    )
+
+    # ── Nom opérateur dans le bandeau ────────────────────────────────
+    @app.callback(
+        Output("ctrl-banner-operator", "children"),
+        Input("store-operator-name", "data"),
+    )
+    def update_banner_operator(name):
+        return name or "—"
+
+    # ── Mise à jour statut système depuis WebSocket ──────────────────
     @app.callback(
         Output("ctrl-status-badge", "children"),
         Output("ctrl-status-badge", "style"),
@@ -46,108 +72,155 @@ def register(app):
     )
     def update_status_badge(data):
         if not data:
-            return "—", {"fontSize": "16px", "fontWeight": "700",
-                          "fontFamily": "Share Tech Mono", "color": "#64748b"}
+            return "—", {"fontSize": "13px", "fontWeight": "700",
+                         "fontFamily": "Share Tech Mono", "color": "#64748b"}
         status = data.get("status", "NORMAL")
-        status_color = {"NORMAL": "#00e676", "DEGRADED": "#f59e0b",
-                        "CRITICAL": "#ef4444"}.get(status, "#64748b")
-        return status, {"fontSize": "16px", "fontWeight": "700",
-                        "fontFamily": "Share Tech Mono", "color": status_color}
+        color = {"NORMAL": "#00e676", "DEGRADED": "#f59e0b",
+                 "CRITICAL": "#ef4444"}.get(status, "#64748b")
+        return status, {"fontSize": "13px", "fontWeight": "700",
+                        "fontFamily": "Share Tech Mono", "color": color}
 
-    # ── Polling 1s : badge + PID + séquence + interlocks ────────────
-    # Le radio (ctrl-mode-radio) n'est JAMAIS écrit par callback :
-    # il est toujours sous contrôle de l'utilisateur.
-    # Le badge (ctrl-mode-badge) reflète l'état réel du backend.
+    # ── Polling 1s : état complet ────────────────────────────────────
     @app.callback(
-        Output("ctrl-mode-badge",        "children"),
-        Output("ctrl-mode-badge",        "style"),
-        Output("ctrl-tripped-banner",    "style"),
-        Output("ctrl-btn-reset-trip",    "style"),
-        Output("ctrl-pid-error-val",     "children"),
-        Output("ctrl-pid-output-val",    "children"),
-        Output("ctrl-seq-progress-wrap", "style"),
-        Output("ctrl-seq-bar",           "style"),
-        Output("ctrl-seq-label",         "children"),
-        Output("ctrl-interlocks-list",   "children"),
+        # Bandeau
+        Output("ctrl-mode-badge",           "children"),
+        Output("ctrl-mode-badge",           "style"),
+        Output("ctrl-tripped-banner",       "style"),
+        Output("ctrl-btn-reset-trip",       "style"),
+        # Machine stepper — className de chaque pastille
+        Output("ctrl-step-stopped",         "className"),
+        Output("ctrl-step-rolling",         "className"),
+        Output("ctrl-step-synchronizing",   "className"),
+        Output("ctrl-step-grid_connected",  "className"),
+        # Overlays mode/machine-state
+        Output("ctrl-setpoints-overlay",    "style"),
+        Output("ctrl-valves-overlay",       "style"),
+        Output("ctrl-avr-overlay",          "style"),
+        Output("ctrl-regul-target-overlay", "style"),
+        # Regulation target radio sync
+        Output("ctrl-regul-target",         "value"),
+        # Boutons grid
+        Output("ctrl-btn-grid-sync",        "disabled"),
+        Output("ctrl-btn-grid-disconnect",  "disabled"),
+        # PID Power readouts
+        Output("ctrl-pid-power-error-val",  "children"),
+        Output("ctrl-pid-power-output-val", "children"),
+        # PID Speed readouts
+        Output("ctrl-pid-speed-error-val",  "children"),
+        Output("ctrl-pid-speed-output-val", "children"),
+        # Séquence
+        Output("ctrl-seq-progress-wrap",    "style"),
+        Output("ctrl-seq-bar",              "style"),
+        Output("ctrl-seq-label",            "children"),
+        # Interlocks
+        Output("ctrl-interlocks-list",      "children"),
         # AVR
-        Output("ctrl-avr-vt-val",        "children"),
-        Output("ctrl-avr-efd-val",       "children"),
-        Output("ctrl-avr-cosphi-val",    "children"),
-        Output("ctrl-avr-sat-badge",     "children"),
-        Output("ctrl-avr-sat-badge",     "style"),
-        Input("ctrl-state-interval",     "n_intervals"),
-        Input("url",                     "pathname"),
+        Output("ctrl-avr-vt-val",           "children"),
+        Output("ctrl-avr-efd-val",          "children"),
+        Output("ctrl-avr-cosphi-val",       "children"),
+        Output("ctrl-avr-sat-badge",        "children"),
+        Output("ctrl-avr-sat-badge",        "style"),
+        Input("ctrl-state-interval",        "n_intervals"),
+        Input("url",                        "pathname"),
         prevent_initial_call=False,
     )
     def poll_control_state(n, pathname):
+        n_out = 29
         if pathname != "/control":
-            return (no_update,) * 15
+            return (no_update,) * n_out
 
         state, err = _get("/control/state")
         if err or not state:
-            return (no_update,) * 15
+            return (no_update,) * n_out
 
-        mode    = state.get("control_mode", "MANUAL")
-        tripped = state.get("tripped", False)
+        mode         = state.get("control_mode", "MANUAL")
+        machine_state = state.get("machine_state", "STOPPED")
+        tripped      = state.get("tripped", False)
+        reg_target   = state.get("regulation_target", "POWER")
 
-        # Badge mode
+        # ── Mode badge ──
         mode_color = {"MANUAL": "#f97316", "AUTO": "#22c55e"}.get(mode, "#60a5fa")
-        mode_style = {"fontSize": "18px", "fontWeight": "700",
+        mode_style = {"fontSize": "16px", "fontWeight": "700",
                       "fontFamily": "Share Tech Mono", "letterSpacing": "2px",
                       "color": mode_color}
 
-        # Trip banner + bouton reset
-        tripped_style   = {"display": "block"} if tripped else {"display": "none"}
-        reset_btn_style = {
+        # ── Trip ──
+        trip_banner_style = {"display": "flex"} if tripped else {"display": "none"}
+        reset_btn_style   = {
             "display": "block" if tripped else "none",
-            "fontSize": "11px", "padding": "6px 14px",
-            "background": "#22c55e", "border": "1px solid #22c55e", "marginTop": "8px",
+            "fontSize": "11px", "padding": "6px 12px",
+            "background": "#22c55e", "border": "1px solid #22c55e", "marginRight": "8px",
         }
 
-        # PID
+        # ── Machine stepper (4 classNames) ──
+        if tripped:
+            step_classes = ["stepper-pill stepper-pill-tripped"] * 4
+        else:
+            idx = _STATE_ORDER.index(machine_state) if machine_state in _STATE_ORDER else 0
+            step_classes = []
+            for i in range(4):
+                if i < idx:
+                    step_classes.append("stepper-pill stepper-pill-done")
+                elif i == idx:
+                    step_classes.append("stepper-pill stepper-pill-active")
+                else:
+                    step_classes.append("stepper-pill stepper-pill-future")
+
+        # ── Overlays ──
+        setpoints_style  = _GREYED if mode == "MANUAL" else _ACTIVE
+        valves_style     = _GREYED if mode == "AUTO"   else _ACTIVE
+        avr_style        = _GREYED if machine_state != "GRID_CONNECTED" else _ACTIVE
+        reg_target_style = _GREYED if machine_state != "GRID_CONNECTED" else _ACTIVE
+
+        # ── Grid buttons ──
+        grid_sync_disabled       = machine_state != "SYNCHRONIZING"
+        grid_disconnect_disabled = machine_state != "GRID_CONNECTED"
+
+        # ── PID Power ──
         pid_err = state.get("pid_error")
         pid_out = state.get("pid_output")
-        pid_err_str = f"{pid_err:+.3f}" if pid_err is not None else "—"
-        pid_out_str = f"{pid_out:.1f}"   if pid_out is not None else "—"
+        power_err_str = f"{pid_err:+.3f} MW" if pid_err is not None else "—"
+        power_out_str = f"{pid_out:.1f} %"   if pid_out is not None else "—"
 
-        # Séquence
+        # ── PID Speed (governor) — erreur/sortie non encore exposées, placeholder ──
+        speed_err_str = "— RPM"
+        speed_out_str = "— %"
+
+        # ── Séquence ──
         seq_state    = state.get("sequence_state", "IDLE")
         seq_progress = state.get("sequence_progress")
         if seq_state in ("STARTING", "STOPPING") and seq_progress is not None:
             prog_pct  = round(seq_progress * 100)
             seq_wrap  = {"display": "block"}
-            bar_style = {"height": "8px", "background": "#8b5cf6",
+            bar_style = {"height": "6px", "background": "#8b5cf6",
                          "borderRadius": "4px", "width": f"{prog_pct}%",
                          "transition": "width 0.5s ease"}
             seq_lbl   = f"{seq_state} — {prog_pct}%"
         else:
             seq_wrap  = {"display": "none"}
-            bar_style = {"height": "8px", "background": "#8b5cf6",
+            bar_style = {"height": "6px", "background": "#8b5cf6",
                          "borderRadius": "4px", "width": "0%"}
             seq_lbl   = ""
 
-        # Interlocks
+        # ── Interlocks ──
         warnings = state.get("interlock_warnings", [])
         interlock_children = []
-        if warnings:
-            for w in warnings:
-                interlock_children.append(html.Div([
-                    html.Span("⚠ ", style={"color": "#f59e0b"}),
-                    html.Span(w, style={"fontSize": "11px", "fontFamily": "Share Tech Mono",
-                                        "color": "#f59e0b"}),
-                ], style={"marginBottom": "4px"}))
-        else:
+        for w in warnings:
+            interlock_children.append(html.Div([
+                html.Span("⚠ ", style={"color": "#f59e0b"}),
+                html.Span(w, style={"fontSize": "11px", "fontFamily": "Share Tech Mono",
+                                    "color": "#f59e0b"}),
+            ], style={"marginBottom": "4px"}))
+        if not warnings:
             interlock_children.append(html.Div([
                 html.Span("✅ ", style={"color": "#22c55e"}),
                 html.Span("Tous les interlocks OK", style={
                     "fontSize": "11px", "fontFamily": "Share Tech Mono", "color": "#22c55e",
                 }),
             ]))
-
-        # Interlock BP/V1 depuis l'état des vannes
-        vs   = state.get("valve_state", {})
-        v1   = (vs.get("v1") or {}).get("current", 0)
-        bp   = (vs.get("bp") or {}).get("current", 0)
+        vs  = state.get("valve_state", {})
+        v1  = (vs.get("v1") or {}).get("current", 0)
+        bp  = (vs.get("bp") or {}).get("current", 0)
         bp_ok = not (v1 > 10 and bp < 5)
         interlock_children.append(html.Div([
             html.Span("✅ " if bp_ok else "❌ ", style={"color": "#22c55e" if bp_ok else "#ef4444"}),
@@ -157,34 +230,87 @@ def register(app):
             }),
         ], style={"marginTop": "4px"}))
 
-        # AVR
-        avr_vt     = state.get("avr_v_term")
-        avr_efd    = state.get("avr_e_fd_pu")
-        avr_cphi   = state.get("avr_cosphi")
-        avr_sat    = state.get("avr_saturated", False)
+        # ── AVR ──
+        avr_vt   = state.get("avr_v_term")
+        avr_efd  = state.get("avr_e_fd_pu")
+        avr_cphi = state.get("avr_cosphi")
+        avr_sat  = state.get("avr_saturated", False)
         avr_vt_str   = f"{avr_vt:.3f}"  if avr_vt  is not None else "—"
         avr_efd_str  = f"{avr_efd:.4f}" if avr_efd  is not None else "—"
         avr_cphi_str = f"{avr_cphi:.3f}" if avr_cphi is not None else "—"
         if avr_sat and avr_efd is not None:
             sat_label = "SAT MAX" if avr_efd >= 2.4 else "SAT MIN"
-            sat_style = {
-                "fontSize": "9px", "fontFamily": "Share Tech Mono", "fontWeight": "700",
-                "letterSpacing": "0.5px", "padding": "2px 6px", "borderRadius": "4px",
-                "color": "#ef4444", "background": "rgba(239,68,68,0.15)",
-                "border": "1px solid #ef4444",
-            }
+            sat_style = {"fontSize": "9px", "fontFamily": "Share Tech Mono", "fontWeight": "700",
+                         "padding": "2px 6px", "borderRadius": "4px",
+                         "color": "#ef4444", "background": "rgba(239,68,68,0.15)",
+                         "border": "1px solid #ef4444"}
         else:
             sat_label = ""
             sat_style = {"fontSize": "9px", "padding": "2px 6px"}
 
         return (
             mode, mode_style,
-            tripped_style, reset_btn_style,
-            pid_err_str, pid_out_str,
+            trip_banner_style, reset_btn_style,
+            *step_classes,
+            setpoints_style, valves_style, avr_style, reg_target_style,
+            reg_target,
+            grid_sync_disabled, grid_disconnect_disabled,
+            power_err_str, power_out_str,
+            speed_err_str, speed_out_str,
             seq_wrap, bar_style, seq_lbl,
             interlock_children,
             avr_vt_str, avr_efd_str, avr_cphi_str, sat_label, sat_style,
         )
+
+    # ── Pré-remplir gains PID au chargement ─────────────────────────
+    @app.callback(
+        Output("ctrl-pid-power-kp",    "value"),
+        Output("ctrl-pid-power-ki",    "value"),
+        Output("ctrl-pid-power-kd",    "value"),
+        Output("ctrl-pid-speed-kp",    "value"),
+        Output("ctrl-pid-speed-ki",    "value"),
+        Output("ctrl-pid-speed-kd",    "value"),
+        Output("ctrl-pid-pressure-kp", "value"),
+        Output("ctrl-pid-pressure-ki", "value"),
+        Output("ctrl-pid-pressure-kd", "value"),
+        Input("url", "pathname"),
+        prevent_initial_call=False,
+    )
+    def prefill_pid_gains(pathname):
+        if pathname != "/control":
+            return (no_update,) * 9
+        state, err = _get("/control/state")
+        if err or not state:
+            return (no_update,) * 9
+        return (
+            state.get("pid_kp",          2.0),
+            state.get("pid_ki",          0.5),
+            state.get("pid_kd",          0.05),
+            state.get("pid_speed_kp",    0.5),
+            state.get("pid_speed_ki",    0.1),
+            state.get("pid_speed_kd",    0.01),
+            state.get("pid_pressure_kp", 1.0),
+            state.get("pid_pressure_ki", 0.2),
+            state.get("pid_pressure_kd", 0.02),
+        )
+
+    # ── Compteurs alarmes/trips dans le bandeau ──────────────────────
+    @app.callback(
+        Output("ctrl-banner-alarm-count", "children"),
+        Output("ctrl-banner-trip-count",  "children"),
+        Input("ctrl-log-interval", "n_intervals"),
+        Input("url", "pathname"),
+        prevent_initial_call=False,
+    )
+    def update_banner_counters(n, pathname):
+        if pathname != "/control":
+            return no_update, no_update
+        alarms_data, err = _get("/settings/alerts")
+        if err or not alarms_data:
+            return "—", "—"
+        active = [a for a in alarms_data if not a.get("acknowledged")]
+        trips  = [a for a in active if a.get("severity") in ("CRITICAL", "TRIP")]
+        return str(len(active)), str(len(trips))
 
     # ── Dialogue confirmation AU ─────────────────────────────────────
     @app.callback(
@@ -195,7 +321,7 @@ def register(app):
     def open_au_dialog(n):
         return True
 
-    # ── Exécution AU — div dédié ─────────────────────────────────────
+    # ── Exécution AU ─────────────────────────────────────────────────
     @app.callback(
         Output("ctrl-au-status", "children"),
         Input("ctrl-confirm-au", "submit_n_clicks"),
@@ -211,7 +337,7 @@ def register(app):
             return _status_err(f"Erreur AU : {err}")
         return _status_err("⚠ TRIP EXÉCUTÉ")
 
-    # ── Reset Trip — div dédié ───────────────────────────────────────
+    # ── Reset Trip ───────────────────────────────────────────────────
     @app.callback(
         Output("ctrl-trip-status", "children"),
         Input("ctrl-btn-reset-trip", "n_clicks"),
@@ -221,12 +347,13 @@ def register(app):
     def reset_trip(n, operator):
         if not n:
             return no_update
-        data, err = _post("/control/emergency/reset", params={"operator": operator or "Opérateur"})
+        data, err = _post("/control/emergency/reset",
+                          params={"operator": operator or "Opérateur"})
         if err:
             return _status_err(f"Erreur : {err}")
         return _status_ok("✓ Trip réinitialisé.")
 
-    # ── Changer mode — div dédié ─────────────────────────────────────
+    # ── Changer mode ─────────────────────────────────────────────────
     @app.callback(
         Output("ctrl-mode-apply-status", "children"),
         Input("ctrl-btn-mode", "n_clicks"),
@@ -246,9 +373,9 @@ def register(app):
     @app.callback(
         Output("ctrl-setpoints-status", "children"),
         Input("ctrl-btn-setpoints", "n_clicks"),
-        State("ctrl-sp-power",    "value"),
-        State("ctrl-sp-speed",    "value"),
-        State("ctrl-sp-pressure", "value"),
+        State("ctrl-sp-power",       "value"),
+        State("ctrl-sp-speed",       "value"),
+        State("ctrl-sp-pressure",    "value"),
         State("store-operator-name", "data"),
         prevent_initial_call=True,
     )
@@ -256,9 +383,9 @@ def register(app):
         if not n:
             return no_update
         sp = {}
-        if power    is not None: sp["power_mw"]        = power
-        if speed    is not None: sp["speed_rpm"]        = speed
-        if pressure is not None: sp["pressure_hp_bar"]  = pressure
+        if power    is not None: sp["power_mw"]       = power
+        if speed    is not None: sp["speed_rpm"]       = speed
+        if pressure is not None: sp["pressure_hp_bar"] = pressure
         if not sp:
             return _status_err("Aucune consigne saisie.")
         data, err = _post("/control/setpoints",
@@ -269,9 +396,26 @@ def register(app):
         if power    is not None: parts.append(f"P={power} MW")
         if speed    is not None: parts.append(f"N={speed} RPM")
         if pressure is not None: parts.append(f"P_HP={pressure} bar")
-        return _status_ok(f"✓ Consignes : {' | '.join(parts)}")
+        return _status_ok(f"✓ {' | '.join(parts)}")
 
-    # ── Affichage valeurs sliders vannes ─────────────────────────────
+    # ── Cible de régulation ──────────────────────────────────────────
+    @app.callback(
+        Output("ctrl-regul-target-status", "children"),
+        Input("ctrl-btn-regul-target", "n_clicks"),
+        State("ctrl-regul-target",   "value"),
+        State("store-operator-name", "data"),
+        prevent_initial_call=True,
+    )
+    def apply_regul_target(n, target, operator):
+        if not n:
+            return no_update
+        data, err = _post("/control/regulation-target",
+                          {"target": target, "operator": operator or "Opérateur"})
+        if err:
+            return _status_err(f"Erreur : {err}")
+        return _status_ok(f"✓ Cible → {target}")
+
+    # ── Affichage sliders vannes ─────────────────────────────────────
     @app.callback(
         Output("val-ctrl-v1", "children"),
         Output("val-ctrl-v2", "children"),
@@ -285,7 +429,7 @@ def register(app):
     def update_valve_displays(v1, v2, v3, vbp):
         return str(v1 or 0), str(v2 or 0), str(v3 or 0), str(vbp or 0)
 
-    # ── Appliquer commande vannes ────────────────────────────────────
+    # ── Appliquer vannes ─────────────────────────────────────────────
     @app.callback(
         Output("ctrl-valves-status", "children"),
         Input("ctrl-btn-valves", "n_clicks"),
@@ -307,12 +451,11 @@ def register(app):
         data, err = _post("/control/valve", body)
         if err:
             return _status_err(f"Erreur : {err}")
-        # Résumé des refus éventuels
         results = data.get("results", {})
         rejets = [f"{k}: {v.get('message')}" for k, v in results.items() if not v.get("accepted")]
         if rejets:
             return _status_err("Refusé — " + " | ".join(rejets))
-        return _status_ok(f"✓ Vannes envoyées : V1={v1}% V2={v2}% V3={v3}% BP={vbp}%")
+        return _status_ok(f"✓ V1={v1}% V2={v2}% V3={v3}% BP={vbp}%")
 
     # ── Séquences ────────────────────────────────────────────────────
     @app.callback(
@@ -327,48 +470,54 @@ def register(app):
         op = operator or "Opérateur"
         triggered = ctx.triggered_id
         if triggered == "ctrl-btn-seq-start":
-            data, err = _post("/control/sequence/start", {"sequence": "start_turbine", "operator": op})
+            data, err = _post("/control/sequence/start",
+                              {"sequence": "start_turbine", "operator": op})
         elif triggered == "ctrl-btn-seq-stop":
-            data, err = _post("/control/sequence/stop", {"sequence": "stop_turbine", "operator": op})
+            data, err = _post("/control/sequence/stop",
+                              {"sequence": "stop_turbine", "operator": op})
         elif triggered == "ctrl-btn-seq-cancel":
             data, err = _post("/control/sequence/cancel", params={"operator": op})
         else:
             return no_update
         if err:
             return _status_err(f"Erreur : {err}")
-        msg = data.get("message", "OK")
-        return _status_ok(f"✓ {msg}")
+        return _status_ok(f"✓ {data.get('message', 'OK')}")
 
-    # ── Réglage PID ──────────────────────────────────────────────────
-    @app.callback(
-        Output("ctrl-pid-status", "children"),
-        Input("ctrl-btn-pid", "n_clicks"),
-        State("ctrl-pid-kp",    "value"),
-        State("ctrl-pid-ki",    "value"),
-        State("ctrl-pid-kd",    "value"),
-        State("store-operator-name", "data"),
-        prevent_initial_call=True,
-    )
-    def apply_pid(n, kp, ki, kd, operator):
-        if not n:
-            return no_update
-        if any(v is None for v in [kp, ki, kd]):
-            return _status_err("Renseignez Kp, Ki, Kd.")
-        data, err = _post("/control/pid",
-                          {"kp": kp, "ki": ki, "kd": kd, "operator": operator or "Opérateur"})
-        if err:
-            return _status_err(f"Erreur : {err}")
-        return _status_ok(f"✓ PID : Kp={kp} Ki={ki} Kd={kd}")
+    # ── Réglage PID (multi-boucle via onglets) ───────────────────────
+    for _loop in ("power", "speed", "pressure"):
+        def _make_pid_callback(loop_name):
+            @app.callback(
+                Output(f"ctrl-pid-{loop_name}-status", "children"),
+                Input(f"ctrl-btn-pid-{loop_name}", "n_clicks"),
+                State(f"ctrl-pid-{loop_name}-kp", "value"),
+                State(f"ctrl-pid-{loop_name}-ki", "value"),
+                State(f"ctrl-pid-{loop_name}-kd", "value"),
+                State("store-operator-name",       "data"),
+                prevent_initial_call=True,
+            )
+            def apply_pid_loop(n, kp, ki, kd, operator, _ln=loop_name):
+                if not n:
+                    return no_update
+                if any(v is None for v in [kp, ki, kd]):
+                    return _status_err("Renseignez Kp, Ki, Kd.")
+                data, err = _post("/control/pid", {
+                    "kp": kp, "ki": ki, "kd": kd,
+                    "loop": _ln, "operator": operator or "Opérateur",
+                })
+                if err:
+                    return _status_err(f"Erreur : {err}")
+                return _status_ok(f"✓ PID {_ln} : Kp={kp} Ki={ki} Kd={kd}")
+        _make_pid_callback(_loop)
 
-    # ── AVR — mode + setpoints ──────────────────────────────────────
+    # ── AVR — mode + setpoints ───────────────────────────────────────
     @app.callback(
         Output("ctrl-avr-status", "children"),
         Input("ctrl-btn-avr", "n_clicks"),
-        State("ctrl-avr-mode",      "value"),
-        State("ctrl-avr-vset",      "value"),
-        State("ctrl-avr-cosphi-set","value"),
-        State("ctrl-avr-efd-manual","value"),
-        State("store-operator-name","data"),
+        State("ctrl-avr-mode",       "value"),
+        State("ctrl-avr-vset",       "value"),
+        State("ctrl-avr-cosphi-set", "value"),
+        State("ctrl-avr-efd-manual", "value"),
+        State("store-operator-name", "data"),
         prevent_initial_call=True,
     )
     def apply_avr(n, mode, vset, cosphi_set, efd_manual, operator):
@@ -384,7 +533,7 @@ def register(app):
         if vset       is not None: body["voltage_kv"] = vset
         if cosphi_set is not None: body["cosphi"]     = cosphi_set
         if body:
-            data, err2 = _post("/control/avr/setpoint", {**body, "operator": op})
+            _, err2 = _post("/control/avr/setpoint", {**body, "operator": op})
             if err2:
                 return _status_err(f"Consigne AVR : {err2}")
         label = vset if mode == "VOLTAGE" else (cosphi_set if mode == "COSPHI" else efd_manual)
@@ -408,22 +557,346 @@ def register(app):
                           {"k_a": ka, "t_a": ta, "operator": operator or "Opérateur"})
         if err:
             return _status_err(f"Erreur : {err}")
-        return _status_ok(f"✓ Gains AVR : K_A={ka}  T_A={ta} s")
+        return _status_ok(f"✓ K_A={ka}  T_A={ta} s")
 
-    # ── Acquitter tout ───────────────────────────────────────────────
+    # ── Couplage réseau ──────────────────────────────────────────────
+    @app.callback(
+        Output("ctrl-grid-status", "children"),
+        Input("ctrl-btn-grid-sync",       "n_clicks"),
+        Input("ctrl-btn-grid-disconnect", "n_clicks"),
+        State("store-operator-name",      "data"),
+        prevent_initial_call=True,
+    )
+    def grid_action(n_sync, n_disc, operator):
+        op = operator or "Opérateur"
+        triggered = ctx.triggered_id
+        if triggered == "ctrl-btn-grid-sync":
+            data, err = _post("/control/grid/synchronize", params={"operator": op})
+        elif triggered == "ctrl-btn-grid-disconnect":
+            data, err = _post("/control/grid/disconnect", params={"operator": op})
+        else:
+            return no_update
+        if err:
+            return _status_err(f"Erreur : {err}")
+        return _status_ok(f"✓ {data.get('message', 'OK')}")
+
+    # ── Désurchauffeur ───────────────────────────────────────────────
+    @app.callback(
+        Output("ctrl-attemp-current-temp", "children"),
+        Output("ctrl-attemp-injection",    "children"),
+        Input("ctrl-state-interval",       "n_intervals"),
+        Input("url",                       "pathname"),
+        prevent_initial_call=False,
+    )
+    def update_attemperator_display(n, pathname):
+        if pathname != "/control":
+            return no_update, no_update
+        data, err = _get("/control/attemperator")
+        if err or not data:
+            return "—", "—"
+        t   = data.get("attemp_setpoint_c")
+        inj = data.get("attemp_injection_pct")
+        t_str   = f"{t:.0f} °C"    if t   is not None else "—"
+        inj_str = f"{inj:.1f} %"   if inj is not None else "—"
+        return t_str, inj_str
+
+    @app.callback(
+        Output("ctrl-attemp-status", "children"),
+        Input("ctrl-btn-attemp", "n_clicks"),
+        State("ctrl-attemp-enable",  "value"),
+        State("ctrl-attemp-setpoint","value"),
+        State("store-operator-name", "data"),
+        prevent_initial_call=True,
+    )
+    def apply_attemperator(n, enabled_val, setpoint, operator):
+        if not n:
+            return no_update
+        op = operator or "Opérateur"
+        enabled = "ON" in (enabled_val or [])
+        _, err1 = _post("/control/attemperator/enabled",
+                        {"enabled": enabled, "operator": op})
+        if err1:
+            return _status_err(f"Erreur enable : {err1}")
+        if setpoint is not None:
+            _, err2 = _post("/control/attemperator/setpoint",
+                            {"setpoint_c": setpoint, "operator": op})
+            if err2:
+                return _status_err(f"Erreur setpoint : {err2}")
+        state_txt = "actif" if enabled else "désactivé"
+        sp_txt = f", consigne {setpoint}°C" if setpoint is not None else ""
+        return _status_ok(f"✓ Désurchauffeur {state_txt}{sp_txt}")
+
+    # ── Condenseur ───────────────────────────────────────────────────
+    @app.callback(
+        Output("ctrl-cond-level-val",  "children"),
+        Output("ctrl-cond-vacuum-val", "children"),
+        Input("ctrl-state-interval",   "n_intervals"),
+        Input("url",                   "pathname"),
+        prevent_initial_call=False,
+    )
+    def update_condenser_display(n, pathname):
+        if pathname != "/control":
+            return no_update, no_update
+        data, err = _get("/control/condenser")
+        if err or not data:
+            return "—", "—"
+        lv  = data.get("condenser_level_pct")
+        vac = data.get("condenser_vacuum_mbar")
+        return (f"{lv:.1f}" if lv is not None else "—",
+                f"{vac:.1f}" if vac is not None else "—")
+
+    @app.callback(
+        Output("ctrl-cond-status", "children"),
+        Input("ctrl-btn-cond", "n_clicks"),
+        State("ctrl-cond-level",     "value"),
+        State("ctrl-cond-vacuum",    "value"),
+        State("store-operator-name", "data"),
+        prevent_initial_call=True,
+    )
+    def apply_condenser(n, level, vacuum, operator):
+        if not n:
+            return no_update
+        op = operator or "Opérateur"
+        msgs = []
+        if level is not None:
+            _, err = _post("/control/condenser/level-setpoint",
+                           {"setpoint_pct": level, "operator": op})
+            if err:
+                return _status_err(f"Niveau : {err}")
+            msgs.append(f"niveau {level}%")
+        if vacuum is not None:
+            _, err = _post("/control/condenser/vacuum-setpoint",
+                           {"setpoint_mbar": vacuum, "operator": op})
+            if err:
+                return _status_err(f"Vide : {err}")
+            msgs.append(f"vide {vacuum} mbar")
+        if not msgs:
+            return _status_err("Aucune consigne saisie.")
+        return _status_ok(f"✓ Condenseur : {', '.join(msgs)}")
+
+    # ── Protections Tier-1 ───────────────────────────────────────────
+    @app.callback(
+        Output("ctrl-protections-list", "children"),
+        Input("ctrl-protections-interval", "n_intervals"),
+        Input("url",                        "pathname"),
+        prevent_initial_call=False,
+    )
+    def update_protections_list(n, pathname):
+        if pathname != "/control":
+            return no_update
+        data, err = _get("/control/protections")
+        if err or not data:
+            return html.Div("Aucune protection récupérée.",
+                            style={"fontSize": "11px", "color": "#64748b",
+                                   "fontFamily": "Share Tech Mono"})
+
+        _STATUS_COLOR = {
+            "OK":       "#22c55e",
+            "WARN":     "#f59e0b",
+            "TRIP":     "#ef4444",
+            "INHIBITED":"#64748b",
+        }
+        rows = []
+        for prot in data.get("protections", []):
+            name   = prot.get("name", "?")
+            status = prot.get("status", "OK")
+            inh    = prot.get("inhibited", False)
+            color  = _STATUS_COLOR.get(status, "#94a3b8")
+            rows.append(html.Div([
+                html.Span(
+                    "⛔" if status == "TRIP" else ("🔕" if inh else "🟢"),
+                    style={"marginRight": "6px", "fontSize": "11px"},
+                ),
+                html.Span(name, style={"fontSize": "10px", "fontFamily": "Share Tech Mono",
+                                       "color": color, "flex": "1", "minWidth": "0"}),
+                html.Button(
+                    "Réactiver" if inh else "Inhiber",
+                    id={"type": "ctrl-prot-inhibit-btn", "index": name},
+                    n_clicks=0,
+                    className="btn btn-outline",
+                    style={"fontSize": "9px", "padding": "2px 6px",
+                           "borderColor": "#64748b", "color": "#64748b",
+                           "flexShrink": "0"},
+                ),
+            ], style={"display": "flex", "alignItems": "center", "gap": "4px",
+                      "padding": "3px 0", "borderBottom": "1px solid #0f2744"}))
+        return rows or html.Div("Aucune protection configurée.",
+                                style={"fontSize": "11px", "color": "#64748b",
+                                       "fontFamily": "Share Tech Mono"})
+
+    @app.callback(
+        Output({"type": "ctrl-prot-inhibit-btn", "index": MATCH}, "children"),
+        Input({"type":  "ctrl-prot-inhibit-btn", "index": MATCH}, "n_clicks"),
+        State({"type":  "ctrl-prot-inhibit-btn", "index": MATCH}, "children"),
+        State("store-operator-name", "data"),
+        prevent_initial_call=True,
+    )
+    def toggle_protection_inhibit(n, btn_label, operator):
+        if not n:
+            return no_update
+        name = ctx.triggered_id["index"]
+        _post(f"/control/protections/{name}/inhibit",
+              params={"operator": operator or "Opérateur"})
+        return "Réactiver" if btn_label == "Inhiber" else "Inhiber"
+
+    # ── Phase de démarrage — timeline 6 étapes ──────────────────────
+    _SPEED_NOMINAL   = 6435.0
+    _SPEED_SYNC_THR  = 50.0
+    _VTERM_TOL_KV    = 0.15
+    _SEQ_DURATION_S  = 120.0
+
+    @app.callback(
+        # Pastilles (className)
+        Output("ctrl-startup-pill-1", "className"),
+        Output("ctrl-startup-pill-2", "className"),
+        Output("ctrl-startup-pill-3", "className"),
+        Output("ctrl-startup-pill-4", "className"),
+        Output("ctrl-startup-pill-5", "className"),
+        Output("ctrl-startup-pill-6", "className"),
+        # Labels (className pour couleur)
+        Output("ctrl-startup-lbl-1", "className"),
+        Output("ctrl-startup-lbl-2", "className"),
+        Output("ctrl-startup-lbl-3", "className"),
+        Output("ctrl-startup-lbl-4", "className"),
+        Output("ctrl-startup-lbl-5", "className"),
+        Output("ctrl-startup-lbl-6", "className"),
+        # Indicateurs textuels
+        Output("ctrl-startup-ind-1", "children"),
+        Output("ctrl-startup-ind-2", "children"),
+        Output("ctrl-startup-ind-3", "children"),
+        Output("ctrl-startup-ind-4", "children"),
+        Output("ctrl-startup-ind-5", "children"),
+        Output("ctrl-startup-ind-6", "children"),
+        # Bannière trip + barre globale + durée
+        Output("ctrl-startup-trip-banner", "style"),
+        Output("ctrl-startup-bar",         "style"),
+        Output("ctrl-startup-elapsed",     "children"),
+        Input("ctrl-state-interval",  "n_intervals"),
+        Input("store-current-data",    "data"),
+        Input("url",                   "pathname"),
+        prevent_initial_call=False,
+    )
+    def update_startup_phase(_n, current, pathname):
+        if pathname != "/control":
+            return [no_update] * 21
+
+        state, err = _get("/control/state")
+        if err or not state:
+            return [no_update] * 21
+
+        ms       = state.get("machine_state", "STOPPED")
+        tripped  = state.get("tripped", False)
+        warnings = state.get("interlock_warnings", [])
+        v1       = (state.get("valve_state") or {}).get("v1", {}).get("position", 0)
+        avr_mode = state.get("avr_mode", "OFF")
+        avr_vt   = state.get("avr_v_term", 0.0) or 0.0
+        avr_vset = state.get("avr_setpoint", 10.5) or 10.5
+        seq_prog = state.get("sequence_progress") or 0.0
+        speed    = (current or {}).get("turbine_speed", 0.0) or 0.0
+        power    = (current or {}).get("active_power", 0.0) or 0.0
+
+        # ── Calcul statut de chaque étape ──
+        # Étape 1 : pré-checks
+        step1 = "done" if (not tripped and len(warnings) == 0) else \
+                "active" if not tripped else "tripped"
+
+        # Étape 2 : ouverture V1
+        step2 = "done"   if (ms in ("ROLLING", "SYNCHRONIZING", "GRID_CONNECTED") and v1 >= 5) else \
+                "active"  if ms == "ROLLING" and v1 < 5 else \
+                "future"
+
+        # Étape 3 : accélération vitesse
+        step3 = "done"   if abs(speed - _SPEED_NOMINAL) < _SPEED_SYNC_THR or \
+                           ms in ("SYNCHRONIZING", "GRID_CONNECTED") else \
+                "active"  if ms == "ROLLING" and v1 >= 5 else \
+                "future"
+
+        # Étape 4 : excitation alternateur
+        vterm_ok = avr_mode != "OFF" and abs(avr_vt - avr_vset) < _VTERM_TOL_KV
+        step4 = "done"   if ms in ("SYNCHRONIZING", "GRID_CONNECTED") else \
+                "active"  if step3 == "done" and not vterm_ok else \
+                "done"    if step3 == "done" and vterm_ok else \
+                "future"
+
+        # Étape 5 : synchronisation
+        step5 = "done"   if ms == "GRID_CONNECTED" else \
+                "active"  if ms == "SYNCHRONIZING" else \
+                "future"
+
+        # Étape 6 : couplage réseau
+        step6 = "done"   if ms == "GRID_CONNECTED" and power > 0.5 else \
+                "active"  if ms == "GRID_CONNECTED" else \
+                "future"
+
+        if tripped:
+            step1 = step2 = step3 = step4 = step5 = step6 = "tripped"
+
+        statuses = [step1, step2, step3, step4, step5, step6]
+
+        def pill_cls(s):
+            return f"startup-pill startup-pill-{s}"
+
+        def lbl_cls(s):
+            css = "done" if s == "done" else "active" if s == "active" else "future"
+            return f"startup-step-label startup-step-label-{css}"
+
+        # ── Indicateurs textuels ──
+        ind1 = "OK • 0 interlock" if step1 == "done" else \
+               f"⚠ {len(warnings)} interlock(s)" if warnings else \
+               "⚠ TRIP actif"
+
+        ind2 = f"V1 = {v1:.0f} %" if step2 in ("done", "active") else "En attente"
+
+        spd_pct = min(100, round(speed / _SPEED_NOMINAL * 100))
+        ind3 = f"{speed:.0f} / {_SPEED_NOMINAL:.0f} RPM ({spd_pct} %)" \
+               if step3 in ("done", "active") else "En attente"
+
+        if step4 == "done":
+            ind4 = f"V_term {avr_vt:.1f} kV ✓"
+        elif step4 == "active":
+            if avr_mode == "OFF":
+                ind4 = "AVR OFF — basculer en VOLTAGE"
+            else:
+                ind4 = f"V_term {avr_vt:.1f} / {avr_vset:.1f} kV"
+        else:
+            ind4 = "En attente"
+
+        ind5 = f"Hold 5 s — Δ = {abs(speed - _SPEED_NOMINAL):.0f} RPM" \
+               if step5 == "active" else \
+               "✓ Couplé" if step5 == "done" else "En attente"
+
+        ind6 = f"P = {power:.1f} MW" if step6 in ("done", "active") else "En attente"
+
+        # ── Bandeau trip ──
+        trip_style = {"display": "block"} if tripped else {"display": "none"}
+
+        # ── Barre globale et durée ──
+        prog_pct  = round(seq_prog * 100)
+        bar_style = {"background": "#22c55e", "height": "100%",
+                     "transition": "width 0.5s ease",
+                     "width": f"{prog_pct}%"}
+        elapsed_s = round(seq_prog * _SEQ_DURATION_S)
+        elapsed   = f"{elapsed_s} / {int(_SEQ_DURATION_S)} s" if seq_prog > 0 else "—"
+
+        return (
+            [pill_cls(s) for s in statuses] +
+            [lbl_cls(s)  for s in statuses] +
+            [ind1, ind2, ind3, ind4, ind5, ind6,
+             trip_style, bar_style, elapsed]
+        )
+
+    # ── Alarmes (acquittement + rafraîchissement) ────────────────────
     @app.callback(
         Output("ctrl-alarms-list", "children"),
-        Input("ctrl-btn-ack-all", "n_clicks"),
+        Input("ctrl-btn-ack-all",  "n_clicks"),
         Input("ctrl-log-interval", "n_intervals"),
-        Input("url", "pathname"),
+        Input("url",               "pathname"),
         State("store-operator-name", "data"),
         prevent_initial_call=False,
     )
     def refresh_alarms(n_ack, n_int, pathname, operator):
         if pathname != "/control":
             return no_update
-
-        # Acquittement de toutes les alarmes
         if ctx.triggered_id == "ctrl-btn-ack-all" and n_ack:
             alarms_data, _ = _get("/settings/alerts")
             if alarms_data:
@@ -431,12 +904,11 @@ def register(app):
                     if not a.get("acknowledged"):
                         _post(f"/settings/alerts/{a['id']}/acknowledge",
                               params={"operator": operator or "Opérateur"})
-
         alarms_data, err = _get("/settings/alerts")
         if err or not alarms_data:
-            return html.Div("Aucune alarme récupérée.", style={
-                "fontSize": "11px", "color": "#64748b", "fontFamily": "Share Tech Mono",
-            })
+            return html.Div("Aucune alarme récupérée.",
+                            style={"fontSize": "11px", "color": "#64748b",
+                                   "fontFamily": "Share Tech Mono"})
         active = [a for a in alarms_data if not a.get("acknowledged")]
         return alerts_panel(active)
 
@@ -444,7 +916,7 @@ def register(app):
     @app.callback(
         Output("ctrl-commands-log", "children"),
         Input("ctrl-log-interval", "n_intervals"),
-        Input("url", "pathname"),
+        Input("url",               "pathname"),
         prevent_initial_call=False,
     )
     def refresh_commands_log(n, pathname):
@@ -452,32 +924,39 @@ def register(app):
             return no_update
         data, err = _get("/audit/operator-actions", params={"limit": 10})
         if err or not data:
-            return html.Div("Aucune commande récente.", style={
-                "fontSize": "11px", "color": "#64748b", "fontFamily": "Share Tech Mono",
-            })
+            return html.Div("Aucune commande récente.",
+                            style={"fontSize": "11px", "color": "#64748b",
+                                   "fontFamily": "Share Tech Mono"})
 
         _ACTION_COLOR = {
-            "MODE_CHANGE":      "#60a5fa",
-            "SETPOINT_CHANGE":  "#22c55e",
-            "VALVE_COMMAND":    "#f97316",
-            "EMERGENCY_TRIP":   "#ef4444",
-            "TRIP_RESET":       "#22c55e",
-            "SEQUENCE_START":   "#8b5cf6",
-            "SEQUENCE_CANCEL":  "#94a3b8",
+            "MODE_CHANGE":        "#60a5fa",
+            "SETPOINT_CHANGE":    "#22c55e",
+            "VALVE_COMMAND":      "#f97316",
+            "EMERGENCY_TRIP":     "#ef4444",
+            "TRIP_RESET":         "#22c55e",
+            "SEQUENCE_START":     "#8b5cf6",
+            "SEQUENCE_CANCEL":    "#94a3b8",
             "SEQUENCE_COMPLETED": "#22c55e",
-            "PID_TUNE":         "#f59e0b",
-            "ALERT_ACK":        "#64748b",
+            "PID_TUNE":           "#f59e0b",
+            "ALERT_ACK":          "#64748b",
             "AVR_MODE_CHANGE":    "#a855f7",
             "AVR_SETPOINT_CHANGE":"#a855f7",
             "AVR_GAINS_CHANGE":   "#a855f7",
             "AVR_EFD_MANUAL":     "#a855f7",
+            "REGULATION_TARGET":  "#f59e0b",
+            "GRID_SYNCHRONIZE":   "#22c55e",
+            "GRID_DISCONNECT":    "#f97316",
+            "ATTEMP_ENABLE":      "#22c55e",
+            "ATTEMP_SETPOINT":    "#22c55e",
+            "COND_LEVEL_SP":      "#22c55e",
+            "COND_VACUUM_SP":     "#22c55e",
         }
 
         rows = []
         for a in data[:10]:
-            ts  = (a.get("ts") or "")[:19].replace("T", " ")
-            act = a.get("action_type", "")
-            tgt = a.get("target", "")
+            ts    = (a.get("ts") or "")[:19].replace("T", " ")
+            act   = a.get("action_type", "")
+            tgt   = a.get("target", "")
             color = _ACTION_COLOR.get(act, "#94a3b8")
             rows.append(html.Div([
                 html.Span(ts, style={"color": "#64748b", "fontSize": "9px",
@@ -491,6 +970,6 @@ def register(app):
             ], style={"display": "flex", "alignItems": "center",
                       "padding": "3px 0", "borderBottom": "1px solid #0f2744"}))
 
-        return rows if rows else html.Div("Aucune commande.", style={
-            "fontSize": "11px", "color": "#64748b", "fontFamily": "Share Tech Mono",
-        })
+        return rows or html.Div("Aucune commande.",
+                                style={"fontSize": "11px", "color": "#64748b",
+                                       "fontFamily": "Share Tech Mono"})
