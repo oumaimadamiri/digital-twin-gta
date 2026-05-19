@@ -232,10 +232,11 @@ class FakeAPI:
         # 2) État SIMULÉ (Vannes contrôlées avec rampe + Scénarios + Bruit)
         state_sim = self._state.copy()
         # Remplacer les positions de vannes par les positions réelles du contrôleur
-        state_sim["valve_v1"] = actual["v1"]
-        state_sim["valve_v2"] = actual["v2"]
-        state_sim["valve_v3"] = actual["v3"]
-        state_sim["valve_bp"] = actual["bp"]
+        state_sim["valve_v1"]       = actual["v1"]
+        state_sim["valve_v2"]       = actual["v2"]
+        state_sim["valve_v3"]       = actual["v3"]
+        state_sim["valve_bp"]       = actual["bp"]
+        state_sim["valve_bp_admit"] = actual.get("bp_admit", 0.0)
 
         scenario_name = None
         if self._active_scenario is not None:
@@ -256,12 +257,14 @@ class FakeAPI:
                 valve_v2       = state_sim["valve_v2"],
                 valve_v3       = state_sim["valve_v3"],
                 valve_bp       = state_sim["valve_bp"],
+                valve_bp_admit = state_sim.get("valve_bp_admit", 0.0),
             )
             # Targets depuis le contrôleur (consignes opérateur)
-            computed_sim["valve_v1_target"] = self._vc._valves["v1"].target
-            computed_sim["valve_v2_target"] = self._vc._valves["v2"].target
-            computed_sim["valve_v3_target"] = self._vc._valves["v3"].target
-            computed_sim["valve_bp_target"] = self._vc._valves["bp"].target
+            computed_sim["valve_v1_target"]       = self._vc._valves["v1"].target
+            computed_sim["valve_v2_target"]       = self._vc._valves["v2"].target
+            computed_sim["valve_v3_target"]       = self._vc._valves["v3"].target
+            computed_sim["valve_bp_target"]       = self._vc._valves["bp"].target
+            computed_sim["valve_bp_admit_target"] = self._vc._valves["bp_admit"].target
 
             # Appliquer les deltas du scénario sur les champs auxiliaires (non-primaires)
             # _apply_scenario ne touche que les clés présentes dans _state (entrées primaires).

@@ -80,7 +80,8 @@ def manual_valve_override(cmd: ValveControlCommand):
     positions_before = valve_controller.get_positions()
     results = {}
     for vid, val in [("v1", cmd.valve_v1), ("v2", cmd.valve_v2),
-                     ("v3", cmd.valve_v3), ("bp", cmd.valve_bp)]:
+                     ("v3", cmd.valve_v3), ("bp", cmd.valve_bp),
+                     ("bp_admit", cmd.valve_bp_admit)]:
         if val is not None:
             results[vid] = valve_controller.set_valve(vid, val)
 

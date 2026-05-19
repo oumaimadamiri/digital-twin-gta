@@ -13,6 +13,32 @@ _ACTIVE = {}
 
 _STATE_ORDER = ["STOPPED", "ROLLING", "SYNCHRONIZING", "GRID_CONNECTED"]
 
+_PROT_LABELS_FR = {
+    # Tier 1 — TRIP
+    "OVERSPEED_1":     "Survitesse 110%",
+    "OVERSPEED_2":     "Survitesse 115%",
+    "LUBE_OIL_LOW":    "Pression huile basse",
+    "OIL_PUMP_OFF":    "Pompe huile arrêtée",
+    "VIB_TRIP":        "Vibrations excessives",
+    "AXIAL_DISP":      "Déplacement axial rotor",
+    "BEARING_TEMP":    "Température palier critique",
+    "HP_OVERPRESSURE": "Surpression HP",
+    "HP_OVERTEMP":     "Surchauffe HP",
+    "OVERVOLTAGE":     "Surtension alternateur",
+    "OVERCURRENT":     "Surintensité ligne",
+    "REVERSE_POWER":   "Puissance inverse",
+    # Tier 2 — DISCONNECT
+    "LOSS_OF_SYNC":    "Perte de synchronisme",
+    "FREQ_DEVIATION":  "Écart fréquence réseau",
+    "LOSS_OF_EXCIT":   "Perte d'excitation",
+    # Tier 3 — ALARM
+    "VIB_ALARM":       "Alarme vibrations",
+    "BEARING_ALARM":   "Alarme température palier",
+    "OIL_LEVEL_LOW":   "Niveau huile bas",
+    "OIL_FILTER_DP":   "ΔP filtre huile élevé",
+    "UNDERVOLTAGE":    "Sous-tension alternateur",
+}
+
 
 def _status_ok(text):
     return html.Span(text, style={"color": "#22c55e", "fontFamily": "Share Tech Mono",
@@ -707,7 +733,7 @@ def register(app):
                     "⛔" if status == "TRIP" else ("🔕" if inh else "🟢"),
                     style={"marginRight": "6px", "fontSize": "11px"},
                 ),
-                html.Span(name, style={"fontSize": "10px", "fontFamily": "Share Tech Mono",
+                html.Span(_PROT_LABELS_FR.get(name, name), style={"fontSize": "10px", "fontFamily": "Share Tech Mono",
                                        "color": color, "flex": "1", "minWidth": "0"}),
                 html.Button(
                     "Réactiver" if inh else "Inhiber",
@@ -725,7 +751,7 @@ def register(app):
                                        "fontFamily": "Share Tech Mono"})
 
     @app.callback(
-        Output({"type": "ctrl-prot-inhibit-btn", "index": MATCH}, "children"),
+        Output({"type": "ctrl-prot-inhibit-btn", "index": MATCH}, "n_clicks"),
         Input({"type":  "ctrl-prot-inhibit-btn", "index": MATCH}, "n_clicks"),
         State({"type":  "ctrl-prot-inhibit-btn", "index": MATCH}, "children"),
         State("store-operator-name", "data"),
@@ -735,38 +761,63 @@ def register(app):
         if not n:
             return no_update
         name = ctx.triggered_id["index"]
-        _post(f"/control/protections/{name}/inhibit",
-              params={"operator": operator or "Opérateur"})
-        return "Réactiver" if btn_label == "Inhiber" else "Inhiber"
+        new_inhibited = (btn_label == "Inhiber")
+        _post(
+            f"/control/protections/{name}/inhibit",
+            params={
+                "inhibited": "true" if new_inhibited else "false",
+                "operator":  operator or "Opérateur",
+            },
+        )
+        return no_update
 
-    # ── Phase de démarrage — timeline 6 étapes ──────────────────────
+    # ── Phase de démarrage — timeline 7 étapes ──────────────────────
     _SPEED_NOMINAL   = 6435.0
     _SPEED_SYNC_THR  = 50.0
     _VTERM_TOL_KV    = 0.15
     _SEQ_DURATION_S  = 120.0
+    _BP_ADMIT_TARGET = 100.0   # cible ouverture vapeur de barrage
+    _BP_ADMIT_THR    = 80.0    # seuil bp_admit « ouverte »
+    _BP_SPEED_THR    = 2500.0  # vitesse intermédiaire atteinte par la vapeur de barrage
+    _V1_OPEN_TARGET  = 100.0    # cible ouverture V1 guidée
+    _V1_OPEN_THR     = 5.0     # seuil V1 « ouverte »
 
     @app.callback(
-        # Pastilles (className)
+        # Pastilles (className) — 7 étapes
         Output("ctrl-startup-pill-1", "className"),
         Output("ctrl-startup-pill-2", "className"),
         Output("ctrl-startup-pill-3", "className"),
         Output("ctrl-startup-pill-4", "className"),
         Output("ctrl-startup-pill-5", "className"),
         Output("ctrl-startup-pill-6", "className"),
-        # Labels (className pour couleur)
+        Output("ctrl-startup-pill-7", "className"),
+        # Labels (className pour couleur) — 7 étapes
         Output("ctrl-startup-lbl-1", "className"),
         Output("ctrl-startup-lbl-2", "className"),
         Output("ctrl-startup-lbl-3", "className"),
         Output("ctrl-startup-lbl-4", "className"),
         Output("ctrl-startup-lbl-5", "className"),
         Output("ctrl-startup-lbl-6", "className"),
-        # Indicateurs textuels
+        Output("ctrl-startup-lbl-7", "className"),
+        # Indicateurs textuels — 7 étapes
         Output("ctrl-startup-ind-1", "children"),
         Output("ctrl-startup-ind-2", "children"),
         Output("ctrl-startup-ind-3", "children"),
         Output("ctrl-startup-ind-4", "children"),
         Output("ctrl-startup-ind-5", "children"),
         Output("ctrl-startup-ind-6", "children"),
+        Output("ctrl-startup-ind-7", "children"),
+        # Détail pré-checks (step 1)
+        Output("ctrl-startup-checks-detail", "children"),
+        # Disabled des boutons d'action
+        Output("ctrl-ph-btn-bp-admit", "disabled"),
+        Output("ctrl-ph-btn-v1",       "disabled"),
+        Output("ctrl-ph-btn-avr",      "disabled"),
+        # Barres de progression par étape (style) — steps 2, 3, 4, 5
+        Output("ctrl-startup-prog-2", "style"),
+        Output("ctrl-startup-prog-3", "style"),
+        Output("ctrl-startup-prog-4", "style"),
+        Output("ctrl-startup-prog-5", "style"),
         # Bannière trip + barre globale + durée
         Output("ctrl-startup-trip-banner", "style"),
         Output("ctrl-startup-bar",         "style"),
@@ -777,61 +828,68 @@ def register(app):
         prevent_initial_call=False,
     )
     def update_startup_phase(_n, current, pathname):
+        n_out = 32  # 7 pills + 7 labels + 7 ind + 1 checks + 3 btn + 4 prog + 3 banner/bar/elapsed
         if pathname != "/control":
-            return [no_update] * 21
+            return [no_update] * n_out
 
         state, err = _get("/control/state")
         if err or not state:
-            return [no_update] * 21
+            return [no_update] * n_out
 
-        ms       = state.get("machine_state", "STOPPED")
-        tripped  = state.get("tripped", False)
-        warnings = state.get("interlock_warnings", [])
-        v1       = (state.get("valve_state") or {}).get("v1", {}).get("position", 0)
-        avr_mode = state.get("avr_mode", "OFF")
-        avr_vt   = state.get("avr_v_term", 0.0) or 0.0
-        avr_vset = state.get("avr_setpoint", 10.5) or 10.5
-        seq_prog = state.get("sequence_progress") or 0.0
-        speed    = (current or {}).get("turbine_speed", 0.0) or 0.0
-        power    = (current or {}).get("active_power", 0.0) or 0.0
+        ms        = state.get("machine_state", "STOPPED")
+        mode      = state.get("control_mode", "MANUAL")
+        tripped   = state.get("tripped", False)
+        warnings  = state.get("interlock_warnings", [])
+        valve_st  = state.get("valve_state") or {}
+        v1        = valve_st.get("v1", {}).get("current", 0.0)
+        bp_admit  = valve_st.get("bp_admit", {}).get("current", 0.0)
+        avr_mode  = state.get("avr_mode", "OFF")
+        avr_vt    = state.get("avr_v_term", 0.0) or 0.0
+        avr_vset  = state.get("avr_setpoint", 10.5) or 10.5
+        seq_prog  = state.get("sequence_progress") or 0.0
+        speed     = (current or {}).get("turbine_speed", 0.0) or 0.0
+        power     = (current or {}).get("active_power", 0.0) or 0.0
 
         # ── Calcul statut de chaque étape ──
-        # Étape 1 : pré-checks
         step1 = "done" if (not tripped and len(warnings) == 0) else \
                 "active" if not tripped else "tripped"
 
-        # Étape 2 : ouverture V1
-        step2 = "done"   if (ms in ("ROLLING", "SYNCHRONIZING", "GRID_CONNECTED") and v1 >= 5) else \
-                "active"  if ms == "ROLLING" and v1 < 5 else \
+        # Step 2 : vapeur de barrage → done quand bp_admit ≥ seuil ET vitesse intermédiaire atteinte
+        step2 = "done"   if bp_admit >= _BP_ADMIT_THR and speed >= _BP_SPEED_THR else \
+                "active"  if step1 == "done" and ms in ("STOPPED", "ROLLING") else \
                 "future"
 
-        # Étape 3 : accélération vitesse
-        step3 = "done"   if abs(speed - _SPEED_NOMINAL) < _SPEED_SYNC_THR or \
-                           ms in ("SYNCHRONIZING", "GRID_CONNECTED") else \
-                "active"  if ms == "ROLLING" and v1 >= 5 else \
+        # Step 3 : ouverture V1 → done quand V1 ≥ seuil
+        step3 = "done"   if v1 >= _V1_OPEN_THR else \
+                "active"  if step2 == "done" and ms in ("STOPPED", "ROLLING") else \
                 "future"
 
-        # Étape 4 : excitation alternateur
+        # Step 4 : accélération passive → done quand vitesse nominale atteinte
+        speed_ok = abs(speed - _SPEED_NOMINAL) < _SPEED_SYNC_THR
+        step4 = "done"   if step3 == "done" and (speed_ok or ms in ("SYNCHRONIZING", "GRID_CONNECTED")) else \
+         "active"  if step3 == "done" and ms == "ROLLING" else \
+         "future"
+
+        # Step 5 : excitation alternateur → done quand AVR stabilisé
         vterm_ok = avr_mode != "OFF" and abs(avr_vt - avr_vset) < _VTERM_TOL_KV
-        step4 = "done"   if ms in ("SYNCHRONIZING", "GRID_CONNECTED") else \
-                "active"  if step3 == "done" and not vterm_ok else \
-                "done"    if step3 == "done" and vterm_ok else \
-                "future"
+        step5 = "done"   if step4 == "done" and (vterm_ok or ms in ("SYNCHRONIZING", "GRID_CONNECTED")) else \
+         "active"  if step4 == "done" and not vterm_ok else \
+         "future"
 
-        # Étape 5 : synchronisation
-        step5 = "done"   if ms == "GRID_CONNECTED" else \
-                "active"  if ms == "SYNCHRONIZING" else \
-                "future"
+        # Step 6 : synchronisation → done quand GRID_CONNECTED
+        step6 = "done"   if step5 == "done" and ms == "GRID_CONNECTED" else \
+         "active"  if step5 == "done" and ms == "SYNCHRONIZING" else \
+         "future"
 
-        # Étape 6 : couplage réseau
-        step6 = "done"   if ms == "GRID_CONNECTED" and power > 0.5 else \
-                "active"  if ms == "GRID_CONNECTED" else \
-                "future"
+        # Step 7 : couplage réseau → done quand puissance positive
+        step7 = "done"   if step6 == "done" and ms == "GRID_CONNECTED" and power > 0.5 else \
+         "active"  if step6 == "done" and ms == "GRID_CONNECTED" else \
+         "future"
 
         if tripped:
-            step1 = step2 = step3 = step4 = step5 = step6 = "tripped"
+            step1 = step2 = step3 = step4 = step5 = step6 = step7 = "tripped"
 
-        statuses = [step1, step2, step3, step4, step5, step6]
+        statuses = [step1, step2, step3, step4, step5, step6, step7]
 
         def pill_cls(s):
             return f"startup-pill startup-pill-{s}"
@@ -842,48 +900,152 @@ def register(app):
 
         # ── Indicateurs textuels ──
         ind1 = "OK • 0 interlock" if step1 == "done" else \
-               f"⚠ {len(warnings)} interlock(s)" if warnings else \
-               "⚠ TRIP actif"
+               f"⚠ {len(warnings)} interlock(s)" if warnings else "⚠ TRIP actif"
 
-        ind2 = f"V1 = {v1:.0f} %" if step2 in ("done", "active") else "En attente"
+        bp_spd_pct = min(100, round(speed / _BP_SPEED_THR * 100))
+        if step2 == "done":
+            ind2 = f"BP = {bp_admit:.0f} % ✓ — {speed:.0f} RPM"
+        elif step2 == "active":
+            ind2 = f"BP = {bp_admit:.0f} % — vitesse {speed:.0f} / {_BP_SPEED_THR:.0f} RPM ({bp_spd_pct} %)"
+        else:
+            ind2 = "En attente"
+
+        if step3 in ("done", "active"):
+            ind3 = f"V1 = {v1:.0f} %"
+        else:
+            ind3 = "En attente"
 
         spd_pct = min(100, round(speed / _SPEED_NOMINAL * 100))
-        ind3 = f"{speed:.0f} / {_SPEED_NOMINAL:.0f} RPM ({spd_pct} %)" \
-               if step3 in ("done", "active") else "En attente"
-
-        if step4 == "done":
-            ind4 = f"V_term {avr_vt:.1f} kV ✓"
-        elif step4 == "active":
-            if avr_mode == "OFF":
-                ind4 = "AVR OFF — basculer en VOLTAGE"
-            else:
-                ind4 = f"V_term {avr_vt:.1f} / {avr_vset:.1f} kV"
+        if step4 in ("done", "active"):
+            ind4 = f"{speed:.0f} / {_SPEED_NOMINAL:.0f} RPM ({spd_pct} %)"
         else:
             ind4 = "En attente"
 
-        ind5 = f"Hold 5 s — Δ = {abs(speed - _SPEED_NOMINAL):.0f} RPM" \
-               if step5 == "active" else \
-               "✓ Couplé" if step5 == "done" else "En attente"
+        if step5 == "done":
+            ind5 = f"V_term {avr_vt:.1f} kV ✓"
+        elif step5 == "active":
+            ind5 = "AVR OFF — activer VOLTAGE" if avr_mode == "OFF" \
+                   else f"V_term {avr_vt:.1f} / {avr_vset:.1f} kV"
+        else:
+            ind5 = "En attente"
 
-        ind6 = f"P = {power:.1f} MW" if step6 in ("done", "active") else "En attente"
+        ind6 = f"Δ vitesse = {abs(speed - _SPEED_NOMINAL):.0f} RPM — Hold 5 s" \
+               if step6 == "active" else \
+               "✓ Couplé au réseau" if step6 == "done" else "En attente"
+
+        ind7 = f"P = {power:.1f} MW" if step7 in ("done", "active") else "En attente"
+
+        # ── Détail pré-checks (step 1) ──
+        if tripped:
+            checks_detail = html.Div("⚡ TRIP actif — réinitialiser avant démarrage",
+                                     style={"color": "#ef4444", "fontSize": "10px",
+                                            "fontFamily": "Share Tech Mono"})
+        elif warnings:
+            checks_detail = html.Div([
+                html.Div([html.Span("⚠ ", style={"color": "#f59e0b"}),
+                          html.Span(w, style={"color": "#f59e0b", "fontSize": "10px",
+                                              "fontFamily": "Share Tech Mono"})],
+                         style={"marginBottom": "2px"})
+                for w in warnings
+            ])
+        else:
+            checks_detail = html.Div("✅ Prêt — tous systèmes nominaux",
+                                     style={"color": "#22c55e", "fontSize": "10px",
+                                            "fontFamily": "Share Tech Mono"})
+
+        # ── Gating séquentiel des boutons d'action ──
+        btn_bp_disabled  = (step2 != "active") or mode == "AUTO" or tripped
+        btn_v1_disabled  = (step2 != "done") or (step3 != "active") or mode == "AUTO" or tripped
+        btn_avr_disabled = (step5 != "active") or tripped
+
+        # ── Barres de progression contextuelles (visibles seulement si step active) ──
+        def prog_style(active, pct, color):
+            if not active:
+                return {"display": "none"}
+            pct = max(0, min(100, pct))
+            return {
+                "display": "block",
+                "background": f"linear-gradient(to right, {color} {pct:.0f}%, #0f2744 {pct:.0f}%)",
+                "height": "4px",
+                "borderRadius": "2px",
+                "marginTop": "5px",
+                "transition": "background 0.4s ease",
+            }
+
+        prog2_pct = max(bp_admit / _BP_ADMIT_THR, speed / _BP_SPEED_THR) * 100
+        prog2 = prog_style(step2 == "active", prog2_pct, "#f97316")
+        prog3 = prog_style(step3 == "active", (v1 / _V1_OPEN_TARGET) * 100, "#f97316")
+        prog4 = prog_style(step4 == "active", (speed / _SPEED_NOMINAL) * 100, "#22c55e")
+        prog5_pct = (avr_vt / avr_vset) * 100 if avr_vset > 0 and avr_mode != "OFF" else 0
+        prog5 = prog_style(step5 == "active", prog5_pct, "#a855f7")
 
         # ── Bandeau trip ──
         trip_style = {"display": "block"} if tripped else {"display": "none"}
 
-        # ── Barre globale et durée ──
+        # ── Barre globale (temps écoulé) ──
         prog_pct  = round(seq_prog * 100)
         bar_style = {"background": "#22c55e", "height": "100%",
-                     "transition": "width 0.5s ease",
-                     "width": f"{prog_pct}%"}
+                     "transition": "width 0.5s ease", "width": f"{prog_pct}%"}
         elapsed_s = round(seq_prog * _SEQ_DURATION_S)
         elapsed   = f"{elapsed_s} / {int(_SEQ_DURATION_S)} s" if seq_prog > 0 else "—"
 
         return (
             [pill_cls(s) for s in statuses] +
             [lbl_cls(s)  for s in statuses] +
-            [ind1, ind2, ind3, ind4, ind5, ind6,
+            [ind1, ind2, ind3, ind4, ind5, ind6, ind7,
+             checks_detail,
+             btn_bp_disabled, btn_v1_disabled, btn_avr_disabled,
+             prog2, prog3, prog4, prog5,
              trip_style, bar_style, elapsed]
         )
+
+    # ── Bouton action phase démarrage : Ouvrir vapeur barrage (bp_admit 100%) ──
+    @app.callback(
+        Output("ctrl-ph-bp-admit-status", "children"),
+        Input("ctrl-ph-btn-bp-admit", "n_clicks"),
+        State("store-operator-name", "data"),
+        prevent_initial_call=True,
+    )
+    def ph_open_bp_admit(n, operator):
+        if not n:
+            return no_update
+        op = operator or "Opérateur"
+        data, err = _post("/control/valve", {"valve_bp_admit": 100.0, "operator": op})
+        if err:
+            return _status_err(f"Erreur : {err}")
+        return _status_ok("BP admit → 100 % ✓")
+
+    # ── Bouton action phase démarrage : Ouvrir V1 (15 %) ────────────
+    @app.callback(
+        Output("ctrl-ph-v1-status", "children"),
+        Input("ctrl-ph-btn-v1", "n_clicks"),
+        State("store-operator-name", "data"),
+        prevent_initial_call=True,
+    )
+    def ph_open_v1(n, operator):
+        if not n:
+            return no_update
+        op = operator or "Opérateur"
+        data, err = _post("/control/valve", {"valve_v1": 100.0, "operator": op})
+        if err:
+            return _status_err(f"Erreur : {err}")
+        return _status_ok("V1 → 100 % ✓")
+
+    # ── Bouton action phase démarrage : Activer AVR ──────────────────
+    @app.callback(
+        Output("ctrl-ph-avr-status", "children"),
+        Input("ctrl-ph-btn-avr", "n_clicks"),
+        State("store-operator-name", "data"),
+        prevent_initial_call=True,
+    )
+    def ph_activate_avr(n, operator):
+        if not n:
+            return no_update
+        op = operator or "Opérateur"
+        _, err = _post("/control/avr/mode", {"mode": "VOLTAGE", "operator": op})
+        if err:
+            return _status_err(f"Erreur AVR : {err}")
+        return _status_ok("AVR VOLTAGE activé ✓")
 
     # ── Alarmes (acquittement + rafraîchissement) ────────────────────
     @app.callback(

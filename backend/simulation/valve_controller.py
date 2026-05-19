@@ -63,6 +63,14 @@ VALVE_CONFIGS: dict[str, ValveConfig] = {
         default     = 80.0,    # nominale ~80%
         warning_low = 10.0,
     ),
+    "bp_admit": ValveConfig(
+        name        = "Vanne BP-Admit — Admission vapeur de barrage",
+        min_opening = 0.0,
+        max_opening = 100.0,
+        ramp_rate   = 10.0,    # ouverture rapide acceptable (faible pression)
+        default     = 0.0,     # fermée au repos (s'ouvre uniquement au démarrage)
+        warning_low = 0.0,
+    ),
 }
 
 

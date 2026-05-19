@@ -65,10 +65,11 @@ class EmergencyTripCommand(BaseModel):
 
 class ValveControlCommand(BaseModel):
     """Commande manuelle d'une vanne — refusée si mode AUTO."""
-    valve_v1: Optional[float] = Field(None, ge=0, le=100)
-    valve_v2: Optional[float] = Field(None, ge=0, le=100)
-    valve_v3: Optional[float] = Field(None, ge=0, le=100)
-    valve_bp: Optional[float] = Field(None, ge=0, le=100)
+    valve_v1:       Optional[float] = Field(None, ge=0, le=100)
+    valve_v2:       Optional[float] = Field(None, ge=0, le=100)
+    valve_v3:       Optional[float] = Field(None, ge=0, le=100)
+    valve_bp:       Optional[float] = Field(None, ge=0, le=100)
+    valve_bp_admit: Optional[float] = Field(None, ge=0, le=100)
     operator: str = "Opérateur"
 
 

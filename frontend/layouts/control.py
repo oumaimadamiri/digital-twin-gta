@@ -264,28 +264,103 @@ def _sequences_card():
 
 
 def _startup_phase_card():
-    _STEPS = [
-        (1, "Pré-checks"),
-        (2, "Ouverture V1"),
-        (3, "Accélération vitesse"),
-        (4, "Excitation alternateur"),
-        (5, "Synchronisation"),
-        (6, "Couplage réseau"),
-    ]
+    _btn_style_base = {
+        "fontSize": "10px", "padding": "4px 10px",
+        "marginTop": "5px", "fontFamily": "Share Tech Mono",
+    }
 
-    def _step(idx, label):
+    def _action_btn(label, btn_id, color="#60a5fa", outline=False):
+        if outline:
+            s = {**_btn_style_base, "borderColor": color, "color": color}
+            cls = "btn btn-outline"
+        else:
+            s = {**_btn_style_base, "background": color,
+                 "border": f"1px solid {color}", "color": "#0a101a"}
+            cls = "btn"
+        return html.Button(label, id=btn_id, className=cls, style=s, disabled=True)
+
+    def _action_status(status_id):
+        return html.Div(id=status_id, style={
+            "fontSize": "10px", "color": "#94a3b8",
+            "fontFamily": "Share Tech Mono", "marginTop": "3px",
+        })
+
+    def _step(idx, label, connector=True, action=None, with_progress=False):
+        content = [
+            html.Div(label, id=f"ctrl-startup-lbl-{idx}",
+                     className="startup-step-label startup-step-label-future"),
+            html.Div(id=f"ctrl-startup-ind-{idx}",
+                     className="startup-step-indicator", children="En attente"),
+        ]
+        if with_progress:
+            content.append(html.Div(id=f"ctrl-startup-prog-{idx}",
+                                    style={"display": "none"}))
+        if action is not None:
+            content.append(action)
         return html.Div([
             html.Div([
-                html.Div(id=f"ctrl-startup-pill-{idx}", className="startup-pill startup-pill-future"),
-                html.Div(className="startup-connector") if idx < 6 else None,
+                html.Div(id=f"ctrl-startup-pill-{idx}",
+                         className="startup-pill startup-pill-future"),
+                html.Div(className="startup-connector") if connector else None,
             ], className="startup-step-graphic"),
-            html.Div([
-                html.Div(label, id=f"ctrl-startup-lbl-{idx}",
-                         className="startup-step-label startup-step-label-future"),
-                html.Div(id=f"ctrl-startup-ind-{idx}", className="startup-step-indicator",
-                         children="En attente"),
-            ], className="startup-step-content"),
+            html.Div(content, className="startup-step-content"),
         ], className="startup-step")
+
+    # ── Étape 1 : Pré-checks — info uniquement ──────────────────────
+    step1 = _step(1, "Pré-checks",
+                  action=html.Div(id="ctrl-startup-checks-detail",
+                                  style={"marginTop": "4px"}))
+
+    # ── Étape 2 : Vapeur de barrage (bp_admit) ───────────────────────
+    step2 = _step(2, "Base Pression démarrage", with_progress=True,
+                  action=html.Div([
+                      _action_btn("↗ Ouvrir vapeur barrage (100 %)",
+                                  "ctrl-ph-btn-bp-admit", "#f97316"),
+                      _action_status("ctrl-ph-bp-admit-status"),
+                  ]))
+
+    # ── Étape 3 : Ouverture V1 ───────────────────────────────────────
+    step3 = _step(3, "Ouverture V1", with_progress=True,
+                  action=html.Div([
+                      _action_btn("↗ Ouvrir V1 (100 %)", "ctrl-ph-btn-v1", "#f97316"),
+                      _action_status("ctrl-ph-v1-status"),
+                  ]))
+
+    # ── Étape 4 : Accélération vitesse — passive (pas de bouton) ────
+    step4 = _step(4, "Accélération vitesse", with_progress=True)
+
+    # ── Étape 5 : Excitation alternateur ────────────────────────────
+    step5 = _step(5, "Excitation alternateur", with_progress=True,
+                  action=html.Div([
+                      _action_btn("⚡ Activer AVR", "ctrl-ph-btn-avr", "#a855f7"),
+                      _action_status("ctrl-ph-avr-status"),
+                  ]))
+
+    # ── Étape 6 : Synchronisation ────────────────────────────────────
+    step6 = _step(6, "Synchronisation",
+                  action=html.Div([
+                      html.Button("🔄 Synchroniser réseau", id="ctrl-btn-grid-sync",
+                                  className="btn",
+                                  style={**_btn_style_base,
+                                         "background": "#22c55e",
+                                         "border": "1px solid #22c55e",
+                                         "color": "#0a101a"},
+                                  disabled=True),
+                  ]))
+
+    # ── Étape 7 : Couplage réseau ────────────────────────────────────
+    step7 = _step(7, "Couplage réseau", connector=False,
+                  action=html.Div([
+                      html.Button("⏏ Découpler", id="ctrl-btn-grid-disconnect",
+                                  className="btn btn-outline",
+                                  style={**_btn_style_base,
+                                         "borderColor": "#f97316", "color": "#f97316"},
+                                  disabled=True),
+                      html.Div(id="ctrl-grid-status", style={
+                          "fontSize": "10px", "color": "#a855f7",
+                          "fontFamily": "Share Tech Mono", "marginTop": "3px",
+                      }),
+                  ]))
 
     return _card(
         _section_header("PHASE DE DÉMARRAGE", "#22c55e"),
@@ -293,7 +368,8 @@ def _startup_phase_card():
             html.Div("⚠ TRIP ACTIF — Reset requis avant démarrage",
                      className="startup-trip-banner"),
         ]),
-        html.Div([_step(i, lbl) for i, lbl in _STEPS], className="startup-timeline"),
+        html.Div([step1, step2, step3, step4, step5, step6, step7],
+                 className="startup-timeline"),
         html.Hr(style={"borderColor": "#0f2744", "margin": "10px 0 6px"}),
         html.Div([
             html.Div(id="ctrl-startup-bar", className="startup-bar-fill"),
@@ -780,7 +856,7 @@ def _interlocks_card():
 
 def _protections_card():
     return _card(
-        _section_header("PROTECTIONS TIER-1", "#ef4444"),
+        _section_header("PROTECTIONS AUTOMATIQUES", "#ef4444"),
         html.Div(id="ctrl-protections-list", children=[
             html.Div("Chargement…", style={
                 "fontSize": "11px", "color": "#64748b", "fontFamily": "Share Tech Mono",
@@ -836,7 +912,6 @@ def layout():
 
                     _subsection_divider("ÉLECTRIQUE", "⚡", "#a855f7"),
                     _avr_card(),
-                    _grid_sync_card(),
 
                     _subsection_divider("AUXILIAIRES", "⚙", "#22c55e"),
                     _attemperator_card(),

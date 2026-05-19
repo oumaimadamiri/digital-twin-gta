@@ -147,6 +147,9 @@ class Controller:
             target="mode", value_before=before, value_after=mode,
         )
         logger.info(f"[Controller] Mode → {mode}")
+        if mode == "AUTO" and before == "MANUAL" and self.machine_state == "STOPPED" and not self.tripped:
+            logger.info("[Controller] AUTO depuis STOPPED → lancement séquence start_turbine")
+            self.start_sequence("start_turbine", operator=operator, current_power_mw=0.0)
         return {"accepted": True, "message": f"Mode changé : {before} → {mode}"}
 
     def set_setpoint(

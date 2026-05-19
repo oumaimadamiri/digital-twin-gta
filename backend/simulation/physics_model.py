@@ -251,15 +251,19 @@ class PhysicsModel:
     # VITESSE TURBINE
     # ──────────────────────────────────────────
 
-    def compute_turbine_speed(self, pressure_hp: float, valve_v1: float) -> float:
+    def compute_turbine_speed(self, pressure_hp: float, valve_v1: float,
+                              valve_bp_admit: float = 0.0) -> float:
         """
         Vitesse turbine (RPM).
-        En régime permanent la vitesse est quasi-constante à 6435 RPM.
-        Légère variation autour du nominal proportionnelle à √(P_hp/P_nom) × V1.
-        (La swing equation est réservée aux transitoires — hors scope régime permanent)
+        V1 (admission HP) est le pilote principal de la vitesse nominale.
+        bp_admit (vapeur de barrage) permet d'atteindre ~3000 RPM avant ouverture V1.
+        Le max() garantit que la contribution dominante l'emporte sans saut.
         """
-        p_ratio = pressure_hp / self.nominal["pressure_hp"]
-        speed   = self.NOMINAL_SPEED * math.sqrt(p_ratio) * (valve_v1 / 100.0)
+        BP_ADMIT_SPEED_TARGET = 3000.0   # RPM atteints en vapeur de barrage seule
+        p_ratio     = pressure_hp / self.nominal["pressure_hp"]
+        v1_contrib  = self.NOMINAL_SPEED * math.sqrt(p_ratio) * (valve_v1 / 100.0)
+        bp_contrib  = BP_ADMIT_SPEED_TARGET * math.sqrt(p_ratio) * (valve_bp_admit / 100.0)
+        speed       = max(v1_contrib, bp_contrib)
         return round(max(0.0, speed), 1)
 
     # ──────────────────────────────────────────
@@ -523,7 +527,7 @@ class PhysicsModel:
     def compute_all(self, pressure_hp: float, temperature_hp: float,
                     steam_flow_hp: float, valve_v1: float,
                     valve_v2: float, valve_v3: float,
-                    valve_bp: float) -> dict:
+                    valve_bp: float, valve_bp_admit: float = 0.0) -> dict:
         """
         Calcule tous les paramètres dérivés à partir des 8 entrées primaires.
 
@@ -537,7 +541,7 @@ class PhysicsModel:
         active_power   = self.compute_active_power(
             steam_flow_hp, pressure_hp, temperature_hp, valve_v1
         )
-        turbine_speed  = self.compute_turbine_speed(pressure_hp, valve_v1)
+        turbine_speed  = self.compute_turbine_speed(pressure_hp, valve_v1, valve_bp_admit)
         pressure_bp    = self.compute_bp_pressure(
             steam_flow_hp, temperature_hp, valve_v1
         )
