@@ -37,7 +37,17 @@ logger = logging.getLogger("gta.controller")
 # ─────────────────────────────────────────────
 # États machine (cycle de vie de la turbine)
 # ─────────────────────────────────────────────
-MACHINE_STATES = ("STOPPED", "ROLLING", "SYNCHRONIZING", "GRID_CONNECTED", "TRIPPED")
+MACHINE_STATES  = ("STOPPED", "ROLLING", "SYNCHRONIZING", "GRID_CONNECTED", "TRIPPED")
+STARTUP_PHASES  = (
+    "PRE_CHECKS",      # posture post-AU, pré-checks OK
+    "BARRAGE_OPENED",  # vapeur de barrage ouverte, rotor en rotation lente
+    "V1_OPENING",      # V1 en cours d'ouverture
+    "ACCELERATING",    # V1 ouverte, rampe de vitesse vers nominale
+    "READY_TO_EXCITE", # vitesse nominale atteinte, prêt à exciter l'alternateur
+    "EXCITED",         # AVR actif, tension en montée
+    "SYNCHRONIZING",   # en attente de couplage réseau
+    "GRID_CONNECTED",  # machine couplée
+)
 
 
 class Controller:
@@ -97,6 +107,11 @@ class Controller:
 
         # Chrono pour la phase SYNCHRONIZING
         self._sync_entry_time: float | None = None
+
+        # Phase de démarrage manuel (orthogonale à machine_state)
+        self.startup_phase:     str         = "GRID_CONNECTED"   # cohérent avec machine_state initial
+        self._phase_entered_at: float       = time.time()
+        self._phase_message:    str | None  = None
 
     # ──────────────────────────────────────────────────────
     # COMMANDES MODE / SETPOINTS / GAINS
@@ -282,11 +297,30 @@ class Controller:
             protection_system.reset()
         except ImportError:
             pass
+        # Remettre les vannes en posture de démarrage propre
+        try:
+            valve_controller.reset_after_trip()
+        except Exception:
+            pass
+        # Couper l'excitation
+        try:
+            from simulation.avr_controller import avr_controller as _avr
+            _avr.shutdown(operator=operator)
+        except Exception:
+            pass
+        # Libérer le rotor du réseau
+        try:
+            from simulation.dynamics import rotor_dynamics
+            rotor_dynamics.unlock_from_grid()
+        except ImportError:
+            pass
+        # Remettre la phase de démarrage à zéro
+        self._advance_phase("PRE_CHECKS")
         data_manager.log_operator_action(
             user=operator, action_type="TRIP_RESET",
             target="trip", value_before="TRIPPED", value_after="STOPPED",
         )
-        logger.info(f"[Controller] Trip réinitialisé → machine STOPPED")
+        logger.info(f"[Controller] Trip réinitialisé → machine STOPPED, phase PRE_CHECKS")
         return {"accepted": True, "message": "Trip réinitialisé — machine prête pour démarrage."}
 
     # ──────────────────────────────────────────────────────
@@ -413,7 +447,12 @@ class Controller:
             self._last_pressure_hp_bar_cache = current_pressure_hp_bar
         self._last_freq_hz_cache = current_freq_hz if current_freq_hz is not None else DROOP_FREQ_REF_HZ
 
-        if self.mode != "AUTO" or self.tripped:
+        if self.tripped:
+            return
+
+        if self.mode != "AUTO":
+            # En MANUAL, avancer uniquement les transitions passives de phase de démarrage
+            self._tick_manual_phase(dt, current_speed_rpm)
             return
 
         # Vérifier les transitions d'état automatiques
@@ -584,6 +623,104 @@ class Controller:
         logger.info("[Controller] → STOPPED (machine à l'arrêt)")
 
     # ──────────────────────────────────────────────────────
+    # PHASE DE DÉMARRAGE MANUEL
+    # ──────────────────────────────────────────────────────
+
+    def _advance_phase(self, new_phase: str, message: str | None = None) -> None:
+        self.startup_phase     = new_phase
+        self._phase_entered_at = time.time()
+        self._phase_message    = message
+        logger.info(f"[Controller] startup_phase → {new_phase}")
+
+    def _tick_manual_phase(self, dt: float, speed_rpm: float) -> None:
+        """Transitions passives (automatiques) en mode MANUAL — ne touche pas aux vannes."""
+        nominal = NOMINAL["turbine_speed"]
+        if self.startup_phase == "V1_OPENING":
+            if valve_controller._valves["v1"].current >= 80.0:
+                self._advance_phase("ACCELERATING")
+        elif self.startup_phase == "ACCELERATING":
+            if abs(speed_rpm - nominal) < SPEED_SYNC_THRESHOLD_RPM:
+                self._advance_phase("READY_TO_EXCITE")
+
+    def cmd_open_barrage(self, operator: str = "Opérateur") -> dict:
+        """Étape 2 : ouvre la vanne vapeur de barrage (bp_admit → 100%)."""
+        if self.tripped:
+            return {"accepted": False, "message": "Trip actif — effectuez un Reset Trip."}
+        if self.startup_phase != "PRE_CHECKS":
+            return {"accepted": False, "message": f"Phase actuelle : {self.startup_phase}. Séquence non en PRE_CHECKS."}
+        valve_controller.set_valve("bp_admit", 100.0)
+        self._advance_phase("BARRAGE_OPENED")
+        data_manager.log_operator_action(
+            user=operator, action_type="STARTUP_PHASE",
+            target="bp_admit", value_before="PRE_CHECKS", value_after="BARRAGE_OPENED",
+        )
+        return {"accepted": True, "message": "Vapeur de barrage ouverte — attendre vitesse ~3000 RPM."}
+
+    def cmd_open_v1(self, operator: str = "Opérateur") -> dict:
+        """Étape 3 : ouvre V1 (admission HP) — interlock bp_admit ≥ 80%."""
+        if self.tripped:
+            return {"accepted": False, "message": "Trip actif."}
+        if self.startup_phase != "BARRAGE_OPENED":
+            return {"accepted": False, "message": f"Phase actuelle : {self.startup_phase}. Requise : BARRAGE_OPENED."}
+        if valve_controller._valves["bp_admit"].current < 80.0:
+            return {"accepted": False, "message": f"Vapeur de barrage insuffisante ({valve_controller._valves['bp_admit'].current:.0f}% < 80%). Attendez."}
+        # Transition machine STOPPED → ROLLING (active la dynamique rotor)
+        self._enter_rolling(operator=operator)
+        self.mode = "MANUAL"   # _enter_rolling force AUTO — on remet MANUAL
+        # Ouvrir V1 via valve_controller (l'interlock bp_admit est maintenant satisfait)
+        valve_controller.set_valve("v1", 100.0)
+        self._advance_phase("V1_OPENING")
+        data_manager.log_operator_action(
+            user=operator, action_type="STARTUP_PHASE",
+            target="v1", value_before="BARRAGE_OPENED", value_after="V1_OPENING",
+        )
+        return {"accepted": True, "message": "V1 en ouverture — phase ACCÉLÉRATION en cours."}
+
+    def cmd_excite(self, operator: str = "Opérateur") -> dict:
+        """Étape 5 : active l'AVR (excitation alternateur)."""
+        if self.startup_phase != "READY_TO_EXCITE":
+            return {"accepted": False, "message": f"Phase actuelle : {self.startup_phase}. Requise : READY_TO_EXCITE."}
+        try:
+            from simulation.avr_controller import avr_controller as _avr
+            _avr.set_mode("VOLTAGE", operator=operator)
+        except Exception as e:
+            return {"accepted": False, "message": f"Erreur AVR : {e}"}
+        self._advance_phase("EXCITED")
+        data_manager.log_operator_action(
+            user=operator, action_type="STARTUP_PHASE",
+            target="avr", value_before="READY_TO_EXCITE", value_after="EXCITED",
+        )
+        return {"accepted": True, "message": "AVR activé — tension en montée vers consigne."}
+
+    def cmd_synchronize_arm(self, operator: str = "Opérateur") -> dict:
+        """Étape 6 : arme la synchronisation (ROLLING → SYNCHRONIZING)."""
+        if self.startup_phase != "EXCITED":
+            return {"accepted": False, "message": f"Phase actuelle : {self.startup_phase}. Requise : EXCITED."}
+        nominal = NOMINAL["turbine_speed"]
+        if abs(self._last_speed_rpm_cache - nominal) > SPEED_SYNC_THRESHOLD_RPM:
+            delta = abs(self._last_speed_rpm_cache - nominal)
+            return {"accepted": False, "message": f"Vitesse hors fenêtre synchrone (Δ={delta:.0f} RPM > {SPEED_SYNC_THRESHOLD_RPM} RPM)."}
+        self._enter_synchronizing()
+        self._advance_phase("SYNCHRONIZING")
+        data_manager.log_operator_action(
+            user=operator, action_type="STARTUP_PHASE",
+            target="machine_state", value_before="EXCITED", value_after="SYNCHRONIZING",
+        )
+        return {"accepted": True, "message": "Synchronisation armée — cliquez Coupler réseau pour finaliser."}
+
+    def cmd_couple_grid(self, operator: str = "Opérateur") -> dict:
+        """Étape 7 : couplage réseau (SYNCHRONIZING → GRID_CONNECTED)."""
+        if self.startup_phase != "SYNCHRONIZING":
+            return {"accepted": False, "message": f"Phase actuelle : {self.startup_phase}. Requise : SYNCHRONIZING."}
+        self._enter_grid_connected(operator=operator)
+        self._advance_phase("GRID_CONNECTED")
+        data_manager.log_operator_action(
+            user=operator, action_type="STARTUP_PHASE",
+            target="machine_state", value_before="SYNCHRONIZING", value_after="GRID_CONNECTED",
+        )
+        return {"accepted": True, "message": "Machine couplée au réseau — PID puissance actif."}
+
+    # ──────────────────────────────────────────────────────
     # LOGIQUE SÉQUENCE PUISSANCE
     # ──────────────────────────────────────────────────────
 
@@ -635,6 +772,8 @@ class Controller:
         return {
             "control_mode":        self.mode,
             "machine_state":       self.machine_state,
+            "startup_phase":       self.startup_phase,
+            "startup_phase_message": self._phase_message,
             "setpoint_power_mw":   self._setpoint_power_mw,
             "setpoint_speed_rpm":  self._setpoint_speed_rpm,
             "pid_kp":              self._pid.kp,

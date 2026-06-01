@@ -218,6 +218,8 @@ class FakeAPI:
             computed_nom["valve_v2_target"] = state_nom["valve_v2"]
             computed_nom["valve_v3_target"] = state_nom["valve_v3"]
             computed_nom["valve_bp_target"] = state_nom["valve_bp"]
+            computed_nom["valve_bp_admit"]        = 0.0
+            computed_nom["valve_bp_admit_target"] = 0.0
 
             params_nom = GTAParameters(
                 timestamp = datetime.utcnow() + timedelta(hours=TIMEZONE_OFFSET),
@@ -264,6 +266,7 @@ class FakeAPI:
             computed_sim["valve_v2_target"]       = self._vc._valves["v2"].target
             computed_sim["valve_v3_target"]       = self._vc._valves["v3"].target
             computed_sim["valve_bp_target"]       = self._vc._valves["bp"].target
+            computed_sim["valve_bp_admit"]        = state_sim.get("valve_bp_admit", 0.0)
             computed_sim["valve_bp_admit_target"] = self._vc._valves["bp_admit"].target
 
             # Appliquer les deltas du scénario sur les champs auxiliaires (non-primaires)

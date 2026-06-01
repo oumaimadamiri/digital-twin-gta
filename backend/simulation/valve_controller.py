@@ -144,6 +144,13 @@ class ValveController:
                     "message":  "Sécurité : valve BP ne peut pas fermer si V1 > 10%. Fermez d'abord V1.",
                 }
 
+        # ── Règle 2 : V1 > 10% requiert vapeur de barrage ouverte ≥ 80% ──
+        if valve_id == "v1" and clamped > 10.0 and self._valves["bp_admit"].current < 80.0:
+            return {
+                "accepted": False,
+                "message":  "Sécurité : V1 > 10% interdit sans vapeur de barrage (bp_admit ≥ 80%). Ouvrez d'abord la vanne de barrage.",
+            }
+
         # ── Alerte : fermeture rapide V1 ──
         if valve_id == "v1" and clamped < 20.0 and valve.current > 60.0:
             logger.warning("[ValveCtrl] Fermeture rapide V1 — risque choc thermique")
@@ -174,6 +181,15 @@ class ValveController:
         self._valves["v1"].current = 0.0
         self._valves["v1"].target  = 0.0
         logger.critical("[ValveCtrl] FERMETURE D'URGENCE V1 !")
+
+    def reset_after_trip(self) -> None:
+        """Remet V1 et bp_admit à zéro après un AU — posture de démarrage propre."""
+        for k in ("v1", "bp_admit"):
+            self._valves[k].current = 0.0
+            self._valves[k].target  = 0.0
+        for k in ("v2", "v3", "bp"):
+            self._valves[k].target = self._valves[k].config.default
+        logger.info("[ValveCtrl] Vannes réinitialisées post-trip")
 
     def update(self, dt: float = 0.5):
         for valve in self._valves.values():

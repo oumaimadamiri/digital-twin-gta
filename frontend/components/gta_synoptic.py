@@ -224,6 +224,9 @@ def _build_synoptic_div(data: dict, static_ids: bool, show_table: bool = True, i
     vc2      = _vc(v2,  "#60a5fa")
     vc3      = _vc(v3,  "#60a5fa")
     vc_bp    = _vc(v_bp,"#3b82f6")
+    bp_admit     = data.get("valve_bp_admit", 0.0)
+    bp_admit_tgt = data.get("valve_bp_admit_target", 0.0)
+    vc_bp_admit  = _vc(bp_admit, "#f59e0b")
 
     # ── Couleurs table État Système ──────────────────────────────────────────
     c_tbl_php  = "#ef4444" if alm_php else "#f97316"
@@ -250,8 +253,9 @@ def _build_synoptic_div(data: dict, static_ids: bool, show_table: bool = True, i
     c_tbl2_casing = "#ef4444" if casing    > 8.0   else "#10b981"
 
     flow_dur = f"{max(0.3, 120.0/max(1, q_hp)):.2f}s" if q_hp > 5 else "99999s"
-    rpm_norm = min(max((speed - 5500)/1500, 0), 1)
-    spin_dur = f"{max(0.4, 2.0 - rpm_norm*1.6):.2f}s"
+    rpm_norm = min(max(speed / 6435.0, 0), 1)
+    rpm_curve = rpm_norm ** 0.7
+    spin_dur = f"{max(0.3, 4.0 - rpm_curve*3.7):.2f}s"
     turb_cls = "vibrate" if speed > 6500 else ""
 
     def sid(name):
@@ -299,15 +303,17 @@ def _build_synoptic_div(data: dict, static_ids: bool, show_table: bool = True, i
         tag_alt_bottom  = ""
 
     if static_ids:
-        vsym_v1  = _valve_symbol_static(330, 248, v1, v1_tgt, "V1",  vc1,  "syn-v1",  20)
-        vsym_v2  = _valve_symbol_static(280, 175, v2, v2_tgt, "V2",  vc2,  "syn-v2",  13, orient="left")
-        vsym_v3  = _valve_symbol_static(280, 335, v3, v3_tgt, "V3",  vc3,  "syn-v3",  13, orient="left")
-        vsym_vbp = _valve_symbol_static(656, 415, v_bp, v_bp_tgt,"VBP", vc_bp,"syn-vbp", 18, orient="right")
+        vsym_v1      = _valve_symbol_static(330, 248, v1, v1_tgt, "V1",  vc1,  "syn-v1",  20)
+        vsym_v2      = _valve_symbol_static(280, 175, v2, v2_tgt, "V2",  vc2,  "syn-v2",  13, orient="left")
+        vsym_v3      = _valve_symbol_static(280, 335, v3, v3_tgt, "V3",  vc3,  "syn-v3",  13, orient="left")
+        vsym_vbp     = _valve_symbol_static(656, 415, v_bp, v_bp_tgt,"VBP", vc_bp,"syn-vbp", 18, orient="right")
+        vsym_bp_admit = _valve_symbol_static(165, 310, bp_admit, bp_admit_tgt, "BARRAGE", vc_bp_admit, "syn-bp-admit", 12)
     else:
-        vsym_v1  = _valve_symbol(330, 248, v1, v1_tgt, "V1",  vc1,  20)
-        vsym_v2  = _valve_symbol(280, 175, v2, v2_tgt, "V2",  vc2,  13, orient="left")
-        vsym_v3  = _valve_symbol(280, 335, v3, v3_tgt, "V3",  vc3,  13, orient="left")
-        vsym_vbp = _valve_symbol(656, 415, v_bp, v_bp_tgt,"VBP", vc_bp, 18, orient="right")
+        vsym_v1      = _valve_symbol(330, 248, v1, v1_tgt, "V1",  vc1,  20)
+        vsym_v2      = _valve_symbol(280, 175, v2, v2_tgt, "V2",  vc2,  13, orient="left")
+        vsym_v3      = _valve_symbol(280, 335, v3, v3_tgt, "V3",  vc3,  13, orient="left")
+        vsym_vbp     = _valve_symbol(656, 415, v_bp, v_bp_tgt,"VBP", vc_bp, 18, orient="right")
+        vsym_bp_admit = _valve_symbol(165, 310, bp_admit, bp_admit_tgt, "BARRAGE", vc_bp_admit, 12)
 
     # Table ÉTAT SYSTÈME — conditionnelle (masquée sur page Simulation)
     _table_svg = f"""
@@ -563,6 +569,11 @@ def _build_synoptic_div(data: dict, static_ids: bool, show_table: bool = True, i
   <line x1="186" y1="248" x2="220" y2="248"
         stroke="#f97316" stroke-width="10" stroke-linecap="round"
         class="flow-hp"/>
+
+  <!-- ════ VAPEUR DE BARRAGE (bp_admit) ════ -->
+  <line x1="165" y1="248" x2="165" y2="298"
+        stroke="#f59e0b" stroke-width="5" stroke-linecap="round"/>
+  {vsym_bp_admit}
 
   <!-- ════ ESV ════ -->
   <g>

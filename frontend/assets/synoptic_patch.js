@@ -302,21 +302,33 @@ window.patchGtaSynoptic = function(data) {
     _setText("syn-v2-tgt", "Cible:" + v2_tgt.toFixed(0) + "%");
     _setText("syn-v3-tgt", "Cible:" + v3_tgt.toFixed(0) + "%");
     _setText("syn-vbp-tgt", "Cible:" + vbp_tgt.toFixed(0) + "%");
-    _setText("syn-v1-pct",  (data.valve_v1 ?? 100).toFixed(0) + "%");
-    _setText("syn-v2-pct",  (data.valve_v2 ?? 100).toFixed(0) + "%");
-    _setText("syn-v3-pct",  (data.valve_v3 ?? 100).toFixed(0) + "%");
-    _setText("syn-vbp-pct", (data.valve_bp ?? 80).toFixed(0) + "%");
+    _setText("syn-v1-pct",       (data.valve_v1 ?? 100).toFixed(0) + "%");
+    _setText("syn-v2-pct",       (data.valve_v2 ?? 100).toFixed(0) + "%");
+    _setText("syn-v3-pct",       (data.valve_v3 ?? 100).toFixed(0) + "%");
+    _setText("syn-vbp-pct",      (data.valve_bp ?? 80).toFixed(0) + "%");
+
+    /* Vanne vapeur de barrage (bp_admit) */
+    const bp_admit_pct = data.valve_bp_admit ?? 0;
+    const bp_admit_tgt = data.valve_bp_admit_target ?? 0;
+    _setText("syn-bp-admit-pct", bp_admit_pct.toFixed(0) + "%");
+    _setText("syn-bp-admit-tgt", "Cible:" + bp_admit_tgt.toFixed(0) + "%");
+    const bpCircle = document.getElementById('syn-bp-admit-circle');
+    if (bpCircle) {
+        bpCircle.style.stroke = bp_admit_pct >= 80 ? '#22c55e'
+                              : bp_admit_pct > 5   ? '#f59e0b' : '#475569';
+    }
 
     // ── Animations dynamiques — turbine / réducteur / flux ────────────────────
 
-    /* Condition d'arrêt : débit < 5 T/h OU vanne V1 < 5% OU vitesse < 100 RPM */
+    /* Condition de rotation : vitesse > 50 RPM ET (V1 ou bp_admit ouvertes) */
     const v1_pct   = data.valve_v1 ?? 100;
-    const isTurning = q_hp > 5 && v1_pct > 5 && speed > 100;
+    const isTurning = speed > 50 && (v1_pct > 5 || bp_admit_pct > 20);
 
-    /* Durée de rotation : ralentit avec la vitesse, s'arrête si isTurning=false */
-    const rpm_norm = Math.min(Math.max((speed - 5500) / 1500, 0), 1);
-    const spinDur  = isTurning
-        ? (Math.max(0.4, 2.0 - rpm_norm * 1.6)).toFixed(2) + 's'
+    /* Durée de rotation couvrant la plage complète 0→6435 RPM avec courbe perceptuelle */
+    const rpm_norm  = Math.min(Math.max(speed / 6435, 0), 1);
+    const rpm_curve = Math.pow(rpm_norm, 0.7);
+    const spinDur   = isTurning
+        ? (Math.max(0.3, 4.0 - rpm_curve * 3.7)).toFixed(2) + 's'
         : '9999s';   // durée infinie = quasi-arrêt visuel
 
     document.querySelectorAll('.spin').forEach(el => {

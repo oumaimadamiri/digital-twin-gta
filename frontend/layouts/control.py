@@ -5,6 +5,7 @@ Zone A : Supervision & Commande  |  Zone B : Régulation  |  Zone C : Sécurité
 from dash import html, dcc
 from components.sidebar import create_sidebar
 from components.sliders import slider_row
+from components.gta_synoptic import create_gta_synoptic_static
 
 
 # ── Helpers mise en page ──────────────────────────────────────────────
@@ -375,6 +376,44 @@ def _startup_phase_card():
             html.Div(id="ctrl-startup-bar", className="startup-bar-fill"),
         ], className="startup-bar-track"),
         html.Div(id="ctrl-startup-elapsed", className="startup-elapsed", children="—"),
+    )
+
+
+def _synoptic_card():
+    return _card(
+        _section_header("SYNOPTIQUE & VITESSE", "#3b82f6"),
+        html.Div([
+            html.Div([
+                html.Div([
+                    _label("VITESSE TURBINE"),
+                    html.Div(id="ctrl-rpm-live", children="0 RPM", style={
+                        "fontSize": "22px", "fontWeight": "700",
+                        "fontFamily": "Share Tech Mono", "color": "#22c55e",
+                    }),
+                ], style={"flex": "1"}),
+                html.Div([
+                    _label("PRESSION VAPEUR DE BARRAGE"),
+                    html.Div(id="ctrl-bp-pressure-live", children="— bar", style={
+                        "fontSize": "18px", "fontWeight": "700",
+                        "fontFamily": "Share Tech Mono", "color": "#f59e0b",
+                    }),
+                    html.Div(id="ctrl-bp-admit-live", children="bp_admit = 0 %", style={
+                        "fontSize": "10px", "fontFamily": "Share Tech Mono",
+                        "color": "#9ca3af", "marginTop": "1px",
+                    }),
+                ], style={"flex": "1", "marginLeft": "16px"}),
+            ], style={"display": "flex", "alignItems": "flex-start", "marginBottom": "6px"}),
+            html.Div(id="ctrl-rpm-bar", style={
+                "height": "4px", "background": "#0f2744",
+                "borderRadius": "3px", "marginBottom": "8px",
+                "transition": "background 0.4s ease",
+            }),
+        ]),
+        html.Div(
+            id="gta-synoptic-ctrl",
+            children=create_gta_synoptic_static(show_table=False, interactive=False),
+            style={"overflowX": "auto"},
+        ),
     )
 
 
@@ -899,6 +938,7 @@ def layout():
                 html.Div([
                     _mode_card(),
                     _sequences_card(),
+                    _synoptic_card(),
                     _startup_phase_card(),
                     _valves_card(),
                 ], style={"flex": "7 1 0", "minWidth": "0"}),

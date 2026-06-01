@@ -67,6 +67,9 @@ class GTAParameters(BaseModel):
     # Vanne sortie BP → condenseur
     valve_bp: float = Field(..., ge=0, le=100, description="Vanne sortie BP condenseur (%)")
     valve_bp_target: float = Field(80.0, ge=0, le=100, description="Consigne Vanne BP (%)")
+    # Vanne admission vapeur de barrage (démarrage)
+    valve_bp_admit: float = Field(0.0, ge=0, le=100, description="Vanne vapeur de barrage (%)")
+    valve_bp_admit_target: float = Field(0.0, ge=0, le=100, description="Consigne vanne vapeur de barrage (%)")
 
     # ── Auxiliaires & Mécanique ──
     vib_bearing_fwd: float = Field(2.1, description="Vibration Palier Avant (mm/s)")

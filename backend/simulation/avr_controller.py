@@ -35,13 +35,13 @@ class AVRController:
     """Régulateur d'excitation IEEE Type 1 simplifié — singleton."""
 
     def __init__(self):
-        self.mode        = "VOLTAGE"          # OFF / VOLTAGE / COSPHI / MANUAL
+        self.mode        = "OFF"               # OFF / VOLTAGE / COSPHI / MANUAL — OFF au boot : excitation requiert action explicite
         self.k_a         = AVR_K_A
         self.t_a         = AVR_T_A
         self.v_set_kv    = AVR_VOLTAGE_SETPOINT
         self.cosphi_set  = AVR_COSPHI_SETPOINT
-        self.e_fd_pu     = 1.0                # tension excitation initiale (p.u. → équilibre nominal)
-        self.e_fd_manual = 1.0                # valeur opérateur en mode MANUAL
+        self.e_fd_pu     = 0.0                # excitation nulle au boot (alternateur non excité)
+        self.e_fd_manual = 0.0                # valeur opérateur en mode MANUAL
         self.saturated   = False
 
         self._last_v_term = float(NOMINAL.get("voltage", 10.5))
@@ -205,6 +205,15 @@ class AVRController:
             value_before=str(before), value_after=str(round(e_fd, 4)),
         )
         return {"accepted": True, "e_fd_manual": self.e_fd_manual}
+
+    def shutdown(self, operator: str = "SYSTÈME") -> None:
+        """Coupe l'excitation — appelé depuis reset_trip() après AU."""
+        self.mode        = "OFF"
+        self.e_fd_pu     = 0.0
+        self.e_fd_manual = 0.0
+        self.oel_active  = self.uel_active = self.scl_active = False
+        self._oel_timer  = self._scl_timer = 0.0
+        logger.info(f"[AVR] Excitation coupée par {operator}")
 
     # ──────────────────────────────────────────────────────
     # SNAPSHOT — fusionné dans computed_sim et /control/state

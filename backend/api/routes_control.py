@@ -215,6 +215,53 @@ def reset_degradation(operator: str = Query("Opérateur")):
     return degradation.reset(operator=operator)
 
 
+# ── Séquence de démarrage manuel (pas-à-pas) ─────────────────────────────────
+
+@router.post("/startup/barrage")
+def startup_open_barrage(operator: str = Query("Opérateur")):
+    """Étape 2 : ouvre la vanne vapeur de barrage (bp_admit → 100%)."""
+    result = controller.cmd_open_barrage(operator=operator)
+    if not result.get("accepted"):
+        raise HTTPException(status_code=400, detail=result["message"])
+    return result
+
+
+@router.post("/startup/v1")
+def startup_open_v1(operator: str = Query("Opérateur")):
+    """Étape 3 : ouvre V1 (interlock bp_admit ≥ 80%)."""
+    result = controller.cmd_open_v1(operator=operator)
+    if not result.get("accepted"):
+        raise HTTPException(status_code=400, detail=result["message"])
+    return result
+
+
+@router.post("/startup/excite")
+def startup_excite(operator: str = Query("Opérateur")):
+    """Étape 5 : active l'AVR — excitation alternateur."""
+    result = controller.cmd_excite(operator=operator)
+    if not result.get("accepted"):
+        raise HTTPException(status_code=400, detail=result["message"])
+    return result
+
+
+@router.post("/startup/sync-arm")
+def startup_sync_arm(operator: str = Query("Opérateur")):
+    """Étape 6 : arme la synchronisation réseau (ROLLING → SYNCHRONIZING)."""
+    result = controller.cmd_synchronize_arm(operator=operator)
+    if not result.get("accepted"):
+        raise HTTPException(status_code=400, detail=result["message"])
+    return result
+
+
+@router.post("/startup/couple")
+def startup_couple(operator: str = Query("Opérateur")):
+    """Étape 7 : couplage réseau (SYNCHRONIZING → GRID_CONNECTED)."""
+    result = controller.cmd_couple_grid(operator=operator)
+    if not result.get("accepted"):
+        raise HTTPException(status_code=400, detail=result["message"])
+    return result
+
+
 # ── Couplage / Découplage réseau ──────────────────────────────────────────────
 
 @router.post("/grid/synchronize")
