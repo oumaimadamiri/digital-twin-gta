@@ -56,7 +56,7 @@ class Controller:
     def __init__(self):
         self.mode        = "MANUAL"
         self.tripped     = False
-        self.machine_state = "GRID_CONNECTED"   # défaut : machine en exploitation
+        self.machine_state = "STOPPED"   # état initial : machine à l'arrêt
 
         # Consignes
         self._setpoint_power_mw:        float | None = None
@@ -109,7 +109,7 @@ class Controller:
         self._sync_entry_time: float | None = None
 
         # Phase de démarrage manuel (orthogonale à machine_state)
-        self.startup_phase:     str         = "GRID_CONNECTED"   # cohérent avec machine_state initial
+        self.startup_phase:     str         = "PRE_CHECKS"   # état initial : prêt pour démarrage
         self._phase_entered_at: float       = time.time()
         self._phase_message:    str | None  = None
 
@@ -413,9 +413,20 @@ class Controller:
             return {"accepted": False, "message": "Aucune séquence en cours."}
         name     = self._sequence_name
         progress = self.get_sequence_progress() or 0.0
+        was_starting = (self._sequence_state == "STARTING")
         self._sequence_state = "IDLE"
         self._sequence_t0    = None
         self._sequence_name  = None
+        # Si annulation d'un démarrage avant couplage réseau → retour STOPPED
+        if was_starting and self.machine_state not in ("GRID_CONNECTED",):
+            self.machine_state = "STOPPED"
+            self._pid.reset()
+            self._pid_speed.reset()
+            self._pid_pressure.reset()
+            try:
+                valve_controller.emergency_close()
+            except Exception:
+                pass
         data_manager.log_operator_action(
             user=operator, action_type="SEQUENCE_CANCEL", target=name,
             value_before=f"progress={round(progress, 3)}", value_after="CANCELLED",
@@ -539,11 +550,18 @@ class Controller:
 
         elif self.machine_state == "GRID_CONNECTED":
             # Fin de séquence stop → machine arrêtée
+            # Exige AVR=OFF ou trip pour éviter transition parasite si excitation transitoirement nulle
             if (self._sequence_state == "IDLE"
                     and self._sequence_name is None
                     and current_power_mw < 0.5
                     and valve_controller._valves["v1"].current < 2.0):
-                self._enter_stopped()
+                try:
+                    from simulation.avr_controller import avr_controller as _avr_check
+                    avr_off = _avr_check.mode == "OFF"
+                except Exception:
+                    avr_off = True
+                if avr_off or self.tripped:
+                    self._enter_stopped()
 
     # ──────────────────────────────────────────────────────
     # TRANSITIONS D'ÉTAT (helpers internes)
@@ -611,6 +629,11 @@ class Controller:
         self.machine_state = "STOPPED"
         self._pid.reset()
         self._pid_speed.reset()
+        self._pid_pressure.reset()
+        self._sync_entry_time = None
+        self._setpoint_power_mw        = None
+        self._setpoint_speed_rpm       = None
+        self._setpoint_pressure_hp_bar = None
         try:
             from simulation.dynamics import rotor_dynamics
             rotor_dynamics.unlock_from_grid()
@@ -666,7 +689,9 @@ class Controller:
             return {"accepted": False, "message": f"Vapeur de barrage insuffisante ({valve_controller._valves['bp_admit'].current:.0f}% < 80%). Attendez."}
         # Transition machine STOPPED → ROLLING (active la dynamique rotor)
         self._enter_rolling(operator=operator)
-        self.mode = "MANUAL"   # _enter_rolling force AUTO — on remet MANUAL
+        # NOTE : _enter_rolling force mode=AUTO pour le governor vitesse.
+        # La séquence de démarrage manuel laisse mode=AUTO intentionnellement :
+        # le governor empêche l'emballement. Le bouton MANUAL reste disponible si besoin.
         # Ouvrir V1 via valve_controller (l'interlock bp_admit est maintenant satisfait)
         valve_controller.set_valve("v1", 100.0)
         self._advance_phase("V1_OPENING")
@@ -709,9 +734,36 @@ class Controller:
         return {"accepted": True, "message": "Synchronisation armée — cliquez Coupler réseau pour finaliser."}
 
     def cmd_couple_grid(self, operator: str = "Opérateur") -> dict:
-        """Étape 7 : couplage réseau (SYNCHRONIZING → GRID_CONNECTED)."""
+        """Étape 7 : couplage réseau (SYNCHRONIZING → GRID_CONNECTED).
+
+        Pré-conditions de synchronisation :
+          - Phase : SYNCHRONIZING
+          - machine_state : SYNCHRONIZING
+          - Excitation : AVR actif (mode != OFF)
+          - Fréquence   : 49.9 – 50.1 Hz
+          - Vitesse     : dans fenêtre SPEED_SYNC_THRESHOLD_RPM
+        """
         if self.startup_phase != "SYNCHRONIZING":
             return {"accepted": False, "message": f"Phase actuelle : {self.startup_phase}. Requise : SYNCHRONIZING."}
+        if self.machine_state == "GRID_CONNECTED":
+            return {"accepted": False, "message": "Machine déjà couplée au réseau."}
+        if self.machine_state != "SYNCHRONIZING":
+            return {"accepted": False, "message": f"État machine : {self.machine_state}. Requis : SYNCHRONIZING."}
+        # Vérification excitation
+        try:
+            from simulation.avr_controller import avr_controller as _avr
+            if _avr.mode == "OFF":
+                return {"accepted": False, "message": "Excitation requise avant couplage réseau. Activez l'AVR."}
+        except Exception:
+            pass
+        # Vérification fréquence
+        try:
+            from simulation.dynamics import rotor_dynamics as _rotor
+            freq = _rotor.frequency_hz
+            if not (49.9 <= freq <= 50.1):
+                return {"accepted": False, "message": f"Fréquence hors fenêtre ({freq:.2f} Hz). Plage requise : 49.9 – 50.1 Hz."}
+        except Exception:
+            pass
         self._enter_grid_connected(operator=operator)
         self._advance_phase("GRID_CONNECTED")
         data_manager.log_operator_action(

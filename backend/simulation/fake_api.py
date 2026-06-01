@@ -38,10 +38,13 @@ class FakeAPI:
 
         # Contrôleur d'actionneurs (rampe, sécurité, butées)
         self._vc = _valve_controller
-        # Sync positions initiales du contrôleur avec les valeurs nominales
-        for _key, _nom in [("v1","valve_v1"),("v2","valve_v2"),("v3","valve_v3"),("bp","valve_bp")]:
-            self._vc._valves[_key].current = NOMINAL.get(_nom, self._vc._valves[_key].config.default)
-            self._vc._valves[_key].target  = NOMINAL.get(_nom, self._vc._valves[_key].config.default)
+        # Vannes initialisées à l'arrêt (machine_state=STOPPED au boot)
+        for _key in ("v1", "v2", "v3", "bp_admit"):
+            self._vc._valves[_key].current = 0.0
+            self._vc._valves[_key].target  = 0.0
+        # BP reste au défaut (80%) — condenseur maintenu disponible
+        self._vc._valves["bp"].current = self._vc._valves["bp"].config.default
+        self._vc._valves["bp"].target  = self._vc._valves["bp"].config.default
 
         # État courant des paramètres primaires non-vanne (modifiables)
         self._state = {
@@ -72,7 +75,7 @@ class FakeAPI:
         self._last_nominal_power: float = 0.0
         # Puissance, vitesse et pression HP simulées du dernier tick — utilisées par les PIDs
         self._last_simulated_power:       float = 0.0
-        self._last_simulated_speed:       float = NOMINAL["turbine_speed"]
+        self._last_simulated_speed:       float = 0.0   # machine STOPPED au boot
         self._last_simulated_pressure_hp: float = NOMINAL["pressure_hp"]
 
         # Callback appelé à chaque nouveau snapshot
@@ -180,10 +183,12 @@ class FakeAPI:
             current_freq_hz=_rotor.frequency_hz,
         )
 
-        # AVR : intègre E_fd depuis les mesures du tick précédent (un tick de délai → pas de couplage circulaire)
+        # AVR : intègre E_fd depuis les mesures du tick précédent
+        # Au boot (last_params=None), utiliser 0.0 si STOPPED pour éviter biais nominal
+        _avr_v_default = 0.0 if _controller.machine_state in ("STOPPED", "TRIPPED") else NOMINAL.get("voltage", 10.5)
         _avr.update(
             dt,
-            v_term_kv  =getattr(self._last_params, "voltage",         NOMINAL.get("voltage",       10.5)),
+            v_term_kv  =getattr(self._last_params, "voltage",         _avr_v_default),
             cosphi     =getattr(self._last_params, "power_factor",     NOMINAL.get("power_factor",  0.85)),
             i_stator_a =getattr(self._last_params, "current_a",        0.0),
             q_mvar     =getattr(self._last_params, "reactive_power",   0.0),
@@ -194,42 +199,72 @@ class FakeAPI:
         self._vc.update(dt)
         actual = self._vc.get_positions()  # positions réelles après rampe {v1,v2,v3,bp}
         
-        # 1) État NOMINAL (Physique pure, sans scénarios, avec bruit minimal)
-        state_nom = {
-            "pressure_hp":    NOMINAL["pressure_hp"],
-            "temperature_hp": NOMINAL["temperature_hp"],
-            "steam_flow_hp":  NOMINAL["steam_flow_hp"],
-            "valve_v1":       NOMINAL["valve_v1"],
-            "valve_v2":       NOMINAL["valve_v2"],
-            "valve_v3":       NOMINAL["valve_v3"],
-            "valve_bp":       NOMINAL["valve_bp"],
-        }
-        # On n'ajoute pas de bruit sur les vannes si elles sont à 100% nominal
-        # pour éviter le biais vers le bas (car 100% est le maximum physique).
+        # 1) État NOMINAL — reflète l'état réel de la machine piloté par Contrôle-Commande
+        # Les vannes nominales = positions réelles (pas hard-codé sur NOMINAL)
+        actual_nom   = self._vc.get_positions()
+        machine_st   = _controller.machine_state
+
+        if machine_st in ("STOPPED", "TRIPPED"):
+            # Machine à l'arrêt : pas de débit admis, vannes selon leur position réelle
+            state_nom = {
+                "pressure_hp":    NOMINAL["pressure_hp"],    # chaudière maintient la pression
+                "temperature_hp": NOMINAL["temperature_hp"],
+                "steam_flow_hp":  0.0,
+                "valve_v1":       actual_nom.get("v1", 0.0),
+                "valve_v2":       actual_nom.get("v2", 0.0),
+                "valve_v3":       actual_nom.get("v3", 0.0),
+                "valve_bp":       actual_nom.get("bp",  NOMINAL["valve_bp"]),
+            }
+        else:
+            # Machine en marche : vannes réelles, paramètres vapeur nominaux
+            state_nom = {
+                "pressure_hp":    NOMINAL["pressure_hp"],
+                "temperature_hp": NOMINAL["temperature_hp"],
+                "steam_flow_hp":  NOMINAL["steam_flow_hp"],
+                "valve_v1":       actual_nom.get("v1", NOMINAL["valve_v1"]),
+                "valve_v2":       actual_nom.get("v2", NOMINAL["valve_v2"]),
+                "valve_v3":       actual_nom.get("v3", NOMINAL["valve_v3"]),
+                "valve_bp":       actual_nom.get("bp",  NOMINAL["valve_bp"]),
+            }
+
         state_nom_noisy = self._add_noise(state_nom)
+        # Pas de bruit sur les vannes à 100% (le max physique crée un biais vers le bas)
         for v in ["valve_v1", "valve_v2", "valve_v3"]:
             if state_nom[v] >= 100.0:
                 state_nom_noisy[v] = 100.0
-        
+
         try:
             computed_nom = self.physics.compute_all(**state_nom_noisy)
-            # Ajout des targets vannes nominaux
-            computed_nom["valve_v1_target"] = state_nom["valve_v1"]
-            computed_nom["valve_v2_target"] = state_nom["valve_v2"]
-            computed_nom["valve_v3_target"] = state_nom["valve_v3"]
-            computed_nom["valve_bp_target"] = state_nom["valve_bp"]
-            computed_nom["valve_bp_admit"]        = 0.0
-            computed_nom["valve_bp_admit_target"] = 0.0
+            # Targets vannes = cibles opérateur réelles (pas les valeurs NOMINAL hard-codées)
+            computed_nom["valve_v1_target"] = self._vc._valves["v1"].target
+            computed_nom["valve_v2_target"] = self._vc._valves["v2"].target
+            computed_nom["valve_v3_target"] = self._vc._valves["v3"].target
+            computed_nom["valve_bp_target"] = self._vc._valves["bp"].target
+            computed_nom["valve_bp_admit"]        = actual_nom.get("bp_admit", 0.0)
+            computed_nom["valve_bp_admit_target"] = self._vc._valves["bp_admit"].target
+            # État machine et AVR (nécessaire pour que le frontend affiche le bon état)
+            nom_ctrl = _controller.snapshot()
+            computed_nom["machine_state"]  = nom_ctrl.get("machine_state", "STOPPED")
+            computed_nom["avr_mode"]       = nom_ctrl.get("avr_mode", "OFF")
+            computed_nom["avr_e_fd_pu"]    = nom_ctrl.get("avr_e_fd_pu", 0.0)
+            computed_nom["tripped"]        = nom_ctrl.get("tripped", False)
+
+            # Status nominal calculé (pas NORMAL forcé) ; STOPPED → NORMAL par convention
+            status_nom = self._compute_status(computed_nom)
 
             params_nom = GTAParameters(
                 timestamp = datetime.utcnow() + timedelta(hours=TIMEZONE_OFFSET),
                 scenario  = None,
-                status    = StatusEnum.NORMAL,
+                status    = status_nom,
                 **computed_nom
             )
         except Exception as e:
             logger.error(f"Erreur lors de la création de params_nom: {e}")
             raise
+
+        # Réconciliation Trip ↔ Scénario : un AU coupe le scénario actif
+        if _controller.tripped and self._active_scenario is not None:
+            self.stop_scenario()
 
         # 2) État SIMULÉ (Vannes contrôlées avec rampe + Scénarios + Bruit)
         state_sim = self._state.copy()
@@ -377,9 +412,11 @@ class FakeAPI:
         deltas     = scenario.target_deltas
 
         if progress >= 1.0:
-            # Scénario terminé : retour progressif au nominal
+            # Scénario terminé : conserver le nom ce tick pour éviter race condition UI
+            finished_name = scenario.name
             self._active_scenario = None
-            return state, None
+            self._scenario_start_time = None
+            return state, finished_name
 
         if scenario.perturbation_type == "step":
             factor = 1.0  # application immédiate
@@ -418,7 +455,7 @@ class FakeAPI:
             sigma      = abs(value) * NOISE_LEVEL
             v_noisy    = value + random.gauss(0, sigma)
             # Contrainte de plage pour les vannes après ajout de bruit
-            if key in {"valve_v1", "valve_v2", "valve_v3"}:
+            if key in {"valve_v1", "valve_v2", "valve_v3", "valve_bp", "valve_bp_admit"}:
                 v_noisy = max(0.0, min(100.0, v_noisy))
             noisy[key] = v_noisy
         return noisy
@@ -426,6 +463,11 @@ class FakeAPI:
     def _compute_status(self, params: dict) -> StatusEnum:
         """Détermine le statut global (NORMAL / DEGRADED / CRITICAL)."""
         from core.config import THRESHOLDS, CRITICAL_MARGIN
+        # Machine à l'arrêt ou trippée → NORMAL par convention (valeurs hors seuils attendues)
+        machine_st = params.get("machine_state") or _controller.machine_state
+        if machine_st in ("STOPPED", "TRIPPED"):
+            return StatusEnum.NORMAL
+
         critical_count = 0
         warning_count  = 0
 

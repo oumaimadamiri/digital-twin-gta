@@ -573,7 +573,7 @@ class PhysicsModel:
         # ── Électrique (branche AVR dynamique vs formule algébrique legacy) ──
         from core.config import AVR_ENABLED, AVR_Q_SENSITIVITY, Q_TANH_SCALE_MVAR, NOMINAL
         from simulation.avr_controller import avr_controller as _avr
-        if AVR_ENABLED and _avr.mode != "OFF" and active_power > 0:
+        if AVR_ENABLED and _avr.mode != "OFF":
             e_fd      = _avr.e_fd_pu
             # V_term réagit à E_fd (sensibilité linéaire, ~±5% autour du nominal)
             v_term_kv = round(max(9.0, min(12.0,
@@ -581,7 +581,8 @@ class PhysicsModel:
             # cos φ dynamique : consigne AVR courante (évite le hardcode 0.85)
             cosphi_target = float(getattr(_avr, "cosphi_set", NOMINAL["power_factor"]))
             cosphi_target = max(0.70, min(0.99, cosphi_target))
-            q_base        = active_power * math.tan(math.acos(cosphi_target))
+            # q_base=0 si pas de production (SYNCHRONIZING) pour éviter NaN sur tan(acos)
+            q_base = active_power * math.tan(math.acos(cosphi_target)) if active_power > 0.1 else 0.0
             # Saturation tanh : régime linéaire pour petites excursions E_fd,
             # saturation douce à ±Q_TANH_SCALE_MVAR pour grandes excursions
             # (remplace l'ancien hard-clamp [-20, +35] MVAR)
@@ -606,6 +607,62 @@ class PhysicsModel:
         # ── Mécanique & Auxiliaires ──
         mech = self.compute_mechanical_auxiliaries(turbine_speed, temperature_hp, active_power)
 
+        # ── Gate machine_state : muter les valeurs sans sens à STOPPED/TRIPPED ──
+        # Importé ici (évite circular import au module-level)
+        try:
+            from simulation.controller import controller as _ctrl
+            from simulation.avr_controller import avr_controller as _avr_ref
+            is_running = _ctrl.machine_state in ("ROLLING", "SYNCHRONIZING", "GRID_CONNECTED")
+            is_excited = _avr_ref.mode != "OFF" and _avr_ref.e_fd_pu > 0.1
+        except Exception:
+            is_running = True   # mode dégradé : ne pas bloquer les calculs
+            is_excited = True
+
+        if not is_running:
+            # Valeurs mécaniques / thermiques à zéro quand turbine à l'arrêt
+            mech["vib_bearing_fwd"]    = 0.0
+            mech["vib_bearing_aft"]    = 0.0
+            mech["temp_bearing_fwd"]   = 25.0
+            mech["temp_bearing_aft"]   = 25.0
+            mech["axial_displacement"] = 0.0
+            mech["casing_expansion"]   = 0.0
+            mech["grid_frequency"]     = 0.0
+            mech["lube_oil_press"]     = 1.2   # pompe AUX maintient ~1.2 bar à l'arrêt
+            mech["lube_oil_temp"]      = 25.0
+            mech["lube_oil_temp_out"]  = 25.0
+            mech["lube_oil_filter_dp"] = 0.0
+            efficiency          = 0.0
+            p_bp_barillet       = 1.0       # barillet à pression atmosphérique
+            flow_condenser      = 0.0
+            bp_dist = {
+                "flow_condenseur": 0.0, "flow_barillet_in": 0.0,
+                "flow_chauffage_as": 0.0, "flow_surchauffeur": 0.0,
+            }
+            pressure_condenser_val = 1.013  # vide condenseur cassé → atmosphérique
+            active_power    = 0.0
+            power_factor    = 0.0
+            pressure_bp     = 1.013  # BP à pression atmosphérique
+            temperature_bp  = 25.0
+            flow_v1 = flow_v2 = flow_v3 = 0.0
+            charge_site     = 0.0
+            excedent_reseau = 0.0
+        else:
+            pressure_condenser_val = self.nominal["pressure_condenser"]
+
+        if not is_excited:
+            # Pas d'excitation → pas de tension ni de signaux électriques ni de puissance
+            elec = {
+                "apparent_power":     0.0,
+                "apparent_power_max": 41.0,
+                "reactive_power":     0.0,
+                "current_a":          0.0,
+                "voltage":            0.0,
+            }
+            power_factor    = 0.0
+            active_power    = 0.0   # sans excitation : 0 MW injectés réseau
+            charge_site     = 0.0
+            excedent_reseau = 0.0
+
         return {
             # Entrées primaires (arrondies)
             "pressure_hp":          round(pressure_hp, 2),
@@ -618,7 +675,7 @@ class PhysicsModel:
             # Sorties vapeur
             "steam_flow_condenser": flow_condenser,
             "pressure_bp_barillet": p_bp_barillet,
-            "pressure_condenser":   self.nominal["pressure_condenser"],  # 0.0064 bar fixe
+            "pressure_condenser":   pressure_condenser_val,
             # Turbine
             "turbine_speed":        turbine_speed,
             # Puissance
@@ -642,6 +699,8 @@ class PhysicsModel:
             "flow_barillet_in":    bp_dist["flow_barillet_in"],
             "flow_chauffage_as":   bp_dist["flow_chauffage_as"],
             "flow_surchauffeur":   bp_dist["flow_surchauffeur"],
+            # Champ legacy pour compatibilité affichage
+            "flow_condenseur":     bp_dist["flow_condenseur"],
             "charge_site":     round(charge_site, 2),
             "excedent_reseau": round(excedent_reseau, 2),
             # Ajouts mécaniques SCADA

@@ -9,28 +9,34 @@ STATUS_COLORS = {
 }
 
 _DEFAULTS = {
+    # État initial : machine à l'arrêt (STOPPED), avant démarrage
     "status":               "NORMAL",
+    # Source vapeur HP (externe à la turbine — présente même à l'arrêt)
     "pressure_hp":          60.0,
-    "temperature_hp":       486.0,
-    "steam_flow_hp":        120.0,
-    "pressure_bp_in":       4.5,
-    "temperature_bp":       226.0,
-    "pressure_bp_barillet": 3.0,
-    "steam_flow_condenser": 74.0,
-    "pressure_condenser":   0.0064,
-    "turbine_speed":        6435.0,
-    "efficiency":           58.0,
-    "active_power":         24.0,
-    "power_factor":         0.85,
-    "reactive_power":       21.4,
-    "apparent_power":       41.0,
-    "voltage":              10.5,
-    "current_a":            2254.0,
-    "valve_v1":             100.0,
-    "valve_v2":             100.0,
-    "valve_v3":             100.0,
-    "valve_bp":             80.0,
-    # Centrale Huile Lubrification
+    "temperature_hp":       440.0,
+    "steam_flow_hp":        0.0,
+    # BP
+    "pressure_bp_in":       1.0,
+    "temperature_bp":       100.0,
+    "pressure_bp_barillet": 1.0,    # ambiance (pas de vapeur en transit)
+    "steam_flow_condenser": 0.0,
+    "pressure_condenser":   1.013,  # vide cassé → pression atmosphérique
+    # Turbine
+    "turbine_speed":        0.0,
+    "efficiency":           0.0,
+    # Électrique — zéro sans excitation
+    "active_power":         0.0,
+    "power_factor":         0.0,
+    "reactive_power":       0.0,
+    "apparent_power":       0.0,
+    "voltage":              0.0,
+    "current_a":            0.0,
+    # Vannes — posture de repos
+    "valve_v1":             0.0,
+    "valve_v2":             0.0,
+    "valve_v3":             0.0,
+    "valve_bp":             80.0,   # sortie BP reste à 80% (évacuation)
+    # Centrale Huile Lubrification (système actif même à l'arrêt)
     "lube_oil_press":       1.5,
     "lube_oil_temp":        45.0,
     "lube_oil_temp_out":    60.0,
@@ -307,13 +313,13 @@ def _build_synoptic_div(data: dict, static_ids: bool, show_table: bool = True, i
         vsym_v2      = _valve_symbol_static(280, 175, v2, v2_tgt, "V2",  vc2,  "syn-v2",  13, orient="left")
         vsym_v3      = _valve_symbol_static(280, 335, v3, v3_tgt, "V3",  vc3,  "syn-v3",  13, orient="left")
         vsym_vbp     = _valve_symbol_static(656, 415, v_bp, v_bp_tgt,"VBP", vc_bp,"syn-vbp", 18, orient="right")
-        vsym_bp_admit = _valve_symbol_static(165, 310, bp_admit, bp_admit_tgt, "BARRAGE", vc_bp_admit, "syn-bp-admit", 12)
+        vsym_bp_admit = _valve_symbol_static(240, 426, bp_admit, bp_admit_tgt, "BP", vc_bp_admit, "syn-bp-admit", 12)
     else:
         vsym_v1      = _valve_symbol(330, 248, v1, v1_tgt, "V1",  vc1,  20)
         vsym_v2      = _valve_symbol(280, 175, v2, v2_tgt, "V2",  vc2,  13, orient="left")
         vsym_v3      = _valve_symbol(280, 335, v3, v3_tgt, "V3",  vc3,  13, orient="left")
         vsym_vbp     = _valve_symbol(656, 415, v_bp, v_bp_tgt,"VBP", vc_bp, 18, orient="right")
-        vsym_bp_admit = _valve_symbol(165, 310, bp_admit, bp_admit_tgt, "BARRAGE", vc_bp_admit, 12)
+        vsym_bp_admit = _valve_symbol(240, 426, bp_admit, bp_admit_tgt, "BP", vc_bp_admit, 12)
 
     # Table ÉTAT SYSTÈME — conditionnelle (masquée sur page Simulation)
     _table_svg = f"""
@@ -570,18 +576,13 @@ def _build_synoptic_div(data: dict, static_ids: bool, show_table: bool = True, i
         stroke="#f97316" stroke-width="10" stroke-linecap="round"
         class="flow-hp"/>
 
-  <!-- ════ VAPEUR DE BARRAGE (bp_admit) ════ -->
-  <line x1="165" y1="248" x2="165" y2="298"
-        stroke="#f59e0b" stroke-width="5" stroke-linecap="round"/>
-  {vsym_bp_admit}
-
   <!-- ════ ESV ════ -->
   <g>
     <rect x="220" y="236" width="30" height="24" rx="4"
           fill="#0a101a" stroke="#94a3b8" stroke-width="1"/>
     <text x="235" y="250" fill="#94a3b8" font-size="8" font-weight="700"
           text-anchor="middle">ESV</text>
-    <text x="235" y="259" fill="#10b981" font-size="7.5" text-anchor="middle">OPEN</text>
+    <text id="syn-esv-state" x="235" y="259" fill="#10b981" font-size="7.5" text-anchor="middle">OPEN</text>
   </g>
   <line x1="250" y1="248" x2="272" y2="248"
         stroke="#f97316" stroke-width="9" class="flow-hp"/>
@@ -874,9 +875,12 @@ def _build_synoptic_div(data: dict, static_ids: bool, show_table: bool = True, i
         text-anchor="middle">{p_bp_in:.1f} <tspan fill="#64748b" font-size="8" font-weight="400">bar</tspan></text>
   <text x="80" y="503" fill="#38bdf8" font-size="11" font-weight="700"
         text-anchor="middle">226 <tspan fill="#64748b" font-size="8" font-weight="400">°C</tspan></text>
-  <line x1="143" y1="472" x2="385" y2="358"
+  <line x1="143" y1="472" x2="229" y2="431"
         stroke="#38bdf8" stroke-width="2" stroke-dasharray="4,4" opacity="0.4"/>
-  <text x="180" y="412" fill="#38bdf8" font-size="8" opacity="0.6">
+  {vsym_bp_admit}
+  <line x1="251" y1="421" x2="385" y2="358"
+        stroke="#38bdf8" stroke-width="2" stroke-dasharray="4,4" opacity="0.4"/>
+  <text x="175" y="405" fill="#38bdf8" font-size="8" opacity="0.6">
     (démarrage uniquement)
   </text>
 

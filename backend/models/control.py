@@ -128,6 +128,11 @@ class CondVacuumSetpointCommand(BaseModel):
     operator: str = "Opérateur"
 
 
+class OperatorAction(BaseModel):
+    """Corps minimal pour les endpoints n'ayant besoin que du nom opérateur."""
+    operator: str = "Opérateur"
+
+
 class ControlState(BaseModel):
     mode:                    ControlMode   = ControlMode.MANUAL
     setpoint_power_mw:       Optional[float] = None

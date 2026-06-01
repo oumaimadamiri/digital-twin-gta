@@ -123,11 +123,11 @@ def register(app):
         Output("ctrl-valves-overlay",       "style"),
         Output("ctrl-avr-overlay",          "style"),
         Output("ctrl-regul-target-overlay", "style"),
-        # Regulation target radio sync
-        Output("ctrl-regul-target",         "value"),
         # Boutons grid
         Output("ctrl-btn-grid-sync",        "disabled"),
         Output("ctrl-btn-grid-disconnect",  "disabled"),
+        Output("ctrl-btn-grid-couple",      "disabled"),
+        Output("ctrl-sync-criteria",        "children"),
         # PID Power readouts
         Output("ctrl-pid-power-error-val",  "children"),
         Output("ctrl-pid-power-output-val", "children"),
@@ -146,12 +146,13 @@ def register(app):
         Output("ctrl-avr-cosphi-val",       "children"),
         Output("ctrl-avr-sat-badge",        "children"),
         Output("ctrl-avr-sat-badge",        "style"),
+        Output("ctrl-avr-grid-warning",     "style"),
         Input("ctrl-state-interval",        "n_intervals"),
         Input("url",                        "pathname"),
         prevent_initial_call=False,
     )
     def poll_control_state(n, pathname):
-        n_out = 29
+        n_out = 30
         if pathname != "/control":
             return (no_update,) * n_out
 
@@ -197,11 +198,40 @@ def register(app):
         valves_style     = _GREYED if mode == "AUTO"   else _ACTIVE
         avr_style        = _GREYED if machine_state != "GRID_CONNECTED" else _ACTIVE
         reg_target_style = _GREYED if machine_state != "GRID_CONNECTED" else _ACTIVE
+        # Avertissement AVR — visible uniquement en GRID_CONNECTED
+        avr_warn_style   = {"display": "block"} if machine_state == "GRID_CONNECTED" \
+                           else {"display": "none"}
 
         # ── Grid buttons — pilotés par startup_phase ──
-        startup_phase        = state.get("startup_phase", "PRE_CHECKS")
-        grid_sync_disabled       = startup_phase not in ("EXCITED", "SYNCHRONIZING") or tripped
+        startup_phase            = state.get("startup_phase", "PRE_CHECKS")
+        avr_mode_snap            = state.get("avr_mode", "OFF")
+        # Sync arm : disponible en phase EXCITED (avant SYNCHRONIZING)
+        grid_sync_disabled       = startup_phase != "EXCITED" or tripped
         grid_disconnect_disabled = machine_state != "GRID_CONNECTED"
+        # Couplage : disponible uniquement en phase SYNCHRONIZING avec excitation + fréquence OK
+        freq_snap  = state.get("grid_frequency", 0.0) or 0.0
+        freq_ok    = 49.9 <= freq_snap <= 50.1
+        excit_ok   = avr_mode_snap != "OFF"
+        couple_disabled = startup_phase != "SYNCHRONIZING" or not freq_ok or not excit_ok or tripped
+        # Critères de synchronisation affichés dans l'étape 6
+        _S_crit = {"fontFamily": "Share Tech Mono", "fontSize": "9px"}
+        sync_criteria_children = html.Div([
+            html.Div([
+                html.Span("✅ " if excit_ok else "❌ "),
+                html.Span(f"Excitation : {avr_mode_snap}",
+                          style={"color": "#22c55e" if excit_ok else "#ef4444"}),
+            ], style=_S_crit),
+            html.Div([
+                html.Span("✅ " if freq_ok else "❌ "),
+                html.Span(f"Fréquence : {freq_snap:.2f} Hz (49.9–50.1 Hz)",
+                          style={"color": "#22c55e" if freq_ok else "#f59e0b"}),
+            ], style=_S_crit),
+            html.Div([
+                html.Span("ℹ️ "),
+                html.Span("Cliquez « Armer synchronisation » quand vitesse nominale atteinte",
+                          style={"color": "#64748b"}),
+            ], style=_S_crit),
+        ])
 
         # ── PID Power ──
         pid_err = state.get("pid_error")
@@ -257,6 +287,9 @@ def register(app):
             }),
         ], style={"marginTop": "4px"}))
 
+        # ── AVR warning ──
+        # (avr_warn_style calculé dans la section Overlays ci-dessus)
+
         # ── AVR ──
         avr_vt   = state.get("avr_v_term")
         avr_efd  = state.get("avr_e_fd_pu")
@@ -280,14 +313,29 @@ def register(app):
             trip_banner_style, reset_btn_style,
             *step_classes,
             setpoints_style, valves_style, avr_style, reg_target_style,
-            reg_target,
             grid_sync_disabled, grid_disconnect_disabled,
+            couple_disabled, sync_criteria_children,
             power_err_str, power_out_str,
             speed_err_str, speed_out_str,
             seq_wrap, bar_style, seq_lbl,
             interlock_children,
             avr_vt_str, avr_efd_str, avr_cphi_str, sat_label, sat_style,
+            avr_warn_style,
         )
+
+    # ── Sync cible régulation au chargement (non écrasé chaque seconde) ──
+    @app.callback(
+        Output("ctrl-regul-target", "value"),
+        Input("url", "pathname"),
+        prevent_initial_call=False,
+    )
+    def sync_regul_target_on_load(pathname):
+        if pathname != "/control":
+            return no_update
+        state, err = _get("/control/state")
+        if err or not state:
+            return no_update
+        return state.get("regulation_target", "POWER")
 
     # ── Pré-remplir gains PID au chargement ─────────────────────────
     @app.callback(
@@ -375,7 +423,7 @@ def register(app):
         if not n:
             return no_update
         data, err = _post("/control/emergency/reset",
-                          params={"operator": operator or "Opérateur"})
+                          {"operator": operator or "Opérateur"})
         if err:
             return _status_err(f"Erreur : {err}")
         return _status_ok("✓ Trip réinitialisé.")
@@ -503,7 +551,7 @@ def register(app):
             data, err = _post("/control/sequence/stop",
                               {"sequence": "stop_turbine", "operator": op})
         elif triggered == "ctrl-btn-seq-cancel":
-            data, err = _post("/control/sequence/cancel", params={"operator": op})
+            data, err = _post("/control/sequence/cancel", {"operator": op})
         else:
             return no_update
         if err:
@@ -551,6 +599,14 @@ def register(app):
         if not n:
             return no_update
         op = operator or "Opérateur"
+        # Bloquer le mode OFF quand la machine est couplée au réseau
+        if mode == "OFF":
+            state_check, _ = _get("/control/state")
+            if (state_check or {}).get("machine_state") == "GRID_CONNECTED":
+                return _status_err(
+                    "⚠ Impossible de désexciter en GRID_CONNECTED — "
+                    "découpler la machine avant."
+                )
         _, err = _post("/control/avr/mode", {"mode": mode, "operator": op})
         if err:
             return _status_err(f"Mode AVR : {err}")
@@ -590,30 +646,27 @@ def register(app):
     @app.callback(
         Output("ctrl-grid-status", "children"),
         Input("ctrl-btn-grid-sync",       "n_clicks"),
+        Input("ctrl-btn-grid-couple",     "n_clicks"),
         Input("ctrl-btn-grid-disconnect", "n_clicks"),
         State("store-operator-name",      "data"),
         prevent_initial_call=True,
     )
-    def grid_action(n_sync, n_disc, operator):
+    def grid_action(n_sync, n_couple, n_disc, operator):
         op = operator or "Opérateur"
         triggered = ctx.triggered_id
         if triggered == "ctrl-btn-grid-sync":
-            # Router selon la startup_phase courante
-            state, err_state = _get("/control/state")
-            phase = (state or {}).get("startup_phase", "PRE_CHECKS")
-            if phase == "EXCITED":
-                data, err = _post("/control/startup/sync-arm", params={"operator": op})
-            elif phase == "SYNCHRONIZING":
-                data, err = _post("/control/startup/couple", params={"operator": op})
-            else:
-                data, err = _post("/control/grid/synchronize", params={"operator": op})
+            # Arme uniquement la synchronisation (EXCITED → SYNCHRONIZING)
+            data, err = _post("/control/startup/sync-arm", {"operator": op})
+        elif triggered == "ctrl-btn-grid-couple":
+            # Couplage réseau avec vérifications f/U/excitation (SYNCHRONIZING → GRID_CONNECTED)
+            data, err = _post("/control/startup/couple-grid", {"operator": op})
         elif triggered == "ctrl-btn-grid-disconnect":
-            data, err = _post("/control/grid/disconnect", params={"operator": op})
+            data, err = _post("/control/grid/disconnect", {"operator": op})
         else:
             return no_update
         if err:
             return _status_err(f"Erreur : {err}")
-        return _status_ok(f"✓ {data.get('message', 'OK')}")
+        return _status_ok(f"✓ {(data or {}).get('message', 'OK')}")
 
     # ── Désurchauffeur ───────────────────────────────────────────────
     @app.callback(
@@ -629,10 +682,14 @@ def register(app):
         data, err = _get("/control/attemperator")
         if err or not data:
             return "—", "—"
-        t   = data.get("attemp_setpoint_c")
+        # Affiche la T° HP mesurée (depuis le snapshot nominal) plutôt que la consigne
+        t_actual = data.get("attemp_current_temp")
+        if t_actual is None:
+            snap, _ = _get("/data/current")
+            t_actual = (snap or {}).get("temperature_hp")
         inj = data.get("attemp_injection_pct")
-        t_str   = f"{t:.0f} °C"    if t   is not None else "—"
-        inj_str = f"{inj:.1f} %"   if inj is not None else "—"
+        t_str   = f"{t_actual:.0f} °C" if t_actual is not None else "—"
+        inj_str = f"{inj:.1f} %"       if inj      is not None else "—"
         return t_str, inj_str
 
     @app.callback(
@@ -773,10 +830,8 @@ def register(app):
         new_inhibited = (btn_label == "Inhiber")
         _post(
             f"/control/protections/{name}/inhibit",
-            params={
-                "inhibited": "true" if new_inhibited else "false",
-                "operator":  operator or "Opérateur",
-            },
+            {"operator": operator or "Opérateur"},
+            {"inhibited": "true" if new_inhibited else "false"},
         )
         return no_update
 
@@ -832,11 +887,11 @@ def register(app):
         Output("ctrl-startup-bar",         "style"),
         Output("ctrl-startup-elapsed",     "children"),
         Input("ctrl-state-interval",  "n_intervals"),
-        Input("store-current-data",    "data"),
         Input("url",                   "pathname"),
+        State("store-current-data",    "data"),
         prevent_initial_call=False,
     )
-    def update_startup_phase(_n, current, pathname):
+    def update_startup_phase(_n, pathname, current):
         n_out = 32  # 7 pills + 7 labels + 7 ind + 1 checks + 3 btn + 4 prog + 3 banner/bar/elapsed
         if pathname != "/control":
             return [no_update] * n_out
@@ -915,65 +970,95 @@ def register(app):
             css = "done" if s == "done" else "active" if s == "active" else "future"
             return f"startup-step-label startup-step-label-{css}"
 
-        # ── Indicateurs textuels ──
-        ind1 = "OK • 0 interlock" if step1 == "done" else \
-               f"⚠ {len(warnings)} interlock(s)" if warnings else "⚠ TRIP actif"
+        # ── Indicateurs textuels — avec icônes lock/check/active ──
+        def _ind(status, done_txt, active_txt, locked_txt="🔒 Verrouillé — étape précédente requise"):
+            if status == "done":
+                return "✅ " + done_txt
+            if status == "active":
+                return active_txt
+            if status == "tripped":
+                return "⚡ TRIP"
+            return locked_txt
+
+        ind1 = _ind(step1,
+                    done_txt   = f"OK • {len(warnings)} interlock(s)" if warnings else "OK — tous systèmes nominaux",
+                    active_txt = f"⚠ {len(warnings)} interlock(s)" if warnings else "⚠ TRIP actif")
 
         bp_spd_pct = min(100, round(speed / _BP_SPEED_THR * 100))
-        if step2 == "done":
-            ind2 = f"BP = {bp_admit:.0f} % ✓ — {speed:.0f} RPM"
-        elif step2 == "active":
-            ind2 = f"BP = {bp_admit:.0f} % — vitesse {speed:.0f} / {_BP_SPEED_THR:.0f} RPM ({bp_spd_pct} %)"
-        else:
-            ind2 = "En attente"
+        ind2 = _ind(step2,
+                    done_txt   = f"BP = {bp_admit:.0f} % ✓ — {speed:.0f} RPM",
+                    active_txt = f"BP = {bp_admit:.0f} % — vitesse {speed:.0f} / {_BP_SPEED_THR:.0f} RPM ({bp_spd_pct} %)")
 
-        if step3 in ("done", "active"):
-            ind3 = f"V1 = {v1:.0f} %"
-        else:
-            ind3 = "En attente"
+        ind3 = _ind(step3,
+                    done_txt   = f"V1 = {v1:.0f} % ✓",
+                    active_txt = f"V1 = {v1:.0f} % (en ouverture…)")
 
         spd_pct = min(100, round(speed / _SPEED_NOMINAL * 100))
-        if step4 in ("done", "active"):
-            ind4 = f"{speed:.0f} / {_SPEED_NOMINAL:.0f} RPM ({spd_pct} %)"
-        else:
-            ind4 = "En attente"
+        ind4 = _ind(step4,
+                    done_txt   = f"{speed:.0f} RPM ✓ — vitesse nominale atteinte",
+                    active_txt = f"{speed:.0f} / {_SPEED_NOMINAL:.0f} RPM ({spd_pct} %)")
 
         if step5 == "done":
-            ind5 = f"V_term {avr_vt:.1f} kV ✓"
+            ind5 = f"✅ V_term {avr_vt:.1f} kV — excité"
         elif step5 == "active":
             ind5 = "AVR OFF — activer VOLTAGE" if avr_mode == "OFF" \
                    else f"V_term {avr_vt:.1f} / {avr_vset:.1f} kV"
+        elif step5 == "tripped":
+            ind5 = "⚡ TRIP"
         else:
-            ind5 = "En attente"
+            ind5 = "🔒 Verrouillé — vitesse nominale requise"
 
-        ind6 = f"Δ vitesse = {abs(speed - _SPEED_NOMINAL):.0f} RPM — Hold 5 s" \
-               if step6 == "active" else \
-               "✓ Couplé au réseau" if step6 == "done" else "En attente"
+        ind6 = _ind(step6,
+                    done_txt   = "✓ Synchro armée — coupler au réseau",
+                    active_txt = f"Δ vitesse = {abs(speed - _SPEED_NOMINAL):.0f} RPM — armer quand stable")
 
-        ind7 = f"P = {power:.1f} MW" if step7 in ("done", "active") else "En attente"
+        ind7 = _ind(step7,
+                    done_txt   = f"P = {power:.1f} MW — machine couplée",
+                    active_txt = f"P = {power:.1f} MW")
 
-        # ── Détail pré-checks (step 1) ──
+        # ── Détail pré-checks (step 1) — appel GET /control/pre-check ──
+        precheck_data, precheck_err = _get("/control/pre-check")
+        precheck_all_ok = (precheck_data or {}).get("all_ok", False)
+
         if tripped:
             checks_detail = html.Div("⚡ TRIP actif — réinitialiser avant démarrage",
                                      style={"color": "#ef4444", "fontSize": "10px",
                                             "fontFamily": "Share Tech Mono"})
-        elif warnings:
-            checks_detail = html.Div([
-                html.Div([html.Span("⚠ ", style={"color": "#f59e0b"}),
-                          html.Span(w, style={"color": "#f59e0b", "fontSize": "10px",
-                                              "fontFamily": "Share Tech Mono"})],
-                         style={"marginBottom": "2px"})
-                for w in warnings
-            ])
-        else:
-            checks_detail = html.Div("✅ Prêt — tous systèmes nominaux",
-                                     style={"color": "#22c55e", "fontSize": "10px",
+        elif precheck_err or not precheck_data:
+            checks_detail = html.Div("⚠ Impossible de récupérer les pré-checks",
+                                     style={"color": "#f59e0b", "fontSize": "10px",
                                             "fontFamily": "Share Tech Mono"})
+        else:
+            _S = {"fontFamily": "Share Tech Mono", "fontSize": "10px"}
+            rows = []
+            for c in precheck_data.get("checks", []):
+                ok = c.get("ok", False)
+                icon = "✅" if ok else "❌"
+                val_str = f"{c.get('value', '')} {c.get('unit', '')}".strip()
+                crit_str = c.get("crit", "")
+                rows.append(html.Tr([
+                    html.Td(icon, style={**_S, "width": "18px", "paddingRight": "4px"}),
+                    html.Td(c.get("name", ""), style={**_S, "color": "#94a3b8", "paddingRight": "8px"}),
+                    html.Td(val_str, style={**_S, "color": "#22c55e" if ok else "#ef4444",
+                                            "fontWeight": "700", "paddingRight": "6px"}),
+                    html.Td(f"({crit_str})", style={**_S, "color": "#475569"}),
+                ]))
+            all_ok_color = "#22c55e" if precheck_all_ok else "#ef4444"
+            all_ok_msg = "✅ Tous les pré-checks OK — prêt à démarrer" if precheck_all_ok \
+                         else "❌ Pré-checks non satisfaits — corriger avant de continuer"
+            checks_detail = html.Div([
+                html.Table(rows, style={"borderCollapse": "collapse", "width": "100%",
+                                        "marginBottom": "4px"}),
+                html.Div(all_ok_msg, style={**_S, "color": all_ok_color,
+                                             "fontWeight": "700", "marginTop": "4px"}),
+            ])
 
         # ── Gating séquentiel des boutons d'action — piloté par startup_phase ──
-        btn_bp_disabled  = (phase != "PRE_CHECKS")     or mode == "AUTO" or tripped
-        btn_v1_disabled  = (phase != "BARRAGE_OPENED") or mode == "AUTO" or tripped
-        btn_avr_disabled = (phase != "READY_TO_EXCITE") or tripped
+        btn_bp_disabled  = (phase != "PRE_CHECKS") or mode == "AUTO" or tripped \
+                           or not precheck_all_ok
+        btn_v1_disabled  = (phase != "BARRAGE_OPENED") or mode == "AUTO" or tripped \
+                           or not precheck_all_ok
+        btn_avr_disabled = (phase != "READY_TO_EXCITE") or tripped or not precheck_all_ok
 
         # ── Barres de progression contextuelles (visibles seulement si step active) ──
         def prog_style(active, pct, color):
@@ -1027,7 +1112,7 @@ def register(app):
         if not n:
             return no_update
         op = operator or "Opérateur"
-        data, err = _post("/control/startup/barrage", params={"operator": op})
+        data, err = _post("/control/startup/barrage", {"operator": op})
         if err:
             return _status_err(f"Erreur : {err}")
         return _status_ok("Vapeur barrage ouverte ✓")
@@ -1043,7 +1128,7 @@ def register(app):
         if not n:
             return no_update
         op = operator or "Opérateur"
-        data, err = _post("/control/startup/v1", params={"operator": op})
+        data, err = _post("/control/startup/v1", {"operator": op})
         if err:
             return _status_err(f"Erreur : {err}")
         return _status_ok("V1 en ouverture ✓")
@@ -1059,7 +1144,7 @@ def register(app):
         if not n:
             return no_update
         op = operator or "Opérateur"
-        _, err = _post("/control/startup/excite", params={"operator": op})
+        _, err = _post("/control/startup/excite", {"operator": op})
         if err:
             return _status_err(f"Erreur AVR : {err}")
         return _status_ok("AVR VOLTAGE activé ✓")
@@ -1153,43 +1238,3 @@ def register(app):
                                 style={"fontSize": "11px", "color": "#64748b",
                                        "fontFamily": "Share Tech Mono"})
 
-    # ── Synoptique /control — patch JS depuis store-simulation-data ──────
-    app.clientside_callback(
-        """function(data, pathname) {
-            if (pathname !== '/control') return window.dash_clientside.no_update;
-            if (!data || Object.keys(data).length === 0) return window.dash_clientside.no_update;
-            if (typeof window.patchGtaSynoptic === 'function')
-                window.patchGtaSynoptic(data);
-            return window.dash_clientside.no_update;
-        }""",
-        Output("syn-ctrl-patch-tick", "data"),
-        Input("store-simulation-data", "data"),
-        State("url", "pathname"),
-        prevent_initial_call=True,
-    )
-
-    # ── Affichage live RPM + pression vapeur de barrage ──────────────────
-    @app.callback(
-        Output("ctrl-rpm-live",         "children"),
-        Output("ctrl-rpm-bar",          "style"),
-        Output("ctrl-bp-pressure-live", "children"),
-        Output("ctrl-bp-admit-live",    "children"),
-        Input("store-simulation-data",  "data"),
-        State("url",                    "pathname"),
-        prevent_initial_call=False,
-    )
-    def update_ctrl_live(data, pathname):
-        if pathname != "/control" or not data:
-            return no_update, no_update, no_update, no_update
-        speed    = data.get("turbine_speed", 0.0) or 0.0
-        bp_pr    = data.get("pressure_bp_barillet") or data.get("pressure_bp_in") or 0.0
-        bp_open  = data.get("valve_bp_admit", 0.0) or 0.0
-        pct      = min(100.0, speed / 6435.0 * 100.0)
-        bar_style = {
-            "height": "4px", "borderRadius": "3px",
-            "background": f"linear-gradient(to right, #22c55e {pct:.1f}%, #0f2744 {pct:.1f}%)",
-            "transition": "background 0.4s ease",
-        }
-        bp_str   = f"{bp_pr:.1f} bar" if bp_pr > 0.1 else "— bar"
-        adm_str  = f"bp_admit = {bp_open:.0f} %"
-        return f"{speed:.0f} RPM", bar_style, bp_str, adm_str

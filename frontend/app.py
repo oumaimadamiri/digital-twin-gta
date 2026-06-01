@@ -62,11 +62,8 @@ app.layout = html.Div([
     dcc.Store(id="store-current-data",    data={}),
     dcc.Store(id="store-simulation-data", data={}),
     dcc.Store(id="store-history",         data=[]),
-    # Output factice du clientside_callback synoptique [FIX-5c]
-    # Le callback JS patche le SVG en place — ce store n'est jamais lu
+    # Output factice du clientside_callback synoptique — jamais relu côté Python
     dcc.Store(id="syn-patch-tick",        data=0),
-    # Même store factice pour la page /control
-    dcc.Store(id="syn-ctrl-patch-tick",   data=0),
 
     # Valeur = clé dans _SPARK_PARAMS (ex: "active_power", "pressure_hp"…)
     dcc.Store(id="store-spark-param",     data=None),

@@ -34,29 +34,41 @@ function _alarm(val, lo, hi) {
     return val < lo || val > hi;
 }
 
+/* ── Helper couleur vanne ─────────────────────────────────────────────── */
+function _valveStroke(pct) {
+    if (pct >= 80) return '#22c55e';   // ouvert → vert
+    if (pct >  5)  return '#f59e0b';   // partiel → orange
+    return '#475569';                   // fermé → gris
+}
+
 /* ── Patch principal ──────────────────────────────────────────────────── */
 window.patchGtaSynoptic = function(data) {
     if (!data) return;
 
-    /* ── Extraction des valeurs ── */
-    const p_hp    = data.pressure_hp          ?? 60.0;
-    const t_hp    = data.temperature_hp       ?? 486.0;
-    const q_hp    = data.steam_flow_hp        ?? 120.0;
-    const p_bp_in = data.pressure_bp_in       ?? 4.5;
-    const t_bp    = data.temperature_bp       ?? 226.0;
-    const p_bar_bp = data.pressure_bp_barillet ?? 3.0;
-    const q_cond  = data.steam_flow_condenser ?? 74.0;
-    const p_cond  = data.pressure_condenser   ?? 0.0064;
-    const speed   = data.turbine_speed        ?? 6435.0;
-    const eff     = data.efficiency           ?? 92.0;
-    const power   = data.active_power         ?? 24.0;
-    const pf      = data.power_factor         ?? 0.85;
-    const q_mvar  = data.reactive_power       ?? 21.4;
-    const s_mva   = data.apparent_power       ?? 41.0;
-    const voltage = data.voltage              ?? 10.5;
-    const i_a     = data.current_a            ?? 2254.0;
+    /* ── Gate machine_state ── (machine_state inclus dans le flux nominal depuis fake_api) */
+    const ms        = data.machine_state ?? "STOPPED";
+    const isRunning = ms === "ROLLING" || ms === "SYNCHRONIZING" || ms === "GRID_CONNECTED";
+
+    /* ── Extraction des valeurs ── (défauts = 0 : représentent machine à l'arrêt) */
+    const p_hp    = data.pressure_hp          ?? 60.0;   // source HP externe — présente même à l'arrêt
+    const t_hp    = data.temperature_hp       ?? 440.0;
+    const q_hp    = data.steam_flow_hp        ?? 0.0;
+    const p_bp_in = data.pressure_bp_in       ?? 1.0;
+    const t_bp    = data.temperature_bp       ?? 100.0;
+    const p_bar_bp = data.pressure_bp_barillet ?? 1.0;
+    const q_cond  = data.steam_flow_condenser ?? 0.0;
+    const p_cond  = data.pressure_condenser   ?? 1.013;
+    const speed   = data.turbine_speed        ?? 0.0;
+    const eff     = data.efficiency           ?? 0.0;
+    // Signaux électriques — le backend gère déjà le zérotage selon is_running/is_excited
+    const power   = data.active_power         ?? 0.0;
+    const pf      = data.power_factor         ?? 0.0;
+    const q_mvar  = data.reactive_power       ?? 0.0;
+    const s_mva   = data.apparent_power       ?? 0.0;
+    const voltage = data.voltage              ?? 0.0;
+    const i_a     = data.current_a            ?? 0.0;
     const status  = data.status               ?? "NORMAL";
-    const v_v1    = data.valve_v1             ?? 100.0;
+    const v_v1    = data.valve_v1             ?? 0.0;
     const v_bp    = data.valve_bp             ?? 80.0;
 
     /* ── Distribution flux BP — calculée localement ── */
@@ -86,6 +98,37 @@ window.patchGtaSynoptic = function(data) {
     const v3_tgt  = data.valve_v3_target      ?? (data.valve_v3 ?? 100);
     const vbp_tgt = data.valve_bp_target      ?? (data.valve_bp ?? 80);
 
+    /* ── Overrides selon état machine ──
+       Le backend gère déjà le zérotage (gates is_running/is_excited dans physics_model).
+       Ici on garde uniquement le gate isRunning comme défense en profondeur pour les
+       paramètres mécaniques/thermiques, en cas de donnée résiduelle invalide.
+       Les signaux électriques sont déjà corrects tels qu'envoyés par le backend.      */
+    const eff_d      = isRunning ? eff     : 0.0;
+    const vib_fwd_d  = isRunning ? vib_fwd : 0.0;
+    const vib_aft_d  = isRunning ? vib_aft : 0.0;
+    const temp_fwd_d = isRunning ? temp_fwd : 25.0;
+    const temp_aft_d = isRunning ? temp_aft : 25.0;
+    const axial_d    = isRunning ? axial   : 0.0;
+    const casing_d   = isRunning ? casing  : 0.0;
+    const p_bar_bp_d = isRunning ? p_bar_bp : 1.0;
+    const q_cond_d   = isRunning ? q_cond   : 0.0;
+    const p_cond_d   = isRunning ? p_cond   : 1.013;
+    const freq_d     = isRunning ? freq     : 0.0;
+    // Signaux électriques — valeurs directes du backend (déjà gérées côté serveur)
+    const power_d   = power;
+    const pf_d      = pf;
+    const q_mvar_d  = q_mvar;
+    const s_mva_d   = s_mva;
+    const voltage_d = voltage;
+    const i_a_d     = i_a;
+
+    /* ── ESV état ── */
+    const esvState = (ms === "STOPPED" || ms === "TRIPPED") ? "CLOSED" : "OPEN";
+    const esvColor = esvState === "OPEN" ? "#10b981" : "#ef4444";
+    _setText("syn-esv-state", esvState);
+    const esvEl = document.getElementById("syn-esv-state");
+    if (esvEl) esvEl.setAttribute("fill", esvColor);
+
     /* ── Couleurs statut ── */
     const STATUS_COL = { NORMAL: "#10b981", DEGRADED: "#f59e0b", CRITICAL: "#ef4444" };
     const sc = STATUS_COL[status] || "#10b981";
@@ -94,19 +137,17 @@ window.patchGtaSynoptic = function(data) {
     const alm_php  = _alarm(p_hp,  55, 65);
     const alm_thp  = _alarm(t_hp, 420, 500);
     const alm_qhp  = _alarm(q_hp, 100, 130);
-    const alm_spd  = _alarm(speed, 6300, 6550);
-    const alm_pow  = power > 30.0;
-    const alm_pf   = _alarm(pf, 0.82, 0.86);
-    const alm_eff  = eff < 51.0 || eff > 65.0;
-    const warn_eff = !alm_eff && (eff < 55.0 || eff > 61.0);
-    const alm_pbar_bp = p_bar_bp > 5.0;
-    const alm_ia   = i_a > 3000;
+    // Alarmes uniquement si la machine tourne (évite fausses alertes sur valeurs à 0)
+    const alm_spd  = isRunning && _alarm(speed, 6300, 6550);
+    const alm_pow  = isRunning && power > 30.0;
+    // cos φ et tension : alarmes seulement si la machine produit du courant
+    const alm_pf   = power > 0.5 && _alarm(pf, 0.82, 0.86);
+    const alm_eff  = isRunning && (eff < 51.0 || eff > 65.0);
+    const warn_eff = isRunning && !alm_eff && (eff < 55.0 || eff > 61.0);
+    const alm_pbar_bp = isRunning && p_bar_bp > 5.0;
+    const alm_ia   = isRunning && i_a > 3000;
 
-    const alt_col  = alm_pow ? "#ef4444" : (power > 24 ? "#f59e0b" : "#10b981");
-
-    /* ── Statut global ── */
-    _setText("syn-status", status);
-    _setFill("syn-status", sc);
+    const alt_col  = alm_pow ? "#ef4444" : (isRunning && power > 24 ? "#f59e0b" : "#10b981");
 
     /* ── Tags source HP ── */
     const phpValEl = document.getElementById("syn-php-val");
@@ -156,19 +197,6 @@ window.patchGtaSynoptic = function(data) {
         flameEl.style.animationPlayState = alm_thp ? "running" : "paused";
     }
 
-    /* ── Étapes turbine ── */
-    _setText("syn-hp-stages", `${p_hp.toFixed(0)}→${p_bp_in.toFixed(1)} bar`);
-    _setText("syn-bp-label",  `${p_bp_in.toFixed(1)} bar · ${t_bp.toFixed(0)}°C`);
-
-    /* ── Footer turbine ── */
-    _setText("syn-speed-val", speed.toFixed(0));
-    _setFill("syn-speed-val", alm_spd ? "#ef4444" : "#60a5fa");
-    _setText("syn-eff-val", eff.toFixed(1));
-    _setFill("syn-eff-val", alm_eff ? "#ef4444" : warn_eff ? "#f59e0b" : "#10b981");
-
-    _setText("syn-pbp-val",   p_bp_in.toFixed(2));
-    _setText("syn-qcond-val", q_cond.toFixed(0));
-
     /* ── Tag vitesse arbre ── */
     const spdTagEl = document.getElementById("syn-spd-val");
     if (spdTagEl) {
@@ -184,7 +212,7 @@ window.patchGtaSynoptic = function(data) {
     }
 
     /* ── Barillet BP ── */
-    _setText("syn-pbar-bp-val", `${p_bar_bp.toFixed(2)} `);
+    _setText("syn-pbar-bp-val", `${p_bar_bp_d.toFixed(2)} `);
     const bpBarRect = document.getElementById("syn-barillet-bp-rect");
     if (bpBarRect) {
         const col = alm_pbar_bp ? "#ef4444" : "#38bdf8";
@@ -201,9 +229,9 @@ window.patchGtaSynoptic = function(data) {
     _setText("syn-q-surchauffeur", q_surchauffeur.toFixed(1));
 
     /* ── Condenseur ── */
-    _setText("syn-pcond-val",  p_cond.toFixed(4));
+    _setText("syn-pcond-val",  p_cond_d.toFixed(4));
     _setText("syn-tbp-val",    t_bp.toFixed(0));
-    _setText("syn-qcond2-val", q_cond.toFixed(0));
+    _setText("syn-qcond2-val", q_cond_d.toFixed(0));
 
     /* ── Alternateur ── */
     const altRect = document.getElementById("syn-alt-rect");
@@ -212,36 +240,6 @@ window.patchGtaSynoptic = function(data) {
         altRect.setAttribute("filter", `url(#${alm_pow ? "gr" : "gg"})`);
     }
     _setFill("syn-alt-tilde", alt_col);
-
-    _setText("syn-power-val", power.toFixed(1));
-    _setFill("syn-power-val", alm_pow ? "#ef4444" : alt_col);
-    _setText("syn-qmvar-val", q_mvar.toFixed(1));
-    _setText("syn-smva-val",  s_mva.toFixed(1));
-    _setText("syn-pf-val", pf.toFixed(3));
-    _setFill("syn-pf-val", alm_pf ? "#ef4444" : "#fbbf24");
-
-    _setText("syn-ia-val", i_a.toFixed(0));
-    _setFill("syn-ia-val", alm_ia ? "#ef4444" : "#10b981");
-    _setText("syn-volt-val", voltage.toFixed(1));
-
-    /* ── Tag P sortie ── */
-    const poutValEl = document.getElementById("syn-pout-val");
-    if (poutValEl) {
-        const tspan = poutValEl.querySelector("tspan");
-        poutValEl.childNodes[0].textContent = power.toFixed(1) + " ";
-        if (tspan) tspan.textContent = "MW";
-        poutValEl.setAttribute("fill", alm_pow ? "#ef4444" : "#e2e8f0");
-    }
-    const poutRect = document.getElementById("syn-pout-rect");
-    if (poutRect) {
-        poutRect.setAttribute("fill",   alm_pow ? "rgba(239,68,68,0.12)" : "rgba(15,23,42,0.75)");
-        poutRect.setAttribute("stroke", alm_pow ? "#ef4444" : "#1e3a5f");
-    }
-    const poutGroup = document.getElementById("syn-pout-g");
-    if (poutGroup) {
-        if (alm_pow) poutGroup.classList.add("blink");
-        else poutGroup.classList.remove("blink");
-    }
 
     /* ── AVR / Excitation ── */
     const avr_efd  = data.avr_e_fd_pu   ?? 1.00;
@@ -268,7 +266,7 @@ window.patchGtaSynoptic = function(data) {
     }
 
     /* ── Réseau MT : excédent ── */
-    _setText("syn-excess-val", Math.max(0, power - 14).toFixed(1));
+    _setText("syn-excess-val", Math.max(0, power_d - 14).toFixed(1));
 
     /* ── Source BP ── */
     const bpSrcEl = document.getElementById("syn-bp-src-p");
@@ -282,20 +280,20 @@ window.patchGtaSynoptic = function(data) {
     const freqEl = document.getElementById("syn-freq-val");
     if (freqEl) {
         const tspan = freqEl.querySelector("tspan");
-        freqEl.childNodes[0].textContent = freq.toFixed(2) + " ";
+        freqEl.childNodes[0].textContent = freq_d.toFixed(2) + " ";
         if(tspan) tspan.textContent = "Hz · 2 pôles";
     }
 
-    _setText("syn-vibfwd-val", vib_fwd.toFixed(1));
-    _setFill("syn-vibfwd-val", vib_fwd > 4.5 ? "#ef4444" : "#fbbf24");
-    _setText("syn-vibaft-val", vib_aft.toFixed(1));
-    _setFill("syn-vibaft-val", vib_aft > 4.5 ? "#ef4444" : "#fbbf24");
-    _setText("syn-tempfwd-val", temp_fwd.toFixed(0));
-    _setText("syn-tempaft-val", temp_aft.toFixed(0));
+    _setText("syn-vibfwd-val", vib_fwd_d.toFixed(1));
+    _setFill("syn-vibfwd-val", vib_fwd_d > 4.5 ? "#ef4444" : "#fbbf24");
+    _setText("syn-vibaft-val", vib_aft_d.toFixed(1));
+    _setFill("syn-vibaft-val", vib_aft_d > 4.5 ? "#ef4444" : "#fbbf24");
+    _setText("syn-tempfwd-val", temp_fwd_d.toFixed(0));
+    _setText("syn-tempaft-val", temp_aft_d.toFixed(0));
     _setText("syn-oilp-val", oil_p.toFixed(2));
     _setText("syn-oilt-val", oil_t.toFixed(1));
-    _setText("syn-axial-val", "+" + axial.toFixed(2));
-    _setText("syn-casing-val", casing.toFixed(1));
+    _setText("syn-axial-val", (axial_d >= 0 ? "+" : "") + axial_d.toFixed(2));
+    _setText("syn-casing-val", casing_d.toFixed(1));
 
     /* ── Vannes ── */
     _setText("syn-v1-tgt", "Cible:" + v1_tgt.toFixed(0) + "%");
@@ -313,10 +311,18 @@ window.patchGtaSynoptic = function(data) {
     _setText("syn-bp-admit-pct", bp_admit_pct.toFixed(0) + "%");
     _setText("syn-bp-admit-tgt", "Cible:" + bp_admit_tgt.toFixed(0) + "%");
     const bpCircle = document.getElementById('syn-bp-admit-circle');
-    if (bpCircle) {
-        bpCircle.style.stroke = bp_admit_pct >= 80 ? '#22c55e'
-                              : bp_admit_pct > 5   ? '#f59e0b' : '#475569';
-    }
+    if (bpCircle) bpCircle.style.stroke = _valveStroke(bp_admit_pct);
+
+    /* Couleur dynamique V1 / V2 / V3 / VBP (feedback visuel état réel) */
+    const v1_pct_raw = data.valve_v1 ?? 0;
+    const v2_pct_raw = data.valve_v2 ?? 0;
+    const v3_pct_raw = data.valve_v3 ?? 0;
+    const vbp_pct_raw = data.valve_bp ?? 80;
+    [['syn-v1-circle', v1_pct_raw], ['syn-v2-circle', v2_pct_raw],
+     ['syn-v3-circle', v3_pct_raw], ['syn-vbp-circle', vbp_pct_raw]].forEach(([id, pct]) => {
+        const el = document.getElementById(id);
+        if (el) el.setAttribute('stroke', _valveStroke(pct));
+    });
 
     // ── Animations dynamiques — turbine / réducteur / flux ────────────────────
 
@@ -353,10 +359,10 @@ window.patchGtaSynoptic = function(data) {
     });
 
     /* ── Table État Système — page 1 ──────────────────────────────────── */
-    const alm_vib  = vib_fwd > 4.5;
-    const alm_oilt = oil_t   > 60;
-    const alm_v1   = v_v1    < 30;
-    const alm_vbp  = v_bp    < 30;
+    const alm_vib  = vib_fwd_d > 4.5;
+    const alm_oilt = oil_t     > 60;
+    const alm_v1   = v_v1      < 30;
+    const alm_vbp  = v_bp      < 30;
 
     _setText("syn-tbl-php",  p_hp.toFixed(1));
     _setFill("syn-tbl-php",  alm_php  ? "#ef4444" : "#f97316");
@@ -365,15 +371,15 @@ window.patchGtaSynoptic = function(data) {
     _setText("syn-tbl-qhp",  q_hp.toFixed(0));
     _setText("syn-tbl-spd",  speed.toFixed(0));
     _setFill("syn-tbl-spd",  alm_spd  ? "#ef4444" : "#818cf8");
-    _setText("syn-tbl-eff",  eff.toFixed(1));
+    _setText("syn-tbl-eff",  eff_d.toFixed(1));
     _setFill("syn-tbl-eff",  alm_eff ? "#ef4444" : warn_eff ? "#f59e0b" : "#38bdf8");
     _setText("syn-tbl-v1",   v_v1.toFixed(0));
     _setFill("syn-tbl-v1",   alm_v1   ? "#ef4444" : "#f97316");
     _setText("syn-tbl-vbp",  v_bp.toFixed(0));
     _setFill("syn-tbl-vbp",  alm_vbp  ? "#ef4444" : "#38bdf8");
-    _setText("syn-tbl-pbar", p_bar_bp.toFixed(2));
+    _setText("syn-tbl-pbar", p_bar_bp_d.toFixed(2));
     _setFill("syn-tbl-pbar", alm_pbar_bp ? "#ef4444" : "#a78bfa");
-    _setText("syn-tbl-vib",  vib_fwd.toFixed(1));
+    _setText("syn-tbl-vib",  vib_fwd_d.toFixed(1));
     _setFill("syn-tbl-vib",  alm_vib  ? "#ef4444" : "#fbbf24");
     _setText("syn-tbl-oilt", oil_t.toFixed(0));
     _setFill("syn-tbl-oilt", alm_oilt ? "#ef4444" : "#60a5fa");
@@ -385,40 +391,40 @@ window.patchGtaSynoptic = function(data) {
     }
 
     /* ── Table État Système — page 2 ──────────────────────────────────── */
-    const alm_vibaft = vib_aft > 4.5;
-    const alm_tfwd   = temp_fwd > 85;
-    const alm_taft   = temp_aft > 85;
+    const alm_vibaft = vib_aft_d > 4.5;
+    const alm_tfwd   = temp_fwd_d > 85;
+    const alm_taft   = temp_aft_d > 85;
     const alm_oilp   = oil_p < 0.8;
-    const alm_axial  = Math.abs(axial) > 1.0;
-    const alm_casing = casing > 8.0;
-    const alm_freq   = Math.abs(freq - 50.0) > 0.5;
+    const alm_axial  = Math.abs(axial_d) > 1.0;
+    const alm_casing = casing_d > 8.0;
+    const alm_freq   = isRunning && Math.abs(freq_d - 50.0) > 0.5;
 
     _setText("syn-tbl2-pbpin",  p_bp_in.toFixed(2));
-    _setText("syn-tbl2-qcond",  q_cond.toFixed(0));
-    _setText("syn-tbl2-pcond",  p_cond.toFixed(4));
-    _setText("syn-tbl2-freq",   freq.toFixed(2));
+    _setText("syn-tbl2-qcond",  q_cond_d.toFixed(0));
+    _setText("syn-tbl2-pcond",  p_cond_d.toFixed(4));
+    _setText("syn-tbl2-freq",   freq_d.toFixed(2));
     _setFill("syn-tbl2-freq",   alm_freq   ? "#ef4444" : "#10b981");
-    _setText("syn-tbl2-vibaft", vib_aft.toFixed(1));
+    _setText("syn-tbl2-vibaft", vib_aft_d.toFixed(1));
     _setFill("syn-tbl2-vibaft", alm_vibaft ? "#ef4444" : "#fbbf24");
-    _setText("syn-tbl2-tfwd",   temp_fwd.toFixed(0));
+    _setText("syn-tbl2-tfwd",   temp_fwd_d.toFixed(0));
     _setFill("syn-tbl2-tfwd",   alm_tfwd   ? "#ef4444" : "#60a5fa");
-    _setText("syn-tbl2-taft",   temp_aft.toFixed(0));
+    _setText("syn-tbl2-taft",   temp_aft_d.toFixed(0));
     _setFill("syn-tbl2-taft",   alm_taft   ? "#ef4444" : "#60a5fa");
     _setText("syn-tbl2-oilp",   oil_p.toFixed(2));
     _setFill("syn-tbl2-oilp",   alm_oilp   ? "#ef4444" : "#10b981");
-    _setText("syn-tbl2-axial",  (axial >= 0 ? "+" : "") + axial.toFixed(2));
+    _setText("syn-tbl2-axial",  (axial_d >= 0 ? "+" : "") + axial_d.toFixed(2));
     _setFill("syn-tbl2-axial",  alm_axial  ? "#ef4444" : "#10b981");
-    _setText("syn-tbl2-casing", casing.toFixed(1));
+    _setText("syn-tbl2-casing", casing_d.toFixed(1));
     _setFill("syn-tbl2-casing", alm_casing ? "#ef4444" : "#10b981");
 
     /* ── Table État Système — page 3 (électrique) ────────────────────────── */
-    _setText("syn-tbl3-power", power.toFixed(1));
+    _setText("syn-tbl3-power", power_d.toFixed(1));
     _setFill("syn-tbl3-power", alm_pow ? "#ef4444" : alt_col);
-    _setText("syn-tbl3-qmvar", q_mvar.toFixed(1));
-    _setText("syn-tbl3-smva",  s_mva.toFixed(1));
-    _setText("syn-tbl3-pf",    pf.toFixed(3));
+    _setText("syn-tbl3-qmvar", q_mvar_d.toFixed(1));
+    _setText("syn-tbl3-smva",  s_mva_d.toFixed(1));
+    _setText("syn-tbl3-pf",    pf_d.toFixed(3));
     _setFill("syn-tbl3-pf",    alm_pf  ? "#ef4444" : "#fbbf24");
-    _setText("syn-tbl3-ia",    i_a.toFixed(0));
+    _setText("syn-tbl3-ia",    i_a_d.toFixed(0));
     _setFill("syn-tbl3-ia",    alm_ia  ? "#ef4444" : "#10b981");
 
     /* ── Tags compacts bas — Turbine ── */
@@ -438,7 +444,7 @@ window.patchGtaSynoptic = function(data) {
     const bxEffEl = document.getElementById("syn-bx-eff-val");
     if (bxEffEl) {
         const ts = bxEffEl.querySelector("tspan");
-        bxEffEl.childNodes[0].textContent = eff.toFixed(1) + " ";
+        bxEffEl.childNodes[0].textContent = eff_d.toFixed(1) + " ";
         if (ts) ts.textContent = "%";
         bxEffEl.setAttribute("fill", alm_eff ? "#ef4444" : warn_eff ? "#f59e0b" : "#e2e8f0");
     }
@@ -451,21 +457,21 @@ window.patchGtaSynoptic = function(data) {
     const bxVibEl = document.getElementById("syn-bx-vib-val");
     if (bxVibEl) {
         const ts = bxVibEl.querySelector("tspan");
-        bxVibEl.childNodes[0].textContent = vib_fwd.toFixed(1) + " ";
+        bxVibEl.childNodes[0].textContent = vib_fwd_d.toFixed(1) + " ";
         if (ts) ts.textContent = "mm/s";
-        bxVibEl.setAttribute("fill", vib_fwd > 4.5 ? "#ef4444" : "#e2e8f0");
+        bxVibEl.setAttribute("fill", vib_fwd_d > 4.5 ? "#ef4444" : "#e2e8f0");
     }
     const bxVibRect = document.getElementById("syn-bx-vib-rect");
     if (bxVibRect) {
-        bxVibRect.setAttribute("fill",   vib_fwd > 4.5 ? "rgba(239,68,68,0.12)" : "rgba(15,23,42,0.75)");
-        bxVibRect.setAttribute("stroke", vib_fwd > 4.5 ? "#ef4444" : "#1e3a5f");
+        bxVibRect.setAttribute("fill",   vib_fwd_d > 4.5 ? "rgba(239,68,68,0.12)" : "rgba(15,23,42,0.75)");
+        bxVibRect.setAttribute("stroke", vib_fwd_d > 4.5 ? "#ef4444" : "#1e3a5f");
     }
 
     /* ── Tags compacts bas — Alternateur ── */
     const bxPoutEl = document.getElementById("syn-bx-pout-val");
     if (bxPoutEl) {
         const ts = bxPoutEl.querySelector("tspan");
-        bxPoutEl.childNodes[0].textContent = power.toFixed(1) + " ";
+        bxPoutEl.childNodes[0].textContent = power_d.toFixed(1) + " ";
         if (ts) ts.textContent = "MW";
         bxPoutEl.setAttribute("fill", alm_pow ? "#ef4444" : "#e2e8f0");
     }
@@ -478,7 +484,7 @@ window.patchGtaSynoptic = function(data) {
     const bxPfEl = document.getElementById("syn-bx-pf-val");
     if (bxPfEl) {
         const ts = bxPfEl.querySelector("tspan");
-        bxPfEl.childNodes[0].textContent = pf.toFixed(3) + " ";
+        bxPfEl.childNodes[0].textContent = pf_d.toFixed(3) + " ";
         if (ts) ts.textContent = "";
         bxPfEl.setAttribute("fill", alm_pf ? "#ef4444" : "#e2e8f0");
     }
@@ -491,7 +497,7 @@ window.patchGtaSynoptic = function(data) {
     const bxIaEl = document.getElementById("syn-bx-ia-val");
     if (bxIaEl) {
         const ts = bxIaEl.querySelector("tspan");
-        bxIaEl.childNodes[0].textContent = i_a.toFixed(0) + " ";
+        bxIaEl.childNodes[0].textContent = i_a_d.toFixed(0) + " ";
         if (ts) ts.textContent = "A";
         bxIaEl.setAttribute("fill", alm_ia ? "#ef4444" : "#e2e8f0");
     }

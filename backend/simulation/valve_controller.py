@@ -177,18 +177,24 @@ class ValveController:
         logger.info("[ValveCtrl] Réinitialisation nominale")
 
     def emergency_close(self):
-        """Fermeture d'urgence V1 (coupe admission vapeur HP)."""
-        self._valves["v1"].current = 0.0
-        self._valves["v1"].target  = 0.0
-        logger.critical("[ValveCtrl] FERMETURE D'URGENCE V1 !")
+        """Fermeture d'urgence — ESV trip : V1, V2, V3 et bp_admit à 0 instantanément.
+        Vanne BP condenseur poussée à 100% pour décompression maximale vers condenseur."""
+        for vname in ("v1", "v2", "v3", "bp_admit"):
+            self._valves[vname].current = 0.0
+            self._valves[vname].target  = 0.0
+        # BP ouverte à fond pour évacuer la vapeur résiduelle
+        self._valves["bp"].current = 100.0
+        self._valves["bp"].target  = 100.0
+        logger.critical("[ValveCtrl] FERMETURE D'URGENCE — V1/V2/V3/bp_admit fermées, BP=100%")
 
     def reset_after_trip(self) -> None:
-        """Remet V1 et bp_admit à zéro après un AU — posture de démarrage propre."""
-        for k in ("v1", "bp_admit"):
+        """Remet V1 et bp_admit à zéro après un AU — posture de démarrage propre.
+        V2/V3 remises à 0 (current et target) pour éviter rampe non maîtrisée.
+        BP remise à nominal 80% pour préparer le redémarrage."""
+        for k in ("v1", "v2", "v3", "bp_admit"):
             self._valves[k].current = 0.0
             self._valves[k].target  = 0.0
-        for k in ("v2", "v3", "bp"):
-            self._valves[k].target = self._valves[k].config.default
+        self._valves["bp"].target = self._valves["bp"].config.default  # 80%
         logger.info("[ValveCtrl] Vannes réinitialisées post-trip")
 
     def update(self, dt: float = 0.5):
@@ -219,6 +225,10 @@ class ValveController:
 
     @property
     def v1(self) -> float: return self._valves["v1"].current
+    @property
+    def v1_current(self) -> float: return self._valves["v1"].current
+    @property
+    def v1_target(self) -> float: return self._valves["v1"].target
     @property
     def v2(self) -> float: return self._valves["v2"].current
     @property

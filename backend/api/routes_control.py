@@ -12,7 +12,7 @@ from models.control import (
     ModeCommand, SetpointsCommand, PIDTuningCommand,
     SequenceCommand, EmergencyTripCommand, ValveControlCommand, ControlState,
     AVRModeCommand, AVRSetpointCommand, AVRGainsCommand, AVRManualCommand,
-    RegulationTargetRequest,
+    RegulationTargetRequest, OperatorAction,
     AttemperatorSetpointCommand, AttemperatorEnableCommand,
     CondLevelSetpointCommand, CondVacuumSetpointCommand,
 )
@@ -30,9 +30,14 @@ logger = logging.getLogger("gta.control")
 
 
 @router.get("/state", response_model=None)
-def get_control_state():
-    """Retourne l'état complet du superviseur Contrôle Commande."""
-    return controller.get_state_dict()
+def get_control_state(debug: bool = Query(False)):
+    """Retourne l'état complet du superviseur Contrôle Commande.
+    Passer ?debug=true pour inclure les intégrales PID internes."""
+    state = controller.get_state_dict()
+    if not debug:
+        for key in ("pid_integral", "pid_speed_integral", "pid_pressure_integral"):
+            state.pop(key, None)
+    return state
 
 
 @router.post("/mode")
@@ -136,9 +141,9 @@ def stop_sequence_route(cmd: SequenceCommand):
 
 
 @router.post("/sequence/cancel")
-def cancel_sequence(operator: str = Query("Opérateur")):
+def cancel_sequence(body: OperatorAction = OperatorAction()):
     """Annule la séquence en cours."""
-    result = controller.cancel_sequence(operator=operator)
+    result = controller.cancel_sequence(operator=body.operator)
     if not result.get("accepted"):
         raise HTTPException(status_code=400, detail=result["message"])
     return result
@@ -157,9 +162,9 @@ def emergency_trip(cmd: EmergencyTripCommand):
 
 
 @router.post("/emergency/reset")
-def reset_trip(operator: str = Query("Opérateur")):
+def reset_trip(body: OperatorAction = OperatorAction()):
     """Réinitialise le trip après inspection. Permet de repasser en AUTO."""
-    result = controller.reset_trip(operator=operator)
+    result = controller.reset_trip(operator=body.operator)
     if not result.get("accepted"):
         raise HTTPException(status_code=400, detail=result["message"])
     return result
@@ -177,13 +182,13 @@ def get_protections():
 
 
 @router.post("/protections/{name}/inhibit")
-def inhibit_protection(name: str, inhibited: bool = True, operator: str = Query("Opérateur")):
+def inhibit_protection(name: str, inhibited: bool = True, body: OperatorAction = OperatorAction()):
     """Inhibe ou réarme une protection par nom (pour tests uniquement)."""
     result = protection_system.inhibit(name, inhibited)
     if not result.get("accepted"):
         raise HTTPException(status_code=404, detail=result["message"])
     data_manager.log_operator_action(
-        user=operator, action_type="PROTECTION_INHIBIT",
+        user=body.operator, action_type="PROTECTION_INHIBIT",
         target=name, value_before=str(not inhibited), value_after=str(inhibited),
     )
     return result
@@ -210,53 +215,53 @@ def get_degradation():
 
 
 @router.post("/degradation/reset")
-def reset_degradation(operator: str = Query("Opérateur")):
+def reset_degradation(body: OperatorAction = OperatorAction()):
     """Remet le compteur d'heures GRID à zéro (maintenance / test)."""
-    return degradation.reset(operator=operator)
+    return degradation.reset(operator=body.operator)
 
 
 # ── Séquence de démarrage manuel (pas-à-pas) ─────────────────────────────────
 
 @router.post("/startup/barrage")
-def startup_open_barrage(operator: str = Query("Opérateur")):
+def startup_open_barrage(body: OperatorAction = OperatorAction()):
     """Étape 2 : ouvre la vanne vapeur de barrage (bp_admit → 100%)."""
-    result = controller.cmd_open_barrage(operator=operator)
+    result = controller.cmd_open_barrage(operator=body.operator)
     if not result.get("accepted"):
         raise HTTPException(status_code=400, detail=result["message"])
     return result
 
 
 @router.post("/startup/v1")
-def startup_open_v1(operator: str = Query("Opérateur")):
+def startup_open_v1(body: OperatorAction = OperatorAction()):
     """Étape 3 : ouvre V1 (interlock bp_admit ≥ 80%)."""
-    result = controller.cmd_open_v1(operator=operator)
+    result = controller.cmd_open_v1(operator=body.operator)
     if not result.get("accepted"):
         raise HTTPException(status_code=400, detail=result["message"])
     return result
 
 
 @router.post("/startup/excite")
-def startup_excite(operator: str = Query("Opérateur")):
+def startup_excite(body: OperatorAction = OperatorAction()):
     """Étape 5 : active l'AVR — excitation alternateur."""
-    result = controller.cmd_excite(operator=operator)
+    result = controller.cmd_excite(operator=body.operator)
     if not result.get("accepted"):
         raise HTTPException(status_code=400, detail=result["message"])
     return result
 
 
 @router.post("/startup/sync-arm")
-def startup_sync_arm(operator: str = Query("Opérateur")):
+def startup_sync_arm(body: OperatorAction = OperatorAction()):
     """Étape 6 : arme la synchronisation réseau (ROLLING → SYNCHRONIZING)."""
-    result = controller.cmd_synchronize_arm(operator=operator)
+    result = controller.cmd_synchronize_arm(operator=body.operator)
     if not result.get("accepted"):
         raise HTTPException(status_code=400, detail=result["message"])
     return result
 
 
-@router.post("/startup/couple")
-def startup_couple(operator: str = Query("Opérateur")):
-    """Étape 7 : couplage réseau (SYNCHRONIZING → GRID_CONNECTED)."""
-    result = controller.cmd_couple_grid(operator=operator)
+@router.post("/startup/couple-grid")
+def startup_couple_grid(body: OperatorAction = OperatorAction()):
+    """Étape 7 : couplage réseau avec vérifications f/U/excitation."""
+    result = controller.cmd_couple_grid(operator=body.operator)
     if not result.get("accepted"):
         raise HTTPException(status_code=400, detail=result["message"])
     return result
@@ -265,18 +270,18 @@ def startup_couple(operator: str = Query("Opérateur")):
 # ── Couplage / Découplage réseau ──────────────────────────────────────────────
 
 @router.post("/grid/synchronize")
-def grid_synchronize(operator: str = Query("Opérateur")):
+def grid_synchronize(body: OperatorAction = OperatorAction()):
     """Couple la machine au réseau (SYNCHRONIZING → GRID_CONNECTED)."""
-    result = controller.connect_to_grid(operator=operator)
+    result = controller.connect_to_grid(operator=body.operator)
     if not result.get("accepted"):
         raise HTTPException(status_code=400, detail=result["message"])
     return result
 
 
 @router.post("/grid/disconnect")
-def grid_disconnect(operator: str = Query("Opérateur")):
+def grid_disconnect(body: OperatorAction = OperatorAction()):
     """Découple la machine du réseau (GRID_CONNECTED → ROLLING)."""
-    result = controller.disconnect_from_grid(operator=operator)
+    result = controller.disconnect_from_grid(operator=body.operator)
     if not result.get("accepted"):
         raise HTTPException(status_code=400, detail=result["message"])
     return result
@@ -356,3 +361,111 @@ def set_cond_level_sp(cmd: CondLevelSetpointCommand):
 def set_cond_vacuum_sp(cmd: CondVacuumSetpointCommand):
     """Fixe la consigne vide condenseur (mbar)."""
     return condenser.set_vacuum_setpoint(cmd.setpoint_mbar, operator=cmd.operator)
+
+
+# ── Pré-checks démarrage ─────────────────────────────────────────────────────
+
+@router.get("/pre-check")
+def get_pre_check():
+    """
+    Vérifie les conditions initiales de démarrage du GTA.
+    Retourne un dict avec le résultat détaillé item par item.
+    """
+    from simulation.fake_api import fake_api
+    from core.config import NOMINAL
+
+    snap = fake_api.get_current()
+
+    # Valeurs mesurées (snapshot) ou depuis les contrôleurs
+    temp_hp      = getattr(snap, "temperature_hp",  NOMINAL["temperature_hp"]) if snap else NOMINAL["temperature_hp"]
+    lube_press   = getattr(snap, "lube_oil_press",  0.0) if snap else 0.0
+    lube_temp    = getattr(snap, "lube_oil_temp",   0.0) if snap else 0.0
+    # v1_target : accepte une rampe en cours (target=0, current=15)
+    v1_pos       = valve_controller.v1_target
+    bp_admit_pos = valve_controller._valves["bp_admit"].current
+    avr_mode     = avr_controller.mode
+    tripped      = controller.tripped
+    machine_stopped = controller.machine_state in ("STOPPED", "TRIPPED")
+
+    # Soulèvement paliers — simulé : huile sous pression et machine à l'arrêt
+    jacking_ok   = lube_press >= 1.2 and machine_stopped
+    # Huile de commande — simulé : pression huile présente
+    ctrl_oil_ok  = lube_press >= 1.0
+    # Vide condenseur — simulé : condenseur prêt (pas encore trippé, pompe à vide OK)
+    vacuum_ok    = not tripped
+
+    checks = [
+        {
+            "name":  "Température vapeur HP",
+            "value": round(temp_hp, 1),
+            "unit":  "°C",
+            "crit":  "≥ 380 °C",
+            "ok":    temp_hp >= 380.0,
+        },
+        {
+            "name":  "Pression huile de graissage",
+            "value": round(lube_press, 2),
+            "unit":  "bar",
+            "crit":  "≥ 1.2 bar",
+            "ok":    lube_press >= 1.2,
+        },
+        {
+            "name":  "Température huile de graissage",
+            "value": round(lube_temp, 1),
+            "unit":  "°C",
+            "crit":  "20 – 60 °C",
+            "ok":    20.0 <= lube_temp <= 60.0,
+        },
+        {
+            "name":  "Soulèvement paliers (jacking oil)",
+            "value": "OK" if jacking_ok else "NON",
+            "unit":  "",
+            "crit":  "Huile ≥ 1.2 bar + machine à l'arrêt",
+            "ok":    jacking_ok,
+        },
+        {
+            "name":  "Huile de commande",
+            "value": "OK" if ctrl_oil_ok else "NON",
+            "unit":  "",
+            "crit":  "Pression présente",
+            "ok":    ctrl_oil_ok,
+        },
+        {
+            "name":  "Vide condenseur (pompe à vide)",
+            "value": "Prêt" if vacuum_ok else "NON",
+            "unit":  "",
+            "crit":  "Système à vide actif",
+            "ok":    vacuum_ok,
+        },
+        {
+            "name":  "Position V1 (doit être fermée)",
+            "value": round(v1_pos, 1),
+            "unit":  "%",
+            "crit":  "= 0 %",
+            "ok":    v1_pos < 1.0,
+        },
+        {
+            "name":  "Vanne bp_admit (doit être fermée)",
+            "value": round(bp_admit_pos, 1),
+            "unit":  "%",
+            "crit":  "= 0 %",
+            "ok":    bp_admit_pos < 1.0,
+        },
+        {
+            "name":  "AVR (doit être OFF)",
+            "value": avr_mode,
+            "unit":  "",
+            "crit":  "Mode OFF",
+            "ok":    avr_mode == "OFF",
+        },
+        {
+            "name":  "Aucun TRIP actif",
+            "value": "NON" if tripped else "OK",
+            "unit":  "",
+            "crit":  "Pas de trip",
+            "ok":    not tripped,
+        },
+    ]
+
+    all_ok = all(c["ok"] for c in checks)
+    return {"all_ok": all_ok, "checks": checks}

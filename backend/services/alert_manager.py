@@ -23,17 +23,64 @@ class AlertManager:
     # VÉRIFICATION DES SEUILS
     # ──────────────────────────────────────────
 
+    # Paramètres dont la valeur 0 est normale quand la machine ne produit pas
+    _POWER_DEPENDENT = frozenset({
+        "active_power", "power_factor", "voltage", "current_a",
+        "reactive_power", "apparent_power", "efficiency",
+    })
+    # Paramètres dont la valeur basse est normale quand la machine est à l'arrêt
+    _FLOW_DEPENDENT = frozenset({
+        "pressure_bp_barillet", "pressure_bp_in", "steam_flow_condenser",
+        "steam_flow_hp",
+    })
+
     def check_thresholds(self, params: GTAParameters) -> List[Alert]:
         """
         Compare chaque paramètre à ses seuils min/max.
         Retourne la liste des nouvelles alertes créées.
+
+        Règles de suppression :
+        - Machine STOPPED / TRIPPED → aucune alerte.
+        - active_power ≤ 0.1 MW → pas d'alerte sur les paramètres électriques
+          ni le rendement (valeurs à 0 attendues quand pas de production).
+        - AVR OFF → pas d'alerte sur tension / cos φ.
         """
+        try:
+            from simulation.controller import controller as _ctrl
+            from simulation.avr_controller import avr_controller as _avr
+            machine_stopped = _ctrl.machine_state in ("STOPPED", "TRIPPED") or _ctrl.tripped
+            avr_off = _avr.mode == "OFF"
+        except Exception:
+            machine_stopped = False
+            avr_off = False
+
+        if machine_stopped:
+            # Vider les alertes actives : machine à l'arrêt = état nominal attendu
+            self._active_alerts.clear()
+            return []
+
         new_alerts: List[Alert] = []
         params_dict = params.model_dump()
+
+        # Puissance active courante — seuil pour les paramètres dépendants
+        active_power_val = params_dict.get("active_power", 0) or 0
+        no_production = active_power_val <= 0.1
 
         for param, limits in self._thresholds.items():
             value = params_dict.get(param)
             if value is None:
+                continue
+
+            # Pas de production → pas d'alerte sur paramètres électriques / rendement
+            if no_production and param in self._POWER_DEPENDENT:
+                continue
+
+            # AVR OFF → pas d'alerte sur tension / cos φ
+            if avr_off and param in ("voltage", "power_factor"):
+                continue
+
+            # Machine non en régime → pas d'alerte sur pressions/débits process
+            if no_production and param in self._FLOW_DEPENDENT:
                 continue
 
             min_val = limits["min"]

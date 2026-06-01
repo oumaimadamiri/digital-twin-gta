@@ -271,7 +271,7 @@ PROT_VOLTAGE_MIN_KV      = float(os.getenv("PROT_VOLTAGE_MIN_KV",        9.97)) 
 # Discrétisation ZOH analytique (stable pour tout dt ≥ T_A)
 # ─────────────────────────────────────────────
 AVR_ENABLED          = True          # False → fallback formule algébrique legacy
-AVR_K_A              = float(os.getenv("AVR_K_A",  200.0))   # Gain régulateur
+AVR_K_A              = float(os.getenv("AVR_K_A",    2.0))   # Gain régulateur (p.u./p.u., sans normalisation /100)
 AVR_T_A              = float(os.getenv("AVR_T_A",   0.05))   # Constante de temps (s)
 AVR_E_FD_MIN         = 0.5           # Saturation basse (p.u.) — évite déexcitation totale
 AVR_E_FD_MAX         = 2.5           # Saturation haute (p.u.)

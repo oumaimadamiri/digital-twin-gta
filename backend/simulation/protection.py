@@ -140,13 +140,16 @@ class ProtectionSystem:
         t_b  = max(params.temp_bearing_fwd, params.temp_bearing_aft)
         e_fd = avr_controller.e_fd_pu if avr_controller else 1.0
 
-        grid_connected = getattr(params, "machine_state", "GRID_CONNECTED") == "GRID_CONNECTED"
+        machine_state  = getattr(params, "machine_state", "STOPPED")
+        grid_connected = machine_state == "GRID_CONNECTED"
+        machine_moving = machine_state not in ("STOPPED",)
 
         return {
             # Tier 1 — TRIP
             "OVERSPEED_1":     spd  > PROT_OVERSPEED_1_RPM,
             "OVERSPEED_2":     spd  > PROT_OVERSPEED_2_RPM,
-            "LUBE_OIL_LOW":    params.lube_oil_press  < PROT_LUBE_OIL_PRESS_BAR,
+            # LUBE_OIL_LOW ne s'applique que si la machine tourne (ROLLING/SYNC/GRID/TRIPPED)
+            "LUBE_OIL_LOW":    machine_moving and params.lube_oil_press < PROT_LUBE_OIL_PRESS_BAR,
             "OIL_PUMP_OFF":    params.lube_oil_pump   == "OFF",
             "VIB_TRIP":        vib  > PROT_VIB_TRIP_MMS,
             "AXIAL_DISP":      abs(params.axial_displacement) > PROT_AXIAL_DISP_MM,

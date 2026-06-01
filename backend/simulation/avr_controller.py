@@ -71,6 +71,16 @@ class AVRController:
         if self.mode == "OFF":
             return
 
+        # Gate machine_state : l'alternateur ne peut produire de tension
+        # que si le rotor est en rotation (ROLLING, SYNCHRONIZING ou GRID_CONNECTED).
+        try:
+            from simulation.controller import controller as _ctrl
+            if _ctrl.machine_state in ("STOPPED", "TRIPPED"):
+                self.e_fd_pu = 0.0
+                return
+        except Exception:
+            pass
+
         if self.mode == "MANUAL":
             # Les limiteurs s'appliquent aussi en MANUAL (protection machine maintenue)
             e_fd = max(AVR_E_FD_MIN, min(AVR_E_FD_MAX, self.e_fd_manual))
@@ -91,7 +101,8 @@ class AVRController:
             error = cosphi - self.cosphi_set
 
         # Cible E_fd (point d'équilibre = 1.0 p.u. + correction proportionnelle)
-        target = 1.0 + self.k_a * error / 100.0
+        # k_a est en p.u./p.u. — l'erreur est déjà normalisée, pas de facteur /100
+        target = 1.0 + self.k_a * error
 
         # ZOH analytique : α = exp(−dt / T_A)
         alpha    = math.exp(-dt / max(self.t_a, 1e-3))
@@ -123,14 +134,15 @@ class AVRController:
         if self.oel_active:
             e_fd = min(e_fd, AVR_OEL_THRESHOLD_PU)
 
-        # UEL — instantané : Q/S_max trop négatif → relève le plancher E_fd
+        # UEL — avec hystérésis ±0.02 pour éviter le flapping rapide
         if s_max and s_max > 0.0:
             q_ratio = q_mvar / s_max
-            if q_ratio < AVR_UEL_MIN_Q_RATIO:
+            if not self.uel_active and q_ratio < AVR_UEL_MIN_Q_RATIO - 0.02:
                 self.uel_active = True
-                e_fd = max(e_fd, AVR_UEL_E_FD_FLOOR_PU)
-            else:
+            elif self.uel_active and q_ratio > AVR_UEL_MIN_Q_RATIO + 0.02:
                 self.uel_active = False
+            if self.uel_active:
+                e_fd = max(e_fd, AVR_UEL_E_FD_FLOOR_PU)
         else:
             self.uel_active = False
 
@@ -158,6 +170,12 @@ class AVRController:
         # En sortie de MANUAL, resynchroniser e_fd_manual sur la valeur courante
         if mode != "MANUAL":
             self.e_fd_manual = self.e_fd_pu
+        # Passage en OFF : couper l'excitation immédiatement et réinitialiser les limiteurs
+        if mode == "OFF":
+            self.e_fd_pu    = 0.0
+            self._oel_timer = 0.0
+            self._scl_timer = 0.0
+            self.oel_active = self.uel_active = self.scl_active = False
         data_manager.log_operator_action(
             user=operator, action_type="AVR_MODE_CHANGE",
             target="avr_mode", value_before=before, value_after=mode,

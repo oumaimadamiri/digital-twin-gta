@@ -5,8 +5,6 @@ Zone A : Supervision & Commande  |  Zone B : Régulation  |  Zone C : Sécurité
 from dash import html, dcc
 from components.sidebar import create_sidebar
 from components.sliders import slider_row
-from components.gta_synoptic import create_gta_synoptic_static
-
 
 # ── Helpers mise en page ──────────────────────────────────────────────
 
@@ -338,20 +336,35 @@ def _startup_phase_card():
                   ]))
 
     # ── Étape 6 : Synchronisation ────────────────────────────────────
+    # Arme la synchro (ROLLING→SYNCHRONIZING). Les 3 critères doivent être verts.
     step6 = _step(6, "Synchronisation",
                   action=html.Div([
-                      html.Button("🔄 Synchroniser réseau", id="ctrl-btn-grid-sync",
+                      html.Button("🔄 Armer synchronisation", id="ctrl-btn-grid-sync",
                                   className="btn",
                                   style={**_btn_style_base,
                                          "background": "#22c55e",
                                          "border": "1px solid #22c55e",
                                          "color": "#0a101a"},
                                   disabled=True),
+                      # Critères de synchronisation (mis à jour par le callback)
+                      html.Div(id="ctrl-sync-criteria", style={
+                          "fontSize": "9px", "fontFamily": "Share Tech Mono",
+                          "marginTop": "4px", "color": "#64748b",
+                      }),
                   ]))
 
     # ── Étape 7 : Couplage réseau ────────────────────────────────────
+    # Coupler = action manuelle opérateur APRÈS synchronisation confirmée.
     step7 = _step(7, "Couplage réseau", connector=False,
                   action=html.Div([
+                      html.Button("⚡ Coupler au réseau", id="ctrl-btn-grid-couple",
+                                  className="btn",
+                                  style={**_btn_style_base,
+                                         "background": "#a855f7",
+                                         "border": "1px solid #a855f7",
+                                         "color": "#fff",
+                                         "marginRight": "6px"},
+                                  disabled=True),
                       html.Button("⏏ Découpler", id="ctrl-btn-grid-disconnect",
                                   className="btn btn-outline",
                                   style={**_btn_style_base,
@@ -378,43 +391,6 @@ def _startup_phase_card():
         html.Div(id="ctrl-startup-elapsed", className="startup-elapsed", children="—"),
     )
 
-
-def _synoptic_card():
-    return _card(
-        _section_header("SYNOPTIQUE & VITESSE", "#3b82f6"),
-        html.Div([
-            html.Div([
-                html.Div([
-                    _label("VITESSE TURBINE"),
-                    html.Div(id="ctrl-rpm-live", children="0 RPM", style={
-                        "fontSize": "22px", "fontWeight": "700",
-                        "fontFamily": "Share Tech Mono", "color": "#22c55e",
-                    }),
-                ], style={"flex": "1"}),
-                html.Div([
-                    _label("PRESSION VAPEUR DE BARRAGE"),
-                    html.Div(id="ctrl-bp-pressure-live", children="— bar", style={
-                        "fontSize": "18px", "fontWeight": "700",
-                        "fontFamily": "Share Tech Mono", "color": "#f59e0b",
-                    }),
-                    html.Div(id="ctrl-bp-admit-live", children="bp_admit = 0 %", style={
-                        "fontSize": "10px", "fontFamily": "Share Tech Mono",
-                        "color": "#9ca3af", "marginTop": "1px",
-                    }),
-                ], style={"flex": "1", "marginLeft": "16px"}),
-            ], style={"display": "flex", "alignItems": "flex-start", "marginBottom": "6px"}),
-            html.Div(id="ctrl-rpm-bar", style={
-                "height": "4px", "background": "#0f2744",
-                "borderRadius": "3px", "marginBottom": "8px",
-                "transition": "background 0.4s ease",
-            }),
-        ]),
-        html.Div(
-            id="gta-synoptic-ctrl",
-            children=create_gta_synoptic_static(show_table=False, interactive=False),
-            style={"overflowX": "auto"},
-        ),
-    )
 
 
 def _valves_card():
@@ -682,6 +658,26 @@ def _avr_card():
                     inputStyle={"marginRight": "4px"},
                 ),
             ], style={"marginBottom": "8px"}),
+            # Avertissement — maintien excitation obligatoire en GRID_CONNECTED
+            html.Div(
+                id="ctrl-avr-grid-warning",
+                children=[
+                    html.Span("⚠ ", style={"color": "#f59e0b"}),
+                    html.Span(
+                        "L'excitation DOIT rester active pendant le couplage réseau. "
+                        "Désexciter en charge provoquerait un déclenchement protection. "
+                        "Découpler la machine avant de passer en mode OFF.",
+                        style={"color": "#f59e0b"},
+                    ),
+                ],
+                style={
+                    "fontSize": "9px", "fontFamily": "Share Tech Mono",
+                    "padding": "4px 8px", "marginBottom": "6px",
+                    "background": "rgba(245,158,11,0.08)",
+                    "border": "1px solid rgba(245,158,11,0.3)",
+                    "borderRadius": "4px", "display": "none",
+                },
+            ),
 
             # Consignes
             avr_input("V_set (kV)  :", "ctrl-avr-vset",       10.5, 9.0, 12.0, 0.1, "kV"),
@@ -706,7 +702,7 @@ def _avr_card():
                     "fontFamily": "Share Tech Mono", "cursor": "pointer",
                 }),
                 html.Div([
-                    avr_input("K_A (gain) :", "ctrl-avr-ka", 200.0, 0, 1000, 10, ""),
+                    avr_input("K_A (gain) :", "ctrl-avr-ka", 2.0, 0, 1000, 0.1, ""),
                     avr_input("T_A (s) :",    "ctrl-avr-ta",   0.05, 0.001, 5.0, 0.01, "s"),
                     html.Button("▶ Appliquer gains", id="ctrl-btn-avr-gains",
                                 className="btn btn-outline",
@@ -723,33 +719,6 @@ def _avr_card():
     )
 
 
-def _grid_sync_card():
-    return _card(
-        _section_header("COUPLAGE RÉSEAU", "#a855f7"),
-        html.Div([
-            html.Button(
-                "⚡ Synchroniser",
-                id="ctrl-btn-grid-sync",
-                className="btn",
-                style={"background": "#22c55e", "border": "1px solid #22c55e",
-                       "fontSize": "11px", "padding": "6px 12px", "flex": "1",
-                       "marginRight": "8px"},
-                disabled=True,
-            ),
-            html.Button(
-                "⏏ Découpler",
-                id="ctrl-btn-grid-disconnect",
-                className="btn btn-outline",
-                style={"borderColor": "#f97316", "color": "#f97316",
-                       "fontSize": "11px", "padding": "6px 12px", "flex": "1"},
-                disabled=True,
-            ),
-        ], style={"display": "flex", "marginBottom": "6px"}),
-        html.Div(id="ctrl-grid-status", style={
-            "fontSize": "10px", "color": "#a855f7",
-            "fontFamily": "Share Tech Mono",
-        }),
-    )
 
 
 def _attemperator_card():
@@ -879,6 +848,7 @@ def _commands_log_card():
         dcc.Interval(id="ctrl-log-interval",   interval=5000, n_intervals=0),
         dcc.Interval(id="ctrl-state-interval", interval=1000, n_intervals=0),
         dcc.Interval(id="ctrl-protections-interval", interval=2000, n_intervals=0),
+        dcc.Store(id="store-ctrl-regul-dirty", data=False),
     )
 
 
@@ -938,7 +908,6 @@ def layout():
                 html.Div([
                     _mode_card(),
                     _sequences_card(),
-                    _synoptic_card(),
                     _startup_phase_card(),
                     _valves_card(),
                 ], style={"flex": "7 1 0", "minWidth": "0"}),
