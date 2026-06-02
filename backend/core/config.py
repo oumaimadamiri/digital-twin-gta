@@ -204,6 +204,9 @@ EXTRACTION_RATIO = float(os.getenv("EXTRACTION_RATIO", 0.38))
 # ─────────────────────────────────────────────
 # CONTRÔLE COMMANDE — PID & SÉQUENCES
 # ─────────────────────────────────────────────
+ESV_MIN_SPEED_RPM     = float(os.getenv("ESV_MIN_SPEED_RPM",     2800.0))  # RPM requis avant ouverture ESV
+STEAM_FLOW_BP_NOMINAL = float(os.getenv("STEAM_FLOW_BP_NOMINAL",   64.0))  # T/h débit source BP de barrage
+
 PID_POWER_KP      = float(os.getenv("PID_POWER_KP",  2.0))   # Gain proportionnel (MW → V1%)
 PID_POWER_KI      = float(os.getenv("PID_POWER_KI",  0.5))   # Gain intégral
 PID_POWER_KD      = float(os.getenv("PID_POWER_KD",  0.05))  # Gain dérivé
@@ -220,7 +223,7 @@ SEQUENCE_STOP_DURATION_S  = float(os.getenv("SEQUENCE_STOP_DURATION_S",   90.0))
 # ─────────────────────────────────────────────
 J_INERTIA               = float(os.getenv("J_INERTIA",              1000.0))  # kg·m²
 D_DAMPING               = float(os.getenv("D_DAMPING",                80.0))  # N·m·s/rad
-SPEED_SYNC_THRESHOLD_RPM = float(os.getenv("SPEED_SYNC_THRESHOLD_RPM",  50.0))  # RPM — fenêtre de synchronisation
+SPEED_SYNC_THRESHOLD_RPM = float(os.getenv("SPEED_SYNC_THRESHOLD_RPM",  120.0))  # RPM — fenêtre de synchronisation
 SPEED_SYNC_HOLD_S        = float(os.getenv("SPEED_SYNC_HOLD_S",          5.0))  # s — durée minimum en SYNCHRONIZING avant couplage auto
 TAU_GRID                 = float(os.getenv("TAU_GRID",                    3.0))  # s — constante de temps effective couplée réseau (raideur réseau)
 SPEED_TRIP_THRESHOLD_RPM = float(os.getenv("SPEED_TRIP_THRESHOLD_RPM",  200.0))  # RPM — seuil perte de synchronisme → découplage auto

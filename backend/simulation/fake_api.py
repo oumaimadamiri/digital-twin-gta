@@ -39,7 +39,7 @@ class FakeAPI:
         # Contrôleur d'actionneurs (rampe, sécurité, butées)
         self._vc = _valve_controller
         # Vannes initialisées à l'arrêt (machine_state=STOPPED au boot)
-        for _key in ("v1", "v2", "v3", "bp_admit"):
+        for _key in ("v1", "bp_admit"):
             self._vc._valves[_key].current = 0.0
             self._vc._valves[_key].target  = 0.0
         # BP reste au défaut (80%) — condenseur maintenu disponible
@@ -137,8 +137,8 @@ class FakeAPI:
         self._scenario_start_time  = None
         self._power_factor_offset  = 0.0
         self._oscillation_t        = 0.0
-        self._last_simulated_speed = NOMINAL["turbine_speed"]
-        _rotor.lock_to_grid()
+        self._last_simulated_speed = 0.0
+        _rotor.reset_to_stop()
 
     def get_current(self) -> GTAParameters | None:
         return self._last_params
@@ -234,7 +234,8 @@ class FakeAPI:
                 state_nom_noisy[v] = 100.0
 
         try:
-            computed_nom = self.physics.compute_all(**state_nom_noisy)
+            computed_nom = self.physics.compute_all(**state_nom_noisy, esv_open=self._vc.esv_open)
+            computed_nom["esv_open"] = self._vc.esv_open
             # Targets vannes = cibles opérateur réelles (pas les valeurs NOMINAL hard-codées)
             computed_nom["valve_v1_target"] = self._vc._valves["v1"].target
             computed_nom["valve_v2_target"] = self._vc._valves["v2"].target
@@ -295,7 +296,9 @@ class FakeAPI:
                 valve_v3       = state_sim["valve_v3"],
                 valve_bp       = state_sim["valve_bp"],
                 valve_bp_admit = state_sim.get("valve_bp_admit", 0.0),
+                esv_open       = self._vc.esv_open,
             )
+            computed_sim["esv_open"] = self._vc.esv_open
             # Targets depuis le contrôleur (consignes opérateur)
             computed_sim["valve_v1_target"]       = self._vc._valves["v1"].target
             computed_sim["valve_v2_target"]       = self._vc._valves["v2"].target
@@ -347,7 +350,9 @@ class FakeAPI:
             _rotor.update(dt, target_speed_rpm=algebraic_speed)
             computed_sim["turbine_speed"]  = _rotor.speed_rpm
             computed_sim["grid_frequency"] = _rotor.frequency_hz
-
+            params_nom.turbine_speed  = _rotor.speed_rpm
+            params_nom.grid_frequency = _rotor.frequency_hz
+            
             # Dégradation Weibull — dérive lente rendement / vibration / paliers
             if DEGRADATION_ENABLED:
                 _drift = _degradation.update(

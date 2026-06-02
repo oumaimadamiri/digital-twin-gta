@@ -26,7 +26,7 @@ from core.config import (
     NOMINAL, PHYSICS_ETA_IS_HP, PHYSICS_ETA_IS_BP,
     PHYSICS_V1_FLOW_FACTOR, PHYSICS_P_OUT_RATIO,
     T_HP_DESIGN, T_HP_OPERATING, CALIBRATION_COEFFS,
-    EXTRACTION_RATIO,
+    EXTRACTION_RATIO, STEAM_FLOW_BP_NOMINAL,
 )
 
 
@@ -135,6 +135,7 @@ class PhysicsModel:
             pressure_hp    = self.nominal["pressure_hp"],
             temperature_hp = T_HP_DESIGN,
             valve_v1       = 100.0,
+            esv_open       = True,
         )
 
     def _load_calibration_coeffs(self):
@@ -200,7 +201,8 @@ class PhysicsModel:
     # ──────────────────────────────────────────
 
     def compute_active_power(self, steam_flow_hp: float, pressure_hp: float,
-                         temperature_hp: float, valve_v1: float) -> float:
+                         temperature_hp: float, valve_v1: float,
+                         esv_open: bool = False) -> float:
         """
         Puissance active (MW) — bilan enthalpique 2-étages (HP avec soutirage BP).
         
@@ -217,10 +219,13 @@ class PhysicsModel:
         (pas la sortie idéale) — car l'irréversibilité HP augmente l'entropie,
         ce qui réduit le potentiel de travail de l'étage BP.
         """
+        if not esv_open:
+            return 0.0  # ESV fermée : vapeur HP non admise, pas de puissance
+
         eta_is_hp = self._eta_is_hp_corrected(temperature_hp)   # ∈ [0.6, 0.9]
         eta_is_bp = self.ETA_IS_BP                              # moins sensible à T_HP
         m_dot_hp  = self._effective_mass_flow(steam_flow_hp, valve_v1)   # kg/s
-        
+
         if m_dot_hp <= 0:
             return 0.0
         
@@ -252,18 +257,18 @@ class PhysicsModel:
     # ──────────────────────────────────────────
 
     def compute_turbine_speed(self, pressure_hp: float, valve_v1: float,
-                              valve_bp_admit: float = 0.0) -> float:
+                              valve_bp_admit: float = 0.0,
+                              esv_open: bool = False) -> float:
         """
         Vitesse turbine (RPM).
-        V1 (admission HP) est le pilote principal de la vitesse nominale.
-        bp_admit (vapeur de barrage) permet d'atteindre ~3000 RPM avant ouverture V1.
-        Le max() garantit que la contribution dominante l'emporte sans saut.
+        ESV ouverte : V1 (admission HP) pilote la vitesse nominale.
+        ESV fermée  : seul bp_admit (barrage) contribue (~3000 RPM max).
         """
         BP_ADMIT_SPEED_TARGET = 3000.0   # RPM atteints en vapeur de barrage seule
-        p_ratio     = pressure_hp / self.nominal["pressure_hp"]
-        v1_contrib  = self.NOMINAL_SPEED * math.sqrt(p_ratio) * (valve_v1 / 100.0)
-        bp_contrib  = BP_ADMIT_SPEED_TARGET * math.sqrt(p_ratio) * (valve_bp_admit / 100.0)
-        speed       = max(v1_contrib, bp_contrib)
+        p_ratio    = pressure_hp / self.nominal["pressure_hp"]
+        v1_contrib = (self.NOMINAL_SPEED * math.sqrt(p_ratio) * (valve_v1 / 100.0)) if esv_open else 0.0
+        bp_contrib = BP_ADMIT_SPEED_TARGET * math.sqrt(p_ratio) * (valve_bp_admit / 100.0)
+        speed      = max(v1_contrib, bp_contrib)
         return round(max(0.0, speed), 1)
 
     # ──────────────────────────────────────────
@@ -527,7 +532,8 @@ class PhysicsModel:
     def compute_all(self, pressure_hp: float, temperature_hp: float,
                     steam_flow_hp: float, valve_v1: float,
                     valve_v2: float, valve_v3: float,
-                    valve_bp: float, valve_bp_admit: float = 0.0) -> dict:
+                    valve_bp: float, valve_bp_admit: float = 0.0,
+                    esv_open: bool = False) -> dict:
         """
         Calcule tous les paramètres dérivés à partir des 8 entrées primaires.
 
@@ -537,11 +543,14 @@ class PhysicsModel:
 
         Retourne un dict complet prêt pour GTAParameters.
         """
+        # ── Débit BP source barrage (nul quand ESV ouverte — HP prend le relais) ──
+        steam_flow_bp_in = 0.0 if esv_open else round(STEAM_FLOW_BP_NOMINAL * (valve_bp_admit / 100.0), 1)
+
         # ── Thermodynamique ──
         active_power   = self.compute_active_power(
-            steam_flow_hp, pressure_hp, temperature_hp, valve_v1
+            steam_flow_hp, pressure_hp, temperature_hp, valve_v1, esv_open=esv_open
         )
-        turbine_speed  = self.compute_turbine_speed(pressure_hp, valve_v1, valve_bp_admit)
+        turbine_speed  = self.compute_turbine_speed(pressure_hp, valve_v1, valve_bp_admit, esv_open=esv_open)
         pressure_bp    = self.compute_bp_pressure(
             steam_flow_hp, temperature_hp, valve_v1
         )
@@ -671,7 +680,7 @@ class PhysicsModel:
             # BP
             "pressure_bp_in":       round(pressure_bp, 3),
             "temperature_bp":       temperature_bp,
-            "steam_flow_bp_in":     0.0,   # nul en régime permanent (démarrage uniquement)
+            "steam_flow_bp_in":     steam_flow_bp_in,
             # Sorties vapeur
             "steam_flow_condenser": flow_condenser,
             "pressure_bp_barillet": p_bp_barillet,
@@ -738,6 +747,7 @@ class PhysicsModel:
             valve_v2       = 100.0,
             valve_v3       = 100.0,
             valve_bp       = n["valve_bp"],
+            esv_open       = True,
         )
 
         checks = {

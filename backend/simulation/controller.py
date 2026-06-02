@@ -29,6 +29,7 @@ from core.config import (
     SEQUENCE_START_DURATION_S, SEQUENCE_STOP_DURATION_S,
     SPEED_SYNC_THRESHOLD_RPM, SPEED_SYNC_HOLD_S,
     DROOP_ENABLED, DROOP_R, DROOP_FREQ_REF_HZ, DROOP_DEADBAND_HZ, DROOP_MAX_DELTA_MW,
+    ESV_MIN_SPEED_RPM,
     NOMINAL,
 )
 
@@ -41,6 +42,7 @@ MACHINE_STATES  = ("STOPPED", "ROLLING", "SYNCHRONIZING", "GRID_CONNECTED", "TRI
 STARTUP_PHASES  = (
     "PRE_CHECKS",      # posture post-AU, pré-checks OK
     "BARRAGE_OPENED",  # vapeur de barrage ouverte, rotor en rotation lente
+    "ESV_OPENED",      # ESV ouverte, admission HP disponible
     "V1_OPENING",      # V1 en cours d'ouverture
     "ACCELERATING",    # V1 ouverte, rampe de vitesse vers nominale
     "READY_TO_EXCITE", # vitesse nominale atteinte, prêt à exciter l'alternateur
@@ -574,7 +576,6 @@ class Controller:
         self._setpoint_speed_rpm = NOMINAL["turbine_speed"]
         self._pid_speed.reset()
         self._pid_speed.seed(0.0)
-        self.mode = "AUTO"
         try:
             from simulation.dynamics import rotor_dynamics
             rotor_dynamics.unlock_from_grid()
@@ -679,25 +680,43 @@ class Controller:
         )
         return {"accepted": True, "message": "Vapeur de barrage ouverte — attendre vitesse ~3000 RPM."}
 
-    def cmd_open_v1(self, operator: str = "Opérateur") -> dict:
-        """Étape 3 : ouvre V1 (admission HP) — interlock bp_admit ≥ 80%."""
+    def cmd_open_esv(self, operator: str = "Opérateur") -> dict:
+        """Étape 3 : ouvre l'ESV (soupape d'arrêt HP) — interlock vitesse ≥ ESV_MIN_SPEED_RPM."""
         if self.tripped:
-            return {"accepted": False, "message": "Trip actif."}
+            return {"accepted": False, "message": "Trip actif — effectuez un Reset Trip."}
         if self.startup_phase != "BARRAGE_OPENED":
             return {"accepted": False, "message": f"Phase actuelle : {self.startup_phase}. Requise : BARRAGE_OPENED."}
-        if valve_controller._valves["bp_admit"].current < 80.0:
-            return {"accepted": False, "message": f"Vapeur de barrage insuffisante ({valve_controller._valves['bp_admit'].current:.0f}% < 80%). Attendez."}
+        if self._last_speed_rpm_cache < ESV_MIN_SPEED_RPM:
+            return {"accepted": False,
+                    "message": f"Vitesse insuffisante ({self._last_speed_rpm_cache:.0f} < {ESV_MIN_SPEED_RPM:.0f} RPM). Attendez la montée du barrage."}
+        valve_controller.open_esv()
+        self._advance_phase("ESV_OPENED")
+        data_manager.log_operator_action(
+            user=operator, action_type="STARTUP_PHASE",
+            target="esv", value_before="BARRAGE_OPENED", value_after="ESV_OPENED",
+        )
+        return {"accepted": True, "message": "ESV ouverte — admission HP disponible. Ouvrez V1."}
+
+    def cmd_open_v1(self, operator: str = "Opérateur") -> dict:
+        """Étape 4 : ouvre V1 (admission HP) — interlock ESV ouverte."""
+        if self.tripped:
+            return {"accepted": False, "message": "Trip actif."}
+        if self.startup_phase != "ESV_OPENED":
+            return {"accepted": False, "message": f"Phase actuelle : {self.startup_phase}. Requise : ESV_OPENED."}
+        if not valve_controller.esv_open:
+            return {"accepted": False, "message": "Sécurité : V1 requiert l'ESV (admission HP) ouverte."}
         # Transition machine STOPPED → ROLLING (active la dynamique rotor)
         self._enter_rolling(operator=operator)
-        # NOTE : _enter_rolling force mode=AUTO pour le governor vitesse.
-        # La séquence de démarrage manuel laisse mode=AUTO intentionnellement :
-        # le governor empêche l'emballement. Le bouton MANUAL reste disponible si besoin.
-        # Ouvrir V1 via valve_controller (l'interlock bp_admit est maintenant satisfait)
+        # Ouvrir les 3 vannes de réglage HP
         valve_controller.set_valve("v1", 100.0)
+        valve_controller.set_valve("v2", 100.0)
+        valve_controller.set_valve("v3", 100.0)
+        # Handover BP → HP : refermer la source de barrage
+        valve_controller.set_valve("bp_admit", 0.0)
         self._advance_phase("V1_OPENING")
         data_manager.log_operator_action(
             user=operator, action_type="STARTUP_PHASE",
-            target="v1", value_before="BARRAGE_OPENED", value_after="V1_OPENING",
+            target="v1", value_before="ESV_OPENED", value_after="V1_OPENING",
         )
         return {"accepted": True, "message": "V1 en ouverture — phase ACCÉLÉRATION en cours."}
 
@@ -858,11 +877,14 @@ class Controller:
     def get_state_dict(self) -> dict:
         """État complet pour GET /control/state."""
         from simulation.avr_controller import avr_controller
+        from simulation.dynamics import rotor_dynamics
         return {
             **self.snapshot(),
             "setpoint_pressure_hp_bar": self._setpoint_pressure_hp_bar,
             "pid_integral":             round(self._pid._integral, 4),
             "valve_state":              valve_controller.get_state(),
+            "grid_frequency":           rotor_dynamics.frequency_hz,
+            "esv_open":                 valve_controller.esv_open,
             **avr_controller.snapshot(),
         }
 

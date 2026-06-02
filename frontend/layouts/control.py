@@ -318,26 +318,32 @@ def _startup_phase_card():
                       _action_status("ctrl-ph-bp-admit-status"),
                   ]))
 
-    # ── Étape 3 : Ouverture V1 ───────────────────────────────────────
-    step3 = _step(3, "Ouverture V1", with_progress=True,
+    # ── Étape 3 : Ouverture ESV ──────────────────────────────────────
+    step3 = _step(3, "Ouverture ESV",
+                  action=html.Div([
+                      _action_btn("↗ Ouvrir ESV", "ctrl-ph-btn-esv", "#f59e0b"),
+                      _action_status("ctrl-ph-esv-status"),
+                  ]))
+
+    # ── Étape 4 : Ouverture V1 ───────────────────────────────────────
+    step4 = _step(4, "Ouverture V1", with_progress=True,
                   action=html.Div([
                       _action_btn("↗ Ouvrir V1 (100 %)", "ctrl-ph-btn-v1", "#f97316"),
                       _action_status("ctrl-ph-v1-status"),
                   ]))
 
-    # ── Étape 4 : Accélération vitesse — passive (pas de bouton) ────
-    step4 = _step(4, "Accélération vitesse", with_progress=True)
+    # ── Étape 5 : Accélération vitesse — passive (pas de bouton) ────
+    step5 = _step(5, "Accélération vitesse", with_progress=True)
 
-    # ── Étape 5 : Excitation alternateur ────────────────────────────
-    step5 = _step(5, "Excitation alternateur", with_progress=True,
+    # ── Étape 6 : Excitation alternateur ────────────────────────────
+    step6 = _step(6, "Excitation alternateur", with_progress=True,
                   action=html.Div([
                       _action_btn("⚡ Activer AVR", "ctrl-ph-btn-avr", "#a855f7"),
                       _action_status("ctrl-ph-avr-status"),
                   ]))
 
-    # ── Étape 6 : Synchronisation ────────────────────────────────────
-    # Arme la synchro (ROLLING→SYNCHRONIZING). Les 3 critères doivent être verts.
-    step6 = _step(6, "Synchronisation",
+    # ── Étape 7 : Synchronisation ────────────────────────────────────
+    step7 = _step(7, "Synchronisation",
                   action=html.Div([
                       html.Button("🔄 Armer synchronisation", id="ctrl-btn-grid-sync",
                                   className="btn",
@@ -346,16 +352,14 @@ def _startup_phase_card():
                                          "border": "1px solid #22c55e",
                                          "color": "#0a101a"},
                                   disabled=True),
-                      # Critères de synchronisation (mis à jour par le callback)
                       html.Div(id="ctrl-sync-criteria", style={
                           "fontSize": "9px", "fontFamily": "Share Tech Mono",
                           "marginTop": "4px", "color": "#64748b",
                       }),
                   ]))
 
-    # ── Étape 7 : Couplage réseau ────────────────────────────────────
-    # Coupler = action manuelle opérateur APRÈS synchronisation confirmée.
-    step7 = _step(7, "Couplage réseau", connector=False,
+    # ── Étape 8 : Couplage réseau ────────────────────────────────────
+    step8 = _step(8, "Couplage réseau", connector=False,
                   action=html.Div([
                       html.Button("⚡ Coupler au réseau", id="ctrl-btn-grid-couple",
                                   className="btn",
@@ -382,7 +386,7 @@ def _startup_phase_card():
             html.Div("⚠ TRIP ACTIF — Reset requis avant démarrage",
                      className="startup-trip-banner"),
         ]),
-        html.Div([step1, step2, step3, step4, step5, step6, step7],
+        html.Div([step1, step2, step3, step4, step5, step6, step7, step8],
                  className="startup-timeline"),
         html.Hr(style={"borderColor": "#0f2744", "margin": "10px 0 6px"}),
         html.Div([

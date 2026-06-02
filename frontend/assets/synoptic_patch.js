@@ -122,12 +122,17 @@ window.patchGtaSynoptic = function(data) {
     const voltage_d = voltage;
     const i_a_d     = i_a;
 
-    /* ── ESV état ── */
-    const esvState = (ms === "STOPPED" || ms === "TRIPPED") ? "CLOSED" : "OPEN";
-    const esvColor = esvState === "OPEN" ? "#10b981" : "#ef4444";
+    /* ── ESV état (piloté par esv_open, pas machine_state) ── */
+    const esvOpen  = data.esv_open ?? false;
+    const esvState = esvOpen ? "OPEN" : "CLOSED";
+    const esvColor = esvOpen ? "#10b981" : "#ef4444";
     _setText("syn-esv-state", esvState);
     const esvEl = document.getElementById("syn-esv-state");
     if (esvEl) esvEl.setAttribute("fill", esvColor);
+
+    /* ── Débit BP barrage (nul quand ESV ouverte — HP prend le relais) ── */
+    const qBpIn = data.steam_flow_bp_in ?? 0.0;
+    _setText("syn-bp-flow-in", qBpIn.toFixed(0) + " T/h");
 
     /* ── Couleurs statut ── */
     const STATUS_COL = { NORMAL: "#10b981", DEGRADED: "#f59e0b", CRITICAL: "#ef4444" };

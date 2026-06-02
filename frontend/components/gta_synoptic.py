@@ -883,6 +883,8 @@ def _build_synoptic_div(data: dict, static_ids: bool, show_table: bool = True, i
   <text x="175" y="405" fill="#38bdf8" font-size="8" opacity="0.6">
     (démarrage uniquement)
   </text>
+  <text id="syn-bp-flow-in" x="175" y="418" fill="#38bdf8" font-size="9"
+        font-weight="700" text-anchor="middle">0 T/h</text>
 
   <!-- ════ CENTRALE HUILE LUBRIFICATION ════ -->
   <style>.flow-oil{{stroke-dasharray:8,4;animation:flow 2s linear infinite;}}</style>

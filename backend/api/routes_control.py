@@ -231,9 +231,18 @@ def startup_open_barrage(body: OperatorAction = OperatorAction()):
     return result
 
 
+@router.post("/open-esv")
+def startup_open_esv(body: OperatorAction = OperatorAction()):
+    """Étape 3 : ouvre l'ESV (soupape d'arrêt admission HP) — interlock vitesse ≥ 2800 RPM."""
+    result = controller.cmd_open_esv(operator=body.operator)
+    if not result.get("accepted"):
+        raise HTTPException(status_code=400, detail=result["message"])
+    return result
+
+
 @router.post("/startup/v1")
 def startup_open_v1(body: OperatorAction = OperatorAction()):
-    """Étape 3 : ouvre V1 (interlock bp_admit ≥ 80%)."""
+    """Étape 4 : ouvre V1 (interlock ESV ouverte)."""
     result = controller.cmd_open_v1(operator=body.operator)
     if not result.get("accepted"):
         raise HTTPException(status_code=400, detail=result["message"])

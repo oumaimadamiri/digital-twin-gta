@@ -43,7 +43,7 @@ VALVE_CONFIGS: dict[str, ValveConfig] = {
         name        = "V2 — Équilibrage mécanique",
         min_opening = 0.0,
         max_opening = 100.0,
-        ramp_rate   = 15.0,
+        ramp_rate   = 5.0,
         default     = 100.0,
         warning_low = 10.0,
     ),
@@ -51,7 +51,7 @@ VALVE_CONFIGS: dict[str, ValveConfig] = {
         name        = "V3 — Équilibrage mécanique",
         min_opening = 0.0,
         max_opening = 100.0,
-        ramp_rate   = 15.0,
+        ramp_rate   = 5.0,
         default     = 100.0,
         warning_low = 10.0,
     ),
@@ -120,10 +120,23 @@ class ValveController:
             for key, cfg in VALVE_CONFIGS.items()
         }
         self._current_power_mw: float = 0.0   # mise à jour par FakeAPI
+        self._esv_open: bool = False           # ESV fermée au boot
 
     def update_power(self, active_power_mw: float):
         """Informe le contrôleur de la puissance actuelle (pour les règles de sécurité)."""
         self._current_power_mw = active_power_mw
+
+    @property
+    def esv_open(self) -> bool:
+        return self._esv_open
+
+    def open_esv(self) -> None:
+        self._esv_open = True
+        logger.info("[ValveCtrl] ESV ouverte — admission HP disponible")
+
+    def close_esv(self) -> None:
+        self._esv_open = False
+        logger.info("[ValveCtrl] ESV fermée")
 
     def set_valve(self, valve_id: str, target_pct: float) -> dict:
         """Commande une vanne avec vérification des règles de sécurité."""
@@ -144,11 +157,11 @@ class ValveController:
                     "message":  "Sécurité : valve BP ne peut pas fermer si V1 > 10%. Fermez d'abord V1.",
                 }
 
-        # ── Règle 2 : V1 > 10% requiert vapeur de barrage ouverte ≥ 80% ──
-        if valve_id == "v1" and clamped > 10.0 and self._valves["bp_admit"].current < 80.0:
+        # ── Règle 2 : V1 > 10% requiert l'ESV (admission HP) ouverte ──
+        if valve_id == "v1" and clamped > 10.0 and not self._esv_open:
             return {
                 "accepted": False,
-                "message":  "Sécurité : V1 > 10% interdit sans vapeur de barrage (bp_admit ≥ 80%). Ouvrez d'abord la vanne de barrage.",
+                "message":  "Sécurité : V1 > 10% interdit tant que l'ESV (admission HP) est fermée.",
             }
 
         # ── Alerte : fermeture rapide V1 ──
@@ -185,6 +198,7 @@ class ValveController:
         # BP ouverte à fond pour évacuer la vapeur résiduelle
         self._valves["bp"].current = 100.0
         self._valves["bp"].target  = 100.0
+        self._esv_open = False
         logger.critical("[ValveCtrl] FERMETURE D'URGENCE — V1/V2/V3/bp_admit fermées, BP=100%")
 
     def reset_after_trip(self) -> None:
@@ -195,6 +209,7 @@ class ValveController:
             self._valves[k].current = 0.0
             self._valves[k].target  = 0.0
         self._valves["bp"].target = self._valves["bp"].config.default  # 80%
+        self._esv_open = False
         logger.info("[ValveCtrl] Vannes réinitialisées post-trip")
 
     def update(self, dt: float = 0.5):
@@ -205,7 +220,7 @@ class ValveController:
         return {key: round(v.current, 2) for key, v in self._valves.items()}
 
     def get_state(self) -> dict:
-        return {
+        state = {
             key: {
                 "name":     v.config.name,
                 "current":  round(v.current, 2),
@@ -215,6 +230,8 @@ class ValveController:
             }
             for key, v in self._valves.items()
         }
+        state["esv"] = {"open": self._esv_open}
+        return state
 
     def get_warnings(self) -> list[str]:
         warnings = []

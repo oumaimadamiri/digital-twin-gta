@@ -847,7 +847,7 @@ def register(app):
     _V1_OPEN_THR     = 5.0     # seuil V1 « ouverte »
 
     @app.callback(
-        # Pastilles (className) — 7 étapes
+        # Pastilles (className) — 8 étapes
         Output("ctrl-startup-pill-1", "className"),
         Output("ctrl-startup-pill-2", "className"),
         Output("ctrl-startup-pill-3", "className"),
@@ -855,7 +855,8 @@ def register(app):
         Output("ctrl-startup-pill-5", "className"),
         Output("ctrl-startup-pill-6", "className"),
         Output("ctrl-startup-pill-7", "className"),
-        # Labels (className pour couleur) — 7 étapes
+        Output("ctrl-startup-pill-8", "className"),
+        # Labels (className pour couleur) — 8 étapes
         Output("ctrl-startup-lbl-1", "className"),
         Output("ctrl-startup-lbl-2", "className"),
         Output("ctrl-startup-lbl-3", "className"),
@@ -863,7 +864,8 @@ def register(app):
         Output("ctrl-startup-lbl-5", "className"),
         Output("ctrl-startup-lbl-6", "className"),
         Output("ctrl-startup-lbl-7", "className"),
-        # Indicateurs textuels — 7 étapes
+        Output("ctrl-startup-lbl-8", "className"),
+        # Indicateurs textuels — 8 étapes
         Output("ctrl-startup-ind-1", "children"),
         Output("ctrl-startup-ind-2", "children"),
         Output("ctrl-startup-ind-3", "children"),
@@ -871,17 +873,19 @@ def register(app):
         Output("ctrl-startup-ind-5", "children"),
         Output("ctrl-startup-ind-6", "children"),
         Output("ctrl-startup-ind-7", "children"),
+        Output("ctrl-startup-ind-8", "children"),
         # Détail pré-checks (step 1)
         Output("ctrl-startup-checks-detail", "children"),
         # Disabled des boutons d'action
         Output("ctrl-ph-btn-bp-admit", "disabled"),
+        Output("ctrl-ph-btn-esv",      "disabled"),
         Output("ctrl-ph-btn-v1",       "disabled"),
         Output("ctrl-ph-btn-avr",      "disabled"),
-        # Barres de progression par étape (style) — steps 2, 3, 4, 5
+        # Barres de progression par étape (style) — steps 2, 4, 5, 6
         Output("ctrl-startup-prog-2", "style"),
-        Output("ctrl-startup-prog-3", "style"),
         Output("ctrl-startup-prog-4", "style"),
         Output("ctrl-startup-prog-5", "style"),
+        Output("ctrl-startup-prog-6", "style"),
         # Bannière trip + barre globale + durée
         Output("ctrl-startup-trip-banner", "style"),
         Output("ctrl-startup-bar",         "style"),
@@ -892,7 +896,7 @@ def register(app):
         prevent_initial_call=False,
     )
     def update_startup_phase(_n, pathname, current):
-        n_out = 32  # 7 pills + 7 labels + 7 ind + 1 checks + 3 btn + 4 prog + 3 banner/bar/elapsed
+        n_out = 36  # 8 pills + 8 labels + 8 ind + 1 checks + 4 btn + 4 prog + 3 banner/bar/elapsed
         if pathname != "/control":
             return [no_update] * n_out
 
@@ -915,18 +919,29 @@ def register(app):
         speed     = (current or {}).get("turbine_speed", 0.0) or 0.0
         power     = (current or {}).get("active_power", 0.0) or 0.0
 
+        if phase == "PRE_CHECKS":
+            precheck_data, precheck_err = _get("/control/pre-check")
+            precheck_all_ok = (precheck_data or {}).get("all_ok", False)
+        else:
+            precheck_data, precheck_err = None, None
+            precheck_all_ok = True
+
         # ── Calcul statut de chaque étape — piloté par startup_phase ──
         _PHASE_ACTIVE_STEP = {
-            "PRE_CHECKS":      1,
-            "BARRAGE_OPENED":  2,
-            "V1_OPENING":      3,
-            "ACCELERATING":    4,
-            "READY_TO_EXCITE": 5,
-            "EXCITED":         6,   # step5 done, step6 active
-            "SYNCHRONIZING":   6,
-            "GRID_CONNECTED":  7,
+            "PRE_CHECKS":      2,   # action live = ouvrir barrage (step2)
+            "BARRAGE_OPENED":  3,   # action live = ouvrir ESV (step3)
+            "ESV_OPENED":      4,   # action live = ouvrir V1 (step4)
+            "V1_OPENING":      5,
+            "ACCELERATING":    5,
+            "READY_TO_EXCITE": 6,
+            "EXCITED":         7,
+            "SYNCHRONIZING":   7,
+            "GRID_CONNECTED":  8,
         }
         active_step = _PHASE_ACTIVE_STEP.get(phase, 1)
+        # Tant que les pré-checks ne sont pas validés, on reste bloqué sur step1
+        if phase == "PRE_CHECKS" and not precheck_all_ok:
+            active_step = 1
 
         def _step_status(i: int) -> str:
             if tripped:
@@ -944,6 +959,7 @@ def register(app):
         step5 = _step_status(5)
         step6 = _step_status(6)
         step7 = _step_status(7)
+        step8 = _step_status(8)
 
         # Correction step1 : si des warnings existent, forcer active même si PRE_CHECKS
         if not tripped and step1 == "active" and len(warnings) == 0:
@@ -951,17 +967,17 @@ def register(app):
         elif not tripped and step1 == "active" and len(warnings) > 0:
             pass  # reste active — pré-checks non validés
 
-        # Cas EXCITED : step5 est done, step6 est active
+        # Cas EXCITED : step6 est done, step7 est active
         if phase == "EXCITED":
-            step5 = "done"
-            step6 = "active"
+            step6 = "done"
+            step7 = "active"
 
-        # GRID_CONNECTED : toutes les étapes sont done sauf step7 si puissance > 0
+        # GRID_CONNECTED : toutes les étapes sont done sauf step8 si puissance > 0
         if phase == "GRID_CONNECTED" and not tripped:
-            step1 = step2 = step3 = step4 = step5 = step6 = "done"
-            step7 = "done" if power > 0.5 else "active"
+            step1 = step2 = step3 = step4 = step5 = step6 = step7 = "done"
+            step8 = "done" if power > 0.5 else "active"
 
-        statuses = [step1, step2, step3, step4, step5, step6, step7]
+        statuses = [step1, step2, step3, step4, step5, step6, step7, step8]
 
         def pill_cls(s):
             return f"startup-pill startup-pill-{s}"
@@ -984,46 +1000,61 @@ def register(app):
                     done_txt   = f"OK • {len(warnings)} interlock(s)" if warnings else "OK — tous systèmes nominaux",
                     active_txt = f"⚠ {len(warnings)} interlock(s)" if warnings else "⚠ TRIP actif")
 
+        _ESV_MIN_SPEED = 2800.0
+
         bp_spd_pct = min(100, round(speed / _BP_SPEED_THR * 100))
         ind2 = _ind(step2,
                     done_txt   = f"BP = {bp_admit:.0f} % ✓ — {speed:.0f} RPM",
                     active_txt = f"BP = {bp_admit:.0f} % — vitesse {speed:.0f} / {_BP_SPEED_THR:.0f} RPM ({bp_spd_pct} %)")
 
+        esv_open = (current or {}).get("esv_open", False) or False
+        esv_spd_pct = min(100, round(speed / _ESV_MIN_SPEED * 100))
         ind3 = _ind(step3,
+                    done_txt   = "ESV ouverte ✓ — admission HP disponible",
+                    active_txt = f"Vitesse {speed:.0f} / {_ESV_MIN_SPEED:.0f} RPM ({esv_spd_pct} %) avant ESV",
+                    locked_txt = "🔒 Barrage requis")
+
+        ind4 = _ind(step4,
                     done_txt   = f"V1 = {v1:.0f} % ✓",
-                    active_txt = f"V1 = {v1:.0f} % (en ouverture…)")
+                    active_txt = f"V1 = {v1:.0f} % (en ouverture…)",
+                    locked_txt = "🔒 ESV requise")
 
         spd_pct = min(100, round(speed / _SPEED_NOMINAL * 100))
-        ind4 = _ind(step4,
+        ind5 = _ind(step5,
                     done_txt   = f"{speed:.0f} RPM ✓ — vitesse nominale atteinte",
                     active_txt = f"{speed:.0f} / {_SPEED_NOMINAL:.0f} RPM ({spd_pct} %)")
 
-        if step5 == "done":
-            ind5 = f"✅ V_term {avr_vt:.1f} kV — excité"
-        elif step5 == "active":
-            ind5 = "AVR OFF — activer VOLTAGE" if avr_mode == "OFF" \
+        if step6 == "done":
+            ind6 = f"✅ V_term {avr_vt:.1f} kV — excité"
+        elif step6 == "active":
+            ind6 = "AVR OFF — activer VOLTAGE" if avr_mode == "OFF" \
                    else f"V_term {avr_vt:.1f} / {avr_vset:.1f} kV"
-        elif step5 == "tripped":
-            ind5 = "⚡ TRIP"
+        elif step6 == "tripped":
+            ind6 = "⚡ TRIP"
         else:
-            ind5 = "🔒 Verrouillé — vitesse nominale requise"
+            ind6 = "🔒 Verrouillé — vitesse nominale requise"
 
-        ind6 = _ind(step6,
+        ind7 = _ind(step7,
                     done_txt   = "✓ Synchro armée — coupler au réseau",
                     active_txt = f"Δ vitesse = {abs(speed - _SPEED_NOMINAL):.0f} RPM — armer quand stable")
 
-        ind7 = _ind(step7,
+        ind8 = _ind(step8,
                     done_txt   = f"P = {power:.1f} MW — machine couplée",
                     active_txt = f"P = {power:.1f} MW")
 
         # ── Détail pré-checks (step 1) — appel GET /control/pre-check ──
-        precheck_data, precheck_err = _get("/control/pre-check")
-        precheck_all_ok = (precheck_data or {}).get("all_ok", False)
+        # precheck_data, precheck_err = _get("/control/pre-check")
+        # precheck_all_ok = (precheck_data or {}).get("all_ok", False)
 
         if tripped:
             checks_detail = html.Div("⚡ TRIP actif — réinitialiser avant démarrage",
                                      style={"color": "#ef4444", "fontSize": "10px",
                                             "fontFamily": "Share Tech Mono"})
+        elif phase != "PRE_CHECKS":
+            checks_detail = html.Div("✅ Pré-checks validés — séquence engagée",
+                                     style={"color": "#22c55e", "fontSize": "10px",
+                                            "fontFamily": "Share Tech Mono"})
+            
         elif precheck_err or not precheck_data:
             checks_detail = html.Div("⚠ Impossible de récupérer les pré-checks",
                                      style={"color": "#f59e0b", "fontSize": "10px",
@@ -1054,11 +1085,12 @@ def register(app):
             ])
 
         # ── Gating séquentiel des boutons d'action — piloté par startup_phase ──
-        btn_bp_disabled  = (phase != "PRE_CHECKS") or mode == "AUTO" or tripped \
+        btn_bp_disabled  = (phase != "PRE_CHECKS")    or mode == "AUTO" or tripped \
                            or not precheck_all_ok
-        btn_v1_disabled  = (phase != "BARRAGE_OPENED") or mode == "AUTO" or tripped \
-                           or not precheck_all_ok
-        btn_avr_disabled = (phase != "READY_TO_EXCITE") or tripped or not precheck_all_ok
+        btn_esv_disabled = (phase != "BARRAGE_OPENED") or mode == "AUTO" or tripped \
+                           or speed < 2800
+        btn_v1_disabled  = (phase != "ESV_OPENED")    or mode == "AUTO" or tripped
+        btn_avr_disabled = (phase != "READY_TO_EXCITE") or tripped
 
         # ── Barres de progression contextuelles (visibles seulement si step active) ──
         def prog_style(active, pct, color):
@@ -1076,10 +1108,10 @@ def register(app):
 
         prog2_pct = max(bp_admit / _BP_ADMIT_THR, speed / _BP_SPEED_THR) * 100
         prog2 = prog_style(step2 == "active", prog2_pct, "#f97316")
-        prog3 = prog_style(step3 == "active", (v1 / _V1_OPEN_TARGET) * 100, "#f97316")
-        prog4 = prog_style(step4 == "active", (speed / _SPEED_NOMINAL) * 100, "#22c55e")
-        prog5_pct = (avr_vt / avr_vset) * 100 if avr_vset > 0 and avr_mode != "OFF" else 0
-        prog5 = prog_style(step5 == "active", prog5_pct, "#a855f7")
+        prog4 = prog_style(step4 == "active", (v1 / _V1_OPEN_TARGET) * 100, "#f97316")
+        prog5 = prog_style(step5 == "active", (speed / _SPEED_NOMINAL) * 100, "#22c55e")
+        prog6_pct = (avr_vt / avr_vset) * 100 if avr_vset > 0 and avr_mode != "OFF" else 0
+        prog6 = prog_style(step6 == "active", prog6_pct, "#a855f7")
 
         # ── Bandeau trip ──
         trip_style = {"display": "block"} if tripped else {"display": "none"}
@@ -1094,10 +1126,10 @@ def register(app):
         return (
             [pill_cls(s) for s in statuses] +
             [lbl_cls(s)  for s in statuses] +
-            [ind1, ind2, ind3, ind4, ind5, ind6, ind7,
+            [ind1, ind2, ind3, ind4, ind5, ind6, ind7, ind8,
              checks_detail,
-             btn_bp_disabled, btn_v1_disabled, btn_avr_disabled,
-             prog2, prog3, prog4, prog5,
+             btn_bp_disabled, btn_esv_disabled, btn_v1_disabled, btn_avr_disabled,
+             prog2, prog4, prog5, prog6,
              trip_style, bar_style, elapsed]
         )
 
@@ -1117,7 +1149,23 @@ def register(app):
             return _status_err(f"Erreur : {err}")
         return _status_ok("Vapeur barrage ouverte ✓")
 
-    # ── Bouton action phase démarrage : Ouvrir V1 (15 %) ────────────
+    # ── Bouton action phase démarrage : Ouvrir ESV ──────────────────
+    @app.callback(
+        Output("ctrl-ph-esv-status", "children"),
+        Input("ctrl-ph-btn-esv", "n_clicks"),
+        State("store-operator-name", "data"),
+        prevent_initial_call=True,
+    )
+    def ph_open_esv(n, operator):
+        if not n:
+            return no_update
+        op = operator or "Opérateur"
+        data, err = _post("/control/open-esv", {"operator": op})
+        if err:
+            return _status_err(f"Erreur : {err}")
+        return _status_ok(data.get("message", "ESV ouverte ✓"))
+
+    # ── Bouton action phase démarrage : Ouvrir V1 ───────────────────
     @app.callback(
         Output("ctrl-ph-v1-status", "children"),
         Input("ctrl-ph-btn-v1", "n_clicks"),

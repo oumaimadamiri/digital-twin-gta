@@ -96,6 +96,9 @@ class GTAParameters(BaseModel):
     status:     StatusEnum = StatusEnum.NORMAL
     scenario:   Optional[str] = None
 
+    # ── ESV / Soupape d'arrêt HP ──
+    esv_open: bool = Field(False, description="Soupape d'arrêt ESV ouverte (admission HP)")
+
     # ── Contrôle Commande (renseigné sur params_sim uniquement) ──
     control_mode:        str            = Field("MANUAL", description="Mode opérateur: MANUAL | AUTO")
     machine_state:       str            = Field("STOPPED", description="État machine: STOPPED|ROLLING|SYNCHRONIZING|GRID_CONNECTED|TRIPPED")
