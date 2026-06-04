@@ -225,11 +225,6 @@ def _sequences_card():
     return _card(
         _section_header("SÉQUENCES OPÉRATOIRES", "#8b5cf6"),
         html.Div([
-            html.Button("▶ Start turbine", id="ctrl-btn-seq-start",
-                        className="btn",
-                        style={"background": "#22c55e", "border": "1px solid #22c55e",
-                               "fontSize": "10px", "padding": "6px 10px",
-                               "display": "block", "width": "100%", "marginBottom": "6px"}),
             html.Button("■ Stop normal",   id="ctrl-btn-seq-stop",
                         className="btn btn-outline",
                         style={"borderColor": "#f59e0b", "color": "#f59e0b",
@@ -720,6 +715,12 @@ def _avr_card():
                 ], style={"marginTop": "6px"}),
             ]),
         ]),
+        # Valeurs prévues post-couplage — hors overlay grisé, visible en ROLLING/SYNCHRONIZING
+        html.Div(
+            id="ctrl-avr-preview",
+            children=[],
+            style={"display": "none"},
+        ),
     )
 
 

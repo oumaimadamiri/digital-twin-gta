@@ -30,6 +30,13 @@ function _setAttr(id, attr, value) {
     if (el) el.setAttribute(attr, value);
 }
 
+function _toggleBlink(elemId, isAlarm) {
+    const el = document.getElementById(elemId);
+    if (!el) return;
+    if (isAlarm) el.classList.add("blink");
+    else         el.classList.remove("blink");
+}
+
 function _alarm(val, lo, hi) {
     return val < lo || val > hi;
 }
@@ -46,7 +53,7 @@ window.patchGtaSynoptic = function(data) {
     if (!data) return;
 
     /* ── Gate machine_state ── (machine_state inclus dans le flux nominal depuis fake_api) */
-    const ms        = data.machine_state ?? "STOPPED";
+    const ms        = data.machine_state ?? "GRID_CONNECTED";
     const isRunning = ms === "ROLLING" || ms === "SYNCHRONIZING" || ms === "GRID_CONNECTED";
 
     /* ── Extraction des valeurs ── (défauts = 0 : représentent machine à l'arrêt) */
@@ -122,6 +129,15 @@ window.patchGtaSynoptic = function(data) {
     const voltage_d = voltage;
     const i_a_d     = i_a;
 
+    /* ── Vitesse alternateur après réducteur ── */
+    const altSpd   = data.alternator_speed ?? (speed / 4.29);
+    const altSpdD  = isRunning ? altSpd : 0.0;
+
+    /* ── Overlay AU/TRIP sur synoptique ── */
+    const tripped = data.tripped ?? (ms === "TRIPPED");
+    const tripOverlay = document.getElementById("syn-trip-overlay");
+    if (tripOverlay) tripOverlay.setAttribute("display", tripped ? "block" : "none");
+
     /* ── ESV état (piloté par esv_open, pas machine_state) ── */
     const esvOpen  = data.esv_open ?? false;
     const esvState = esvOpen ? "OPEN" : "CLOSED";
@@ -141,7 +157,8 @@ window.patchGtaSynoptic = function(data) {
     /* ── Alarmes ── */
     const alm_php  = _alarm(p_hp,  55, 65);
     const alm_thp  = _alarm(t_hp, 420, 500);
-    const alm_qhp  = _alarm(q_hp, 100, 130);
+    // Débit HP uniquement alarmé si la machine tourne (évite fausse alarme sur trip)
+    const alm_qhp  = isRunning && _alarm(q_hp, 100, 130);
     // Alarmes uniquement si la machine tourne (évite fausses alertes sur valeurs à 0)
     const alm_spd  = isRunning && _alarm(speed, 6300, 6550);
     const alm_pow  = isRunning && power > 30.0;
@@ -153,6 +170,17 @@ window.patchGtaSynoptic = function(data) {
     const alm_ia   = isRunning && i_a > 3000;
 
     const alt_col  = alm_pow ? "#ef4444" : (isRunning && power > 24 ? "#f59e0b" : "#10b981");
+
+    /* ── Synchronisation dynamique de la classe CSS blink ── */
+    _toggleBlink("syn-php-g",      alm_php);
+    _toggleBlink("syn-thp-g",      alm_thp);
+    _toggleBlink("syn-qhp-g",      alm_qhp);
+    _toggleBlink("syn-spd-g",      alm_spd);
+    _toggleBlink("syn-bx-spd-g",   alm_spd);
+    _toggleBlink("syn-bx-eff-g",   alm_eff);
+    _toggleBlink("syn-bx-pout-g",  alm_pow);
+    _toggleBlink("syn-bx-pf-g",    alm_pf);
+    _toggleBlink("syn-bx-ia-g",    alm_ia);
 
     /* ── Tags source HP ── */
     const phpValEl = document.getElementById("syn-php-val");
@@ -215,6 +243,16 @@ window.patchGtaSynoptic = function(data) {
         spdRect.setAttribute("fill",   alm_spd ? "rgba(239,68,68,0.12)" : "rgba(15,23,42,0.75)");
         spdRect.setAttribute("stroke", alm_spd ? "#ef4444" : "#1e3a5f");
     }
+
+    /* ── Tag vitesse alternateur après réducteur ── */
+    const vit2El = document.getElementById("syn-vit2-val");
+    if (vit2El) {
+        const ts = vit2El.querySelector("tspan");
+        vit2El.childNodes[0].textContent = altSpdD.toFixed(0) + " ";
+        if (ts) ts.textContent = "RPM";
+    }
+    const altRpmLbl = document.getElementById("syn-alt-rpm-lbl");
+    if (altRpmLbl) altRpmLbl.textContent = `→ ${altSpdD.toFixed(0)} RPM`;
 
     /* ── Barillet BP ── */
     _setText("syn-pbar-bp-val", `${p_bar_bp_d.toFixed(2)} `);

@@ -6,37 +6,38 @@ STATUS_COLORS = {
     "NORMAL":   {"stroke": "#10b981", "glow": "rgba(16,185,129,0.25)", "label": "#10b981"},
     "DEGRADED": {"stroke": "#f59e0b", "glow": "rgba(245,158,11,0.25)",  "label": "#f59e0b"},
     "CRITICAL": {"stroke": "#ef4444", "glow": "rgba(239,68,68,0.3)",    "label": "#ef4444"},
+    "TRIPPED":  {"stroke": "#ef4444", "glow": "rgba(239,68,68,0.45)",   "label": "#fca5a5"},
 }
 
 _DEFAULTS = {
-    # État initial : machine à l'arrêt (STOPPED), avant démarrage
+    # État initial : machine en GRID_CONNECTED (cohérent avec boot)
     "status":               "NORMAL",
-    # Source vapeur HP (externe à la turbine — présente même à l'arrêt)
+    # Source vapeur HP
     "pressure_hp":          60.0,
     "temperature_hp":       440.0,
-    "steam_flow_hp":        0.0,
+    "steam_flow_hp":        120.0,
     # BP
-    "pressure_bp_in":       1.0,
-    "temperature_bp":       100.0,
-    "pressure_bp_barillet": 1.0,    # ambiance (pas de vapeur en transit)
-    "steam_flow_condenser": 0.0,
-    "pressure_condenser":   1.013,  # vide cassé → pression atmosphérique
+    "pressure_bp_in":       4.4,
+    "temperature_bp":       145.0,
+    "pressure_bp_barillet": 4.4,
+    "steam_flow_condenser": 87.0,
+    "pressure_condenser":   0.08,   # vide établi
     # Turbine
-    "turbine_speed":        0.0,
-    "efficiency":           0.0,
-    # Électrique — zéro sans excitation
-    "active_power":         0.0,
-    "power_factor":         0.0,
-    "reactive_power":       0.0,
-    "apparent_power":       0.0,
-    "voltage":              0.0,
-    "current_a":            0.0,
-    # Vannes — posture de repos
-    "valve_v1":             0.0,
-    "valve_v2":             0.0,
-    "valve_v3":             0.0,
-    "valve_bp":             80.0,   # sortie BP reste à 80% (évacuation)
-    # Centrale Huile Lubrification (système actif même à l'arrêt)
+    "turbine_speed":        6435.0,
+    "efficiency":           58.0,
+    # Électrique — valeurs nominales GRID_CONNECTED
+    "active_power":         24.0,
+    "power_factor":         0.85,
+    "reactive_power":       14.0,
+    "apparent_power":       28.2,
+    "voltage":              10.5,
+    "current_a":            1551.0,
+    # Vannes — posture régime permanent
+    "valve_v1":             100.0,
+    "valve_v2":             100.0,
+    "valve_v3":             100.0,
+    "valve_bp":             80.0,
+    # Centrale Huile Lubrification
     "lube_oil_press":       1.5,
     "lube_oil_temp":        45.0,
     "lube_oil_temp_out":    60.0,
@@ -463,6 +464,7 @@ def _build_synoptic_div(data: dict, static_ids: bool, show_table: bool = True, i
     svg = f"""
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="-20 -52 1430 664"
      width="100%" height="100%"
+     preserveAspectRatio="xMidYMin meet"
      style="font-family:'Share Tech Mono',monospace;background:transparent">
   <defs>
     <filter id="go" x="-25%" y="-25%" width="150%" height="150%">
@@ -767,7 +769,7 @@ def _build_synoptic_div(data: dict, static_ids: bool, show_table: bool = True, i
     </g>
   </g>
   <text x="835" y="283" fill="#34d399" font-size="9" text-anchor="middle">÷ 4.29</text>
-  <text x="835" y="296" fill="#10b981" font-size="10" font-weight="700"
+  <text id="syn-alt-rpm-lbl" x="835" y="296" fill="#10b981" font-size="10" font-weight="700"
         text-anchor="middle">→ 1500 RPM</text>
   <text{sid("freq-val")} x="835" y="308" fill="#34d399" font-size="9" font-weight="700" text-anchor="middle">{freq:.2f} <tspan fill="#064e3b" font-size="8">Hz · 2 pôles</tspan></text>
 
@@ -972,7 +974,22 @@ def _build_synoptic_div(data: dict, static_ids: bool, show_table: bool = True, i
       stroke="#10b981" 
       stroke-width="1.2" 
       opacity="0.5"/>
- 
+
+  <!-- ════ OVERLAY AU/TRIP (masqué par défaut, activé via JS) ════ -->
+  <g id="syn-trip-overlay" display="none" class="blink">
+    <rect x="0" y="0" width="1400" height="635" fill="rgba(127,29,29,0.55)" rx="0"/>
+    <rect x="350" y="270" width="700" height="95" rx="10"
+          fill="rgba(127,29,29,0.92)" stroke="#ef4444" stroke-width="2.5"/>
+    <text x="700" y="305" fill="#fca5a5" font-size="22" font-weight="700"
+          text-anchor="middle" font-family="Share Tech Mono" letter-spacing="3">
+      ⛔  ARRÊT D'URGENCE ACTIF
+    </text>
+    <text x="700" y="338" fill="#f87171" font-size="13" font-weight="600"
+          text-anchor="middle" font-family="Share Tech Mono" letter-spacing="1.5">
+      Machine TRIPPÉE — ESV fermée — V1 = 0%
+    </text>
+  </g>
+
 </svg>"""
 
     div_kwargs = {"id": "gta-synoptic-inner"} if static_ids else {}

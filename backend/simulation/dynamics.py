@@ -37,8 +37,8 @@ class RotorDynamics:
     """Intégrateur de vitesse rotor — singleton."""
 
     def __init__(self):
-        self.omega_rad_s: float = OMEGA_NOMINAL
-        self._grid_locked: bool = True
+        self.omega_rad_s: float = OMEGA_NOMINAL   # rotor à vitesse nominale au boot
+        self._grid_locked: bool = True             # couplé réseau dès le boot
 
     # ──────────────────────────────────────────────────────
     # PROPRIÉTÉS

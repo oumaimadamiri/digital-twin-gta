@@ -55,7 +55,28 @@ class AlertManager:
             avr_off = False
 
         if machine_stopped:
-            # Vider les alertes actives : machine à l'arrêt = état nominal attendu
+            try:
+                tripped = _ctrl.tripped
+            except Exception:
+                tripped = False
+            if tripped:
+                # Machine en trip → émettre une alerte synthétique AU si pas déjà active
+                already = any(a.alert_type == AlertType.EMERGENCY_TRIP for a in self._active_alerts)
+                if not already:
+                    trip_alert = Alert(
+                        timestamp  = datetime.utcnow() + timedelta(hours=TIMEZONE_OFFSET),
+                        alert_type = AlertType.EMERGENCY_TRIP,
+                        parameter  = "emergency_trip",
+                        value      = 1.0,
+                        threshold  = 0.0,
+                        severity   = SeverityLevel.CRITICAL,
+                        source     = AlertSource.THRESHOLD,
+                        message    = "AU/TRIP déclenché — Machine arrêtée d'urgence.",
+                    )
+                    self._active_alerts.append(trip_alert)
+                    return [trip_alert]
+                return []
+            # Arrêt normal : vider les alertes actives
             self._active_alerts.clear()
             return []
 

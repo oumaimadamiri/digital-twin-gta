@@ -98,6 +98,23 @@ def register(app):
     def update_valve_displays(v1, v2, v3, vbp):
         return str(v1), str(v2), str(v3), str(vbp)
 
+    # ── Verrouillage des contrôles vannes sur AU ─────────────────────────
+    @app.callback(
+        Output("slider-v1",       "disabled"),
+        Output("slider-v2",       "disabled"),
+        Output("slider-v3",       "disabled"),
+        Output("slider-bp",       "disabled"),
+        Output("btn-apply-valves","disabled"),
+        Output("btn-reset",       "disabled"),
+        Input("store-simulation-data", "data"),
+    )
+    def lock_valve_controls_on_trip(d):
+        d = d or {}
+        tripped = bool(d.get("tripped")) \
+                  or (d.get("status") or "").upper() == "TRIPPED" \
+                  or (d.get("machine_state") or "").upper() == "TRIPPED"
+        return (tripped,) * 6
+
     # ── FIX : chargement scénarios sur URL change (plus de race condition) ──
     @app.callback(
         Output("scenarios-list-container", "children"),
@@ -251,16 +268,19 @@ def register(app):
     def update_scenario_buttons(d, btn_names):
         if not btn_names:
             return dash.no_update
-        
         d = d or {}
+        tripped = bool(d.get("tripped")) \
+                  or (d.get("status") or "").upper() == "TRIPPED" \
+                  or (d.get("machine_state") or "").upper() == "TRIPPED"
         active_name = d.get("scenario")
-        
-        children = []
-        classes = []
-        disabled_list = []
-        
+
+        children, classes, disabled_list = [], [], []
         for name in btn_names:
-            if not active_name:
+            if tripped:
+                children.append("⛔ AU ACTIF")
+                classes.append("btn btn-scenario disabled-scenario-btn")
+                disabled_list.append(True)
+            elif not active_name:
                 children.append("▶ DÉCLENCHER")
                 classes.append("btn btn-scenario")
                 disabled_list.append(False)
@@ -272,7 +292,6 @@ def register(app):
                 children.append("▶ DÉCLENCHER")
                 classes.append("btn btn-scenario disabled-scenario-btn")
                 disabled_list.append(True)
-                
         return children, classes, disabled_list
 
     # ── Synoptique + panneau état ─────────────────────────────────────
@@ -305,9 +324,8 @@ def register(app):
             return no_update, no_update
         d = d or {}
 
-        status  = d.get("status", "NORMAL")
-        s_color = {"NORMAL": "#10b981", "DEGRADED": "#f59e0b",
-                   "CRITICAL": "#ef4444"}.get(status, "#10b981")
+        from callbacks.cb_control import _fuse_state_badge
+        status, s_color = _fuse_state_badge(d)
         _scen       = d.get("scenario") or "Aucun (Nominal)"
         _scen_short = (_scen[:26] + "…") if len(_scen) > 28 else _scen
         has_scenario = d.get("scenario") is not None
@@ -378,3 +396,4 @@ def register(app):
         except Exception:
             pass
         return html.Div("Erreur historique", style={"color": "#ef4444"})
+

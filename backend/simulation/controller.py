@@ -29,7 +29,9 @@ from core.config import (
     SEQUENCE_START_DURATION_S, SEQUENCE_STOP_DURATION_S,
     SPEED_SYNC_THRESHOLD_RPM, SPEED_SYNC_HOLD_S,
     DROOP_ENABLED, DROOP_R, DROOP_FREQ_REF_HZ, DROOP_DEADBAND_HZ, DROOP_MAX_DELTA_MW,
-    ESV_MIN_SPEED_RPM,
+    ESV_MIN_SPEED_RPM, GRID_COUPLE_FREQ_TOL_HZ,
+    AUTO_STEP_DELAY_BARRAGE_S, AUTO_STEP_DELAY_ESV_S, AUTO_STEP_DELAY_V1_S,
+    AUTO_STEP_DELAY_EXCITE_S, AUTO_STEP_DELAY_SYNC_ARM_S,
     NOMINAL,
 )
 
@@ -56,14 +58,14 @@ class Controller:
     """Superviseur Contrôle Commande — singleton, appelé depuis fake_api._generate_dual()."""
 
     def __init__(self):
-        self.mode        = "MANUAL"
+        self.mode        = "AUTO"
         self.tripped     = False
-        self.machine_state = "STOPPED"   # état initial : machine à l'arrêt
+        self.machine_state = "GRID_CONNECTED"
 
         # Consignes
-        self._setpoint_power_mw:        float | None = None
-        self._setpoint_speed_rpm:       float | None = None
-        self._setpoint_pressure_hp_bar: float | None = None
+        self._setpoint_power_mw:        float | None = NOMINAL["active_power"]
+        self._setpoint_speed_rpm:       float | None = NOMINAL["turbine_speed"]
+        self._setpoint_pressure_hp_bar: float | None = NOMINAL["pressure_hp"]
 
         # PID puissance → V1 (actif en GRID_CONNECTED)
         self._pid = PID(
@@ -87,6 +89,15 @@ class Controller:
         # Cache pression HP pour le tick courant (évite couplage circulaire)
         self._last_pressure_hp_bar_cache: float = NOMINAL["pressure_hp"]
 
+        # Pré-seed intégrateurs : machine déjà au point d'équilibre nominal au boot.
+        # output = ki · integral à erreur nulle → integral = V1_nominal / ki
+        # Sans ce seed, tick 1 calcule output=0 → V1.target=0 → oscillation 3 cycles.
+        _v1_nom = NOMINAL["valve_v1"]  # 100.0
+        if self._pid.ki > 0:
+            self._pid.seed(_v1_nom / self._pid.ki)            # 100/0.5 = 200.0
+        if self._pid_pressure.ki > 0:
+            self._pid_pressure.seed(_v1_nom / self._pid_pressure.ki)  # 100/0.25 = 400.0
+
         self._last_pid_output: float | None = None
         self._last_pid_error:  float | None = None
 
@@ -100,7 +111,7 @@ class Controller:
         self._sequence_just_completed: bool  = False
 
         # Cache de la dernière mesure (pour la transition MANUAL→AUTO)
-        self._last_power_mw_cache: float = 0.0
+        self._last_power_mw_cache: float = NOMINAL["active_power"]
         self._last_speed_rpm_cache: float = NOMINAL["turbine_speed"]
 
         # Droop primaire — cache fréquence + dernier offset calculé
@@ -111,7 +122,7 @@ class Controller:
         self._sync_entry_time: float | None = None
 
         # Phase de démarrage manuel (orthogonale à machine_state)
-        self.startup_phase:     str         = "PRE_CHECKS"   # état initial : prêt pour démarrage
+        self.startup_phase:     str         = "GRID_CONNECTED"
         self._phase_entered_at: float       = time.time()
         self._phase_message:    str | None  = None
 
@@ -164,9 +175,14 @@ class Controller:
             target="mode", value_before=before, value_after=mode,
         )
         logger.info(f"[Controller] Mode → {mode}")
-        if mode == "AUTO" and before == "MANUAL" and self.machine_state == "STOPPED" and not self.tripped:
-            logger.info("[Controller] AUTO depuis STOPPED → lancement séquence start_turbine")
-            self.start_sequence("start_turbine", operator=operator, current_power_mw=0.0)
+
+        # Bascule AUTO depuis machine arrêtée (post-reset trip ou boot froid) :
+        # déclencher la séquence de démarrage orchestrée pas-à-pas.
+        # start_sequence("start_turbine") initialise _sequence_state="STARTING" et
+        # _check_auto_transitions pilote la cascade barrage→ESV→V1→AVR→sync→couple.
+        if mode == "AUTO" and self.machine_state == "STOPPED" and self._sequence_state == "IDLE":
+            self.start_sequence("start_turbine", operator=operator)
+
         return {"accepted": True, "message": f"Mode changé : {before} → {mode}"}
 
     def set_setpoint(
@@ -370,14 +386,17 @@ class Controller:
 
         if name == "start_turbine":
             if self.machine_state in ("STOPPED", "TRIPPED"):
-                # Cascade complète : STOPPED → ROLLING → SYNCHRO → GRID_CONNECTED
-                self._enter_rolling(operator=operator)
+                # Séquence complète orchestrée pas-à-pas (AUTO) : STOPPED → ... → GRID_CONNECTED
+                # _check_auto_transitions pilotera chaque étape (barrage→ESV→V1→AVR→sync→couple)
+                # _sequence_t0 = None jusqu'au couplage réseau (la rampe MW commence après)
                 self._sequence_state    = "STARTING"
                 self._sequence_name     = name
-                self._sequence_t0       = time.time()
+                self._sequence_t0       = None
                 self._sequence_duration = SEQUENCE_START_DURATION_S
                 self._sequence_start_mw = 0.0
                 self._sequence_end_mw   = NOMINAL["active_power"]
+                if self.mode != "AUTO":
+                    self.set_mode("AUTO", operator=operator)
             else:
                 # Déjà en exploitation — simple rampe puissance
                 self._sequence_state    = "STARTING"
@@ -463,12 +482,13 @@ class Controller:
         if self.tripped:
             return
 
+        # Transitions passives de phase (MANUAL et AUTO) — V1_OPENING/ACCELERATING/READY_TO_EXCITE
+        self._tick_manual_phase(dt, current_speed_rpm)
+
         if self.mode != "AUTO":
-            # En MANUAL, avancer uniquement les transitions passives de phase de démarrage
-            self._tick_manual_phase(dt, current_speed_rpm)
             return
 
-        # Vérifier les transitions d'état automatiques
+        # Vérifier les transitions d'état automatiques (séquence AUTO + ROLLING→SYNCHRO→GRID)
         self._check_auto_transitions(current_speed_rpm, current_power_mw)
 
         if self.machine_state == "ROLLING":
@@ -540,6 +560,45 @@ class Controller:
         """Transitions automatiques du MachineState pendant les séquences."""
         nominal_rpm = NOMINAL["turbine_speed"]
 
+        # ── Orchestrateur séquence AUTO (STOPPED → GRID_CONNECTED pas-à-pas) ──────
+        if (self.mode == "AUTO"
+                and self._sequence_state == "STARTING"
+                and self.machine_state in ("STOPPED", "ROLLING", "SYNCHRONIZING")):
+            now = time.time()
+            phase = self.startup_phase
+            t_in_phase = now - self._phase_entered_at  # _phase_entered_at mis à jour par _advance_phase
+
+            if phase == "PRE_CHECKS" and t_in_phase >= AUTO_STEP_DELAY_BARRAGE_S:
+                self.cmd_open_barrage(operator="AUTO")
+
+            elif phase == "BARRAGE_OPENED" and t_in_phase >= AUTO_STEP_DELAY_ESV_S:
+                # Bypass interlock vitesse (vireur virtuel en AUTO)
+                valve_controller.open_esv()
+                self._advance_phase("ESV_OPENED")
+                data_manager.log_operator_action(
+                    user="AUTO", action_type="STARTUP_PHASE",
+                    target="esv", value_before="BARRAGE_OPENED", value_after="ESV_OPENED",
+                )
+
+            elif phase == "ESV_OPENED" and t_in_phase >= AUTO_STEP_DELAY_V1_S:
+                self.cmd_open_v1(operator="AUTO")  # entre ROLLING, ouvre V1/V2/V3
+
+            elif phase == "READY_TO_EXCITE" and t_in_phase >= AUTO_STEP_DELAY_EXCITE_S:
+                self.cmd_excite(operator="AUTO")
+
+            elif phase == "EXCITED" and t_in_phase >= AUTO_STEP_DELAY_SYNC_ARM_S:
+                if abs(self._last_speed_rpm_cache - nominal_rpm) <= SPEED_SYNC_THRESHOLD_RPM:
+                    self.cmd_synchronize_arm(operator="AUTO")
+
+            elif phase == "SYNCHRONIZING":
+                result = self.cmd_couple_grid(operator="AUTO")
+                if result.get("accepted"):
+                    # Réinitialise le timer de rampe MW maintenant que la machine est couplée
+                    self._sequence_t0 = time.time()
+
+            return  # pas de double-transition dans le même tick
+
+        # ── Transitions standard ROLLING / SYNCHRONIZING / GRID_CONNECTED ─────────
         if self.machine_state == "ROLLING":
             # Vitesse proche du nominal → passer en SYNCHRONIZING
             if abs(current_speed_rpm - nominal_rpm) < SPEED_SYNC_THRESHOLD_RPM:
@@ -661,6 +720,7 @@ class Controller:
         nominal = NOMINAL["turbine_speed"]
         if self.startup_phase == "V1_OPENING":
             if valve_controller._valves["v1"].current >= 80.0:
+                valve_controller.set_valve("bp_admit", 0.0)  # handover BP→HP
                 self._advance_phase("ACCELERATING")
         elif self.startup_phase == "ACCELERATING":
             if abs(speed_rpm - nominal) < SPEED_SYNC_THRESHOLD_RPM:
@@ -711,8 +771,7 @@ class Controller:
         valve_controller.set_valve("v1", 100.0)
         valve_controller.set_valve("v2", 100.0)
         valve_controller.set_valve("v3", 100.0)
-        # Handover BP → HP : refermer la source de barrage
-        valve_controller.set_valve("bp_admit", 0.0)
+        
         self._advance_phase("V1_OPENING")
         data_manager.log_operator_action(
             user=operator, action_type="STARTUP_PHASE",
@@ -779,8 +838,11 @@ class Controller:
         try:
             from simulation.dynamics import rotor_dynamics as _rotor
             freq = _rotor.frequency_hz
-            if not (49.9 <= freq <= 50.1):
-                return {"accepted": False, "message": f"Fréquence hors fenêtre ({freq:.2f} Hz). Plage requise : 49.9 – 50.1 Hz."}
+            f_lo = 50.0 - GRID_COUPLE_FREQ_TOL_HZ
+            f_hi = 50.0 + GRID_COUPLE_FREQ_TOL_HZ
+            if not (f_lo <= freq <= f_hi):
+                logger.warning("[Couple] Rejet fréquence : %.3f Hz (fenêtre [%.1f – %.1f])", freq, f_lo, f_hi)
+                return {"accepted": False, "message": f"Fréquence hors fenêtre ({freq:.2f} Hz). Plage requise : {f_lo:.1f} – {f_hi:.1f} Hz."}
         except Exception:
             pass
         self._enter_grid_connected(operator=operator)
@@ -798,8 +860,8 @@ class Controller:
     def _compute_sequence_setpoint(self, current_power_mw: float) -> float | None:
         """Consigne puissance interpolée (séquence) ou fixe."""
         if self._sequence_state in ("STARTING", "STOPPING") and self._sequence_t0 is not None:
-            # Pendant ROLLING, la puissance n'est pas encore pilotée par PID_POWER
-            if self.machine_state == "ROLLING":
+            # Pendant ROLLING ou démarrage en cours (avant couplage), puissance non pilotée
+            if self.machine_state in ("ROLLING", "STOPPED"):
                 return None
 
             elapsed  = time.time() - self._sequence_t0

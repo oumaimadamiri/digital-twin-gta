@@ -510,7 +510,8 @@ class PhysicsModel:
         expansion = 5.0 * heat_ratio + random.uniform(-0.05, 0.05)
         
         return {
-            "grid_frequency": round(max(0.0, grid_frequency), 2),
+            "grid_frequency":   round(max(0.0, grid_frequency), 2),
+            "alternator_speed": round(max(0.0, turbine_speed / self.GEAR_RATIO), 1),
             "vib_bearing_fwd": round(max(0.0, vib_fwd), 2),
             "vib_bearing_aft": round(max(0.0, vib_aft), 2),
             "temp_bearing_fwd": round(max(0.0, temp_fwd), 1),
@@ -641,17 +642,17 @@ class PhysicsModel:
             mech["lube_oil_temp_out"]  = 25.0
             mech["lube_oil_filter_dp"] = 0.0
             efficiency          = 0.0
-            p_bp_barillet       = 1.0       # barillet à pression atmosphérique
+            p_bp_barillet       = 0.0       # barillet à pression atmosphérique
             flow_condenser      = 0.0
             bp_dist = {
                 "flow_condenseur": 0.0, "flow_barillet_in": 0.0,
                 "flow_chauffage_as": 0.0, "flow_surchauffeur": 0.0,
             }
-            pressure_condenser_val = 1.013  # vide condenseur cassé → atmosphérique
+            pressure_condenser_val = 0.0  # vide condenseur cassé → atmosphérique
             active_power    = 0.0
             power_factor    = 0.0
             pressure_bp     = 1.013  # BP à pression atmosphérique
-            temperature_bp  = 25.0
+            temperature_bp  = 0.0
             flow_v1 = flow_v2 = flow_v3 = 0.0
             charge_site     = 0.0
             excedent_reseau = 0.0
@@ -671,12 +672,26 @@ class PhysicsModel:
             active_power    = 0.0   # sans excitation : 0 MW injectés réseau
             charge_site     = 0.0
             excedent_reseau = 0.0
-
+        # Avant couplage réseau : turbine excitée mais pas de débit électrique
+        try:
+            is_grid_connected = _ctrl.machine_state == "GRID_CONNECTED"
+        except Exception:
+            is_grid_connected = True
+        if not is_grid_connected:
+            active_power           = 0.0
+            elec["reactive_power"] = 0.0
+            elec["current_a"]      = 0.0
+            elec["apparent_power"] = 0.0
+            power_factor           = 0.0
+            charge_site            = 0.0
+            excedent_reseau        = 0.0
+            # voltage conservé : l'AVR produit la tension aux bornes avant couplage
+        
         return {
             # Entrées primaires (arrondies)
             "pressure_hp":          round(pressure_hp, 2),
             "temperature_hp":       round(temperature_hp, 1),
-            "steam_flow_hp":        round(steam_flow_hp, 1),
+            "steam_flow_hp":        round(steam_flow_hp if is_running else 0.0, 1),
             # BP
             "pressure_bp_in":       round(pressure_bp, 3),
             "temperature_bp":       temperature_bp,

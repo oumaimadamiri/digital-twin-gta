@@ -35,12 +35,12 @@ class AVRController:
     """Régulateur d'excitation IEEE Type 1 simplifié — singleton."""
 
     def __init__(self):
-        self.mode        = "OFF"               # OFF / VOLTAGE / COSPHI / MANUAL — OFF au boot : excitation requiert action explicite
+        self.mode        = "VOLTAGE"            # AVR actif au boot (machine GRID_CONNECTED)
         self.k_a         = AVR_K_A
         self.t_a         = AVR_T_A
         self.v_set_kv    = AVR_VOLTAGE_SETPOINT
         self.cosphi_set  = AVR_COSPHI_SETPOINT
-        self.e_fd_pu     = 0.0                # excitation nulle au boot (alternateur non excité)
+        self.e_fd_pu     = 1.0                # seedé à 1 p.u. pour V_term nominal dès tick 0
         self.e_fd_manual = 0.0                # valeur opérateur en mode MANUAL
         self.saturated   = False
 
@@ -176,6 +176,11 @@ class AVRController:
             self._oel_timer = 0.0
             self._scl_timer = 0.0
             self.oel_active = self.uel_active = self.scl_active = False
+        # Passage OFF → mode actif : initialiser _last_v_term au nominal pour que le PID
+        # démarre sans erreur transitoire (évite saturation e_fd au premier tick).
+        if before == "OFF" and mode in ("VOLTAGE", "COSPHI"):
+            self._last_v_term = float(NOMINAL.get("voltage", 10.5))
+            self.e_fd_pu = 1.0  # point de départ nominal (pas de saturation)
         data_manager.log_operator_action(
             user=operator, action_type="AVR_MODE_CHANGE",
             target="avr_mode", value_before=before, value_after=mode,
@@ -238,14 +243,23 @@ class AVRController:
     # ──────────────────────────────────────────────────────
 
     def snapshot(self) -> dict:
+        # avr_v_term : si AVR actif, utiliser la tension calculée depuis e_fd_pu pour éviter
+        # le décalage d'un tick dû à la boucle de rétroaction (physics→params→avr.update).
+        # _last_v_term reste utilisé uniquement pour le calcul d'erreur PID interne.
+        if self.mode != "OFF" and self.e_fd_pu > 0.01:
+            v_nom = float(NOMINAL.get("voltage", 10.5))
+            avr_v_display = round(max(9.0, min(12.0, v_nom * (0.95 + 0.05 * self.e_fd_pu))), 3)
+        else:
+            avr_v_display = round(self._last_v_term, 3)
         return {
             "avr_mode":      self.mode,
             "avr_setpoint":  self.v_set_kv if self.mode != "COSPHI" else self.cosphi_set,
+            "avr_cosphi_set": round(self.cosphi_set, 3),
             "avr_e_fd_pu":   round(self.e_fd_pu, 4),
             "avr_saturated": self.saturated,
             "avr_k_a":       self.k_a,
             "avr_t_a":       self.t_a,
-            "avr_v_term":    round(self._last_v_term, 3),
+            "avr_v_term":    avr_v_display,
             "avr_cosphi":    round(self._last_cosphi, 3),
             # Limiteurs OEL/UEL/SCL (Phase 1 — B.2)
             "avr_oel_active": self.oel_active,

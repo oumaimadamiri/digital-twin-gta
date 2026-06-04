@@ -128,6 +128,9 @@ async def lifespan(app: FastAPI):
             "initial de l'autoencodeur."
         )
 
+    logger.info("Purge du cache Redis (évite état stale d'un run précédent)…")
+    data_manager.clear_runtime_keys()
+
     logger.info("Démarrage de la boucle FakeAPI (500ms)…")
     fake_api.set_on_new_data(on_new_data)
     task = asyncio.create_task(fake_api.run())

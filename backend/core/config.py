@@ -216,14 +216,22 @@ PID_POWER_OUT_MAX = 100.0  # V1 maximum (%)
 SEQUENCE_START_DURATION_S = float(os.getenv("SEQUENCE_START_DURATION_S", 120.0))  # start_turbine : 0→24 MW
 SEQUENCE_STOP_DURATION_S  = float(os.getenv("SEQUENCE_STOP_DURATION_S",   90.0))  # stop_turbine  : courant→0
 
+# Délais (secondes) entre étapes en mode AUTO — tous surchargeables par env
+AUTO_STEP_DELAY_BARRAGE_S  = float(os.getenv("AUTO_STEP_DELAY_BARRAGE_S",   5.0))  # PRE_CHECKS → ouvrir barrage
+AUTO_STEP_DELAY_ESV_S      = float(os.getenv("AUTO_STEP_DELAY_ESV_S",       3.0))  # BARRAGE_OPENED → ouvrir ESV
+AUTO_STEP_DELAY_V1_S       = float(os.getenv("AUTO_STEP_DELAY_V1_S",        3.0))  # ESV_OPENED → ouvrir V1
+AUTO_STEP_DELAY_EXCITE_S   = float(os.getenv("AUTO_STEP_DELAY_EXCITE_S",    3.0))  # READY_TO_EXCITE → activer AVR
+AUTO_STEP_DELAY_SYNC_ARM_S = float(os.getenv("AUTO_STEP_DELAY_SYNC_ARM_S",  5.0))  # EXCITED → armer sync
+
 # ─────────────────────────────────────────────
 # DYNAMIQUE ROTOR — Swing equation (premier ordre)
 #   τ = J / D  →  constante de temps de la vitesse
 #   J = 1000 kg·m²  D = 80 N·m·s/rad  →  τ ≈ 12.5 s
 # ─────────────────────────────────────────────
-J_INERTIA               = float(os.getenv("J_INERTIA",              1000.0))  # kg·m²
+J_INERTIA               = float(os.getenv("J_INERTIA", 400.0))  # kg·m²
 D_DAMPING               = float(os.getenv("D_DAMPING",                80.0))  # N·m·s/rad
-SPEED_SYNC_THRESHOLD_RPM = float(os.getenv("SPEED_SYNC_THRESHOLD_RPM",  120.0))  # RPM — fenêtre de synchronisation
+SPEED_SYNC_THRESHOLD_RPM = float(os.getenv("SPEED_SYNC_THRESHOLD_RPM",   30.0))  # RPM — fenêtre de synchronisation (±0.23 % ~ fenêtre freq ±0.1 Hz)
+GRID_COUPLE_FREQ_TOL_HZ  = float(os.getenv("GRID_COUPLE_FREQ_TOL_HZ",    0.2))   # Hz — tolérance fréquence au couplage réseau (±0.2 Hz ~ ±25.7 RPM, norme synchronoscope)
 SPEED_SYNC_HOLD_S        = float(os.getenv("SPEED_SYNC_HOLD_S",          5.0))  # s — durée minimum en SYNCHRONIZING avant couplage auto
 TAU_GRID                 = float(os.getenv("TAU_GRID",                    3.0))  # s — constante de temps effective couplée réseau (raideur réseau)
 SPEED_TRIP_THRESHOLD_RPM = float(os.getenv("SPEED_TRIP_THRESHOLD_RPM",  200.0))  # RPM — seuil perte de synchronisme → découplage auto

@@ -1,6 +1,7 @@
 """
 callbacks/cb_control.py — Callbacks page Contrôle Commande GTA (Cockpit 3 zones)
 """
+import math
 import requests
 from dash import Input, Output, State, html, no_update, ctx, clientside_callback, ALL, MATCH
 from config import BACKEND
@@ -12,6 +13,29 @@ _GREYED = {"opacity": "0.4", "pointerEvents": "none", "filter": "grayscale(0.5)"
 _ACTIVE = {}
 
 _STATE_ORDER = ["STOPPED", "ROLLING", "SYNCHRONIZING", "GRID_CONNECTED"]
+
+
+def _fuse_state_badge(data: dict) -> tuple[str, str]:
+    """Fusionne machine_state + status en un libellé/couleur d'état opérateur.
+    Priorités : TRIP > état transitoire (STOPPED/ROLLING/SYNC) > alarme (DEGRADED/CRITICAL) > NORMAL.
+    """
+    status        = (data.get("status") or "NORMAL").upper()
+    machine_state = (data.get("machine_state") or "GRID_CONNECTED").upper()
+    tripped       = bool(data.get("tripped", False))
+
+    if tripped or status == "TRIPPED" or machine_state == "TRIPPED":
+        return "AU/TRIP ACTIF", "#ef4444"
+    if machine_state == "STOPPED":
+        return "MACHINE ARRÊTÉE", "#64748b"
+    if machine_state == "ROLLING":
+        return "DÉMARRAGE", "#f59e0b"
+    if machine_state == "SYNCHRONIZING":
+        return "SYNCHRONISATION", "#a78bfa"
+    if status == "CRITICAL":
+        return "CRITIQUE", "#ef4444"
+    if status == "DEGRADED":
+        return "DÉGRADÉ", "#f59e0b"
+    return "NORMAL", "#00e676"
 
 _PROT_LABELS_FR = {
     # Tier 1 — TRIP
@@ -100,11 +124,9 @@ def register(app):
         if not data:
             return "—", {"fontSize": "13px", "fontWeight": "700",
                          "fontFamily": "Share Tech Mono", "color": "#64748b"}
-        status = data.get("status", "NORMAL")
-        color = {"NORMAL": "#00e676", "DEGRADED": "#f59e0b",
-                 "CRITICAL": "#ef4444"}.get(status, "#64748b")
-        return status, {"fontSize": "13px", "fontWeight": "700",
-                        "fontFamily": "Share Tech Mono", "color": color}
+        label, color = _fuse_state_badge(data)
+        return label, {"fontSize": "13px", "fontWeight": "700",
+                       "fontFamily": "Share Tech Mono", "color": color}
 
     # ── Polling 1s : état complet ────────────────────────────────────
     @app.callback(
@@ -147,12 +169,14 @@ def register(app):
         Output("ctrl-avr-sat-badge",        "children"),
         Output("ctrl-avr-sat-badge",        "style"),
         Output("ctrl-avr-grid-warning",     "style"),
+        Output("ctrl-avr-preview",          "children"),
+        Output("ctrl-avr-preview",          "style"),
         Input("ctrl-state-interval",        "n_intervals"),
         Input("url",                        "pathname"),
         prevent_initial_call=False,
     )
     def poll_control_state(n, pathname):
-        n_out = 30
+        n_out = 32
         if pathname != "/control":
             return (no_update,) * n_out
 
@@ -210,7 +234,7 @@ def register(app):
         grid_disconnect_disabled = machine_state != "GRID_CONNECTED"
         # Couplage : disponible uniquement en phase SYNCHRONIZING avec excitation + fréquence OK
         freq_snap  = state.get("grid_frequency", 0.0) or 0.0
-        freq_ok    = 49.9 <= freq_snap <= 50.1
+        freq_ok    = 49.8 <= freq_snap <= 50.2
         excit_ok   = avr_mode_snap != "OFF"
         couple_disabled = startup_phase != "SYNCHRONIZING" or not freq_ok or not excit_ok or tripped
         # Critères de synchronisation affichés dans l'étape 6
@@ -223,7 +247,7 @@ def register(app):
             ], style=_S_crit),
             html.Div([
                 html.Span("✅ " if freq_ok else "❌ "),
-                html.Span(f"Fréquence : {freq_snap:.2f} Hz (49.9–50.1 Hz)",
+                html.Span(f"Fréquence : {freq_snap:.2f} Hz (49.8 – 50.2 Hz)",
                           style={"color": "#22c55e" if freq_ok else "#f59e0b"}),
             ], style=_S_crit),
             html.Div([
@@ -290,6 +314,42 @@ def register(app):
         # ── AVR warning ──
         # (avr_warn_style calculé dans la section Overlays ci-dessus)
 
+        # ── AVR preview (valeurs prévues post-couplage) ──
+        _S_prev = {"fontFamily": "Share Tech Mono", "fontSize": "9px"}
+        avr_preview_show = avr_mode_snap != "OFF" and machine_state in ("ROLLING", "SYNCHRONIZING")
+        if avr_preview_show:
+            _p_prev = state.get("setpoint_power_mw") or 0.0
+            _cf_prev = state.get("avr_cosphi_set") or 0.85
+            _cf_prev = max(0.01, min(0.9999, _cf_prev))
+            _q_prev = round(_p_prev * math.tan(math.acos(_cf_prev)), 1) if _p_prev > 0 else 0.0
+            avr_preview_children = html.Div([
+                html.Div("— Prévision post-couplage —", style={
+                    **_S_prev, "color": "#64748b", "marginBottom": "3px",
+                    "letterSpacing": "0.5px", "textAlign": "center",
+                }),
+                html.Div([
+                    html.Span("P cible : ", style={**_S_prev, "color": "#64748b"}),
+                    html.Span(f"{_p_prev:.1f} MW", style={**_S_prev, "color": "#22c55e"}),
+                    html.Span("   Q prévue : ", style={**_S_prev, "color": "#64748b"}),
+                    html.Span(f"{_q_prev:.1f} MVAR", style={**_S_prev, "color": "#22c55e"}),
+                    html.Span("   cos φ : ", style={**_S_prev, "color": "#64748b"}),
+                    html.Span(f"{_cf_prev:.2f}", style={**_S_prev, "color": "#22c55e"}),
+                ]),
+                html.Div("Circuit ouvert avant couplage — I = 0 A (normal)", style={
+                    **_S_prev, "color": "#475569", "marginTop": "2px", "fontStyle": "italic",
+                }),
+            ])
+            avr_preview_style = {
+                "display": "block",
+                "marginBottom": "8px", "padding": "5px 8px",
+                "background": "rgba(34,197,94,0.06)",
+                "border": "1px solid rgba(34,197,94,0.2)",
+                "borderRadius": "4px",
+            }
+        else:
+            avr_preview_children = []
+            avr_preview_style = {"display": "none"}
+
         # ── AVR ──
         avr_vt   = state.get("avr_v_term")
         avr_efd  = state.get("avr_e_fd_pu")
@@ -321,6 +381,7 @@ def register(app):
             interlock_children,
             avr_vt_str, avr_efd_str, avr_cphi_str, sat_label, sat_style,
             avr_warn_style,
+            avr_preview_children, avr_preview_style,
         )
 
     # ── Sync cible régulation au chargement (non écrasé chaque seconde) ──
@@ -535,19 +596,15 @@ def register(app):
     # ── Séquences ────────────────────────────────────────────────────
     @app.callback(
         Output("ctrl-seq-status", "children"),
-        Input("ctrl-btn-seq-start",  "n_clicks"),
         Input("ctrl-btn-seq-stop",   "n_clicks"),
         Input("ctrl-btn-seq-cancel", "n_clicks"),
         State("store-operator-name", "data"),
         prevent_initial_call=True,
     )
-    def sequence_action(n_start, n_stop, n_cancel, operator):
+    def sequence_action(n_stop, n_cancel, operator):
         op = operator or "Opérateur"
         triggered = ctx.triggered_id
-        if triggered == "ctrl-btn-seq-start":
-            data, err = _post("/control/sequence/start",
-                              {"sequence": "start_turbine", "operator": op})
-        elif triggered == "ctrl-btn-seq-stop":
+        if triggered == "ctrl-btn-seq-stop":
             data, err = _post("/control/sequence/stop",
                               {"sequence": "stop_turbine", "operator": op})
         elif triggered == "ctrl-btn-seq-cancel":

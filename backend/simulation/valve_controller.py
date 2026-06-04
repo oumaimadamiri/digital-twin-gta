@@ -120,7 +120,7 @@ class ValveController:
             for key, cfg in VALVE_CONFIGS.items()
         }
         self._current_power_mw: float = 0.0   # mise à jour par FakeAPI
-        self._esv_open: bool = False           # ESV fermée au boot
+        self._esv_open: bool = True            # ESV ouverte au boot (machine GRID_CONNECTED)
 
     def update_power(self, active_power_mw: float):
         """Informe le contrôleur de la puissance actuelle (pour les règles de sécurité)."""
@@ -205,12 +205,15 @@ class ValveController:
         """Remet V1 et bp_admit à zéro après un AU — posture de démarrage propre.
         V2/V3 remises à 0 (current et target) pour éviter rampe non maîtrisée.
         BP remise à nominal 80% pour préparer le redémarrage."""
-        for k in ("v1", "v2", "v3", "bp_admit"):
+        for k in ("v1", "bp_admit"):
             self._valves[k].current = 0.0
             self._valves[k].target  = 0.0
+        for k in ("v2", "v3"):
+            self._valves[k].current = 100.0
+            self._valves[k].target  = 100.0
         self._valves["bp"].target = self._valves["bp"].config.default  # 80%
         self._esv_open = False
-        logger.info("[ValveCtrl] Vannes réinitialisées post-trip")
+        logger.info("[ValveCtrl] Vannes réinitialisées post-trip (V2/V3=100%)")
 
     def update(self, dt: float = 0.5):
         for valve in self._valves.values():

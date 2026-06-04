@@ -38,13 +38,7 @@ class FakeAPI:
 
         # Contrôleur d'actionneurs (rampe, sécurité, butées)
         self._vc = _valve_controller
-        # Vannes initialisées à l'arrêt (machine_state=STOPPED au boot)
-        for _key in ("v1", "bp_admit"):
-            self._vc._valves[_key].current = 0.0
-            self._vc._valves[_key].target  = 0.0
-        # BP reste au défaut (80%) — condenseur maintenu disponible
-        self._vc._valves["bp"].current = self._vc._valves["bp"].config.default
-        self._vc._valves["bp"].target  = self._vc._valves["bp"].config.default
+        # Vannes au défaut VALVE_CONFIGS (v1/v2/v3=100%, bp=80%, bp_admit=0%) — régime nominal
 
         # État courant des paramètres primaires non-vanne (modifiables)
         self._state = {
@@ -74,8 +68,8 @@ class FakeAPI:
         self._last_params: GTAParameters | None = None
         self._last_nominal_power: float = 0.0
         # Puissance, vitesse et pression HP simulées du dernier tick — utilisées par les PIDs
-        self._last_simulated_power:       float = 0.0
-        self._last_simulated_speed:       float = 0.0   # machine STOPPED au boot
+        self._last_simulated_power:       float = NOMINAL["active_power"]
+        self._last_simulated_speed:       float = NOMINAL["turbine_speed"]
         self._last_simulated_pressure_hp: float = NOMINAL["pressure_hp"]
 
         # Callback appelé à chaque nouveau snapshot
@@ -246,9 +240,8 @@ class FakeAPI:
             # État machine et AVR (nécessaire pour que le frontend affiche le bon état)
             nom_ctrl = _controller.snapshot()
             computed_nom["machine_state"]  = nom_ctrl.get("machine_state", "STOPPED")
-            computed_nom["avr_mode"]       = nom_ctrl.get("avr_mode", "OFF")
-            computed_nom["avr_e_fd_pu"]    = nom_ctrl.get("avr_e_fd_pu", 0.0)
             computed_nom["tripped"]        = nom_ctrl.get("tripped", False)
+            computed_nom.update(_avr.snapshot())   # avr_mode + avr_e_fd_pu + champs AVR
 
             # Status nominal calculé (pas NORMAL forcé) ; STOPPED → NORMAL par convention
             status_nom = self._compute_status(computed_nom)
@@ -348,10 +341,12 @@ class FakeAPI:
             # En ROLLING/STOPPED : inertie libre (TAU = J/D = 12.5 s)
             algebraic_speed = computed_sim.get("turbine_speed", NOMINAL["turbine_speed"])
             _rotor.update(dt, target_speed_rpm=algebraic_speed)
-            computed_sim["turbine_speed"]  = _rotor.speed_rpm
-            computed_sim["grid_frequency"] = _rotor.frequency_hz
-            params_nom.turbine_speed  = _rotor.speed_rpm
-            params_nom.grid_frequency = _rotor.frequency_hz
+            computed_sim["turbine_speed"]    = _rotor.speed_rpm
+            computed_sim["grid_frequency"]   = _rotor.frequency_hz
+            computed_sim["alternator_speed"] = round(_rotor.speed_rpm / PhysicsModel.GEAR_RATIO, 1)
+            params_nom.turbine_speed    = _rotor.speed_rpm
+            params_nom.grid_frequency   = _rotor.frequency_hz
+            params_nom.alternator_speed = computed_sim["alternator_speed"]
             
             # Dégradation Weibull — dérive lente rendement / vibration / paliers
             if DEGRADATION_ENABLED:
@@ -468,9 +463,11 @@ class FakeAPI:
     def _compute_status(self, params: dict) -> StatusEnum:
         """Détermine le statut global (NORMAL / DEGRADED / CRITICAL)."""
         from core.config import THRESHOLDS, CRITICAL_MARGIN
-        # Machine à l'arrêt ou trippée → NORMAL par convention (valeurs hors seuils attendues)
+        # Machine trippée → TRIPPED ; machine à l'arrêt normal → NORMAL
         machine_st = params.get("machine_state") or _controller.machine_state
-        if machine_st in ("STOPPED", "TRIPPED"):
+        if machine_st == "TRIPPED" or _controller.tripped:
+            return StatusEnum.TRIPPED
+        if machine_st == "STOPPED":
             return StatusEnum.NORMAL
 
         critical_count = 0

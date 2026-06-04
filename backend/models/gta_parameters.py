@@ -15,6 +15,7 @@ class StatusEnum(str, Enum):
     NORMAL   = "NORMAL"
     DEGRADED = "DEGRADED"
     CRITICAL = "CRITICAL"
+    TRIPPED  = "TRIPPED"
 
 
 class GTAParameters(BaseModel):
@@ -45,7 +46,8 @@ class GTAParameters(BaseModel):
     pressure_condenser:     float = Field(..., description="Pression condenseur / vide (bar)")
 
     # ── Turbine ──
-    turbine_speed: float = Field(..., description="Vitesse turbine (RPM)")
+    turbine_speed:    float = Field(...,    description="Vitesse turbine (RPM)")
+    alternator_speed: float = Field(1500.0, description="Vitesse alternateur après réducteur (RPM, ratio 4.29)")
 
     # ── Alternateur — signaux électriques ──
     active_power:    float = Field(..., description="Puissance active P (MW)")

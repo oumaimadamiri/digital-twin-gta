@@ -12,7 +12,7 @@ from typing import List, Optional
 import pandas as pd
 from redis.exceptions import RedisError
 
-from core.config import REDIS_KEY_CURRENT, REDIS_KEY_STATE
+from core.config import REDIS_KEY_CURRENT, REDIS_KEY_SIMULATION, REDIS_KEY_STATE
 from core.database import redis_client, get_db
 from models.gta_parameters import GTAParameters
 from models.alert import Alert
@@ -38,6 +38,14 @@ class DataManager:
             # En cas d'indisponibilité de Redis, on loggue un avertissement mais
             # on ne bloque pas le pipeline principal de données.
             logger.warning("Impossible d'écrire dans Redis : %s", exc)
+
+    def clear_runtime_keys(self):
+        """Supprime les clés Redis de snapshot au démarrage pour éviter un état stale."""
+        try:
+            redis_client.delete(REDIS_KEY_CURRENT, REDIS_KEY_SIMULATION, REDIS_KEY_STATE)
+            logger.info("Clés Redis runtime purgées au démarrage.")
+        except RedisError as exc:
+            logger.warning("Impossible de purger les clés Redis : %s", exc)
 
     def get_from_cache(self, key: str = REDIS_KEY_CURRENT) -> Optional[dict]:
         """Récupère le dernier snapshot depuis Redis."""
