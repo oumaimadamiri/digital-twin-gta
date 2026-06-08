@@ -221,38 +221,47 @@ def _mode_card():
     )
 
 
-def _sequences_card():
-    return _card(
-        _section_header("SÉQUENCES OPÉRATOIRES", "#8b5cf6"),
-        html.Div([
-            html.Button("■ Stop normal",   id="ctrl-btn-seq-stop",
-                        className="btn btn-outline",
-                        style={"borderColor": "#f59e0b", "color": "#f59e0b",
-                               "fontSize": "10px", "padding": "6px 10px",
-                               "display": "block", "width": "100%", "marginBottom": "6px"}),
-            html.Button("✕ Annuler",       id="ctrl-btn-seq-cancel",
-                        className="btn btn-outline",
-                        style={"borderColor": "#94a3b8", "color": "#94a3b8",
-                               "fontSize": "10px", "padding": "6px 10px",
-                               "display": "block", "width": "100%"}),
-        ], style={"marginBottom": "10px"}),
-        html.Div(id="ctrl-seq-progress-wrap", style={"display": "none"}, children=[
-            _label("PROGRESSION"),
-            html.Div(id="ctrl-seq-label", style={
-                "fontSize": "10px", "color": "#8b5cf6",
-                "fontFamily": "Share Tech Mono", "marginBottom": "4px",
-            }),
+def _shutdown_card():
+    btn_style = {
+        "fontSize": "10px", "padding": "6px 10px",
+        "display": "block", "width": "100%",
+        "fontFamily": "Share Tech Mono",
+        "borderColor": "#f59e0b", "color": "#f59e0b",
+    }
+    hint_style = {
+        "fontSize": "9px", "color": "#64748b",
+        "fontFamily": "Share Tech Mono", "margin": "2px 0 8px 0",
+        "lineHeight": "1.4",
+    }
+
+    def _step(num: int, label: str, btn_id: str, hint: str):
+        return html.Div([
             html.Div([
-                html.Div(id="ctrl-seq-bar", style={
-                    "height": "6px", "background": "#8b5cf6",
-                    "borderRadius": "4px", "width": "0%",
-                    "transition": "width 0.5s ease",
-                }),
-            ], style={"background": "#0f2744", "borderRadius": "4px", "overflow": "hidden"}),
-        ]),
-        html.Div(id="ctrl-seq-status", style={
-            "fontSize": "10px", "color": "#8b5cf6",
-            "fontFamily": "Share Tech Mono", "marginTop": "6px",
+                html.Span(f"{num}. ", style={"color": "#f59e0b", "fontWeight": "700"}),
+                html.Span(label, style={"color": "#cbd5e1"}),
+            ], style={"fontSize": "11px", "fontFamily": "Share Tech Mono",
+                      "marginBottom": "4px"}),
+            html.Button(label, id=btn_id, className="btn btn-outline", style=btn_style),
+            html.Div(hint, style=hint_style),
+        ])
+
+    return _card(
+        _section_header("ARRÊT PROGRAMMÉ", "#f59e0b"),
+        html.Div("Procédure SCADA — exécutez dans l'ordre :",
+                 style={"fontSize": "10px", "color": "#cbd5e1",
+                        "fontFamily": "Share Tech Mono", "marginBottom": "8px"}),
+        _step(1, "↘ Réduire P → 0 MW",        "ctrl-btn-shutdown-set-p0",
+              "Rampe interne 2 MW/min — descente progressive de P."),
+        _step(2, "⏏ Découpler du réseau",     "ctrl-btn-shutdown-disconnect",
+              "Cliquer quand P ≈ 2 MW (avant motorisation 32R). "
+              "Ferme automatiquement ESV + V1/V2/V3 (interlock 52G)."),
+        _step(3, "🛑 AVR → OFF",              "ctrl-btn-shutdown-avr-off",
+              "Coupe l'excitation alternateur."),
+        _step(4, "↘ Fermer barrage",          "ctrl-btn-close-barrage",
+              "Disponible quand machine_state == STOPPED (rotor immobile)."),
+        html.Div(id="ctrl-shutdown-status", style={
+            "fontSize": "10px", "color": "#f59e0b",
+            "fontFamily": "Share Tech Mono", "marginTop": "6px", "minHeight": "14px",
         }),
     )
 
@@ -912,7 +921,7 @@ def layout():
                 # ── ZONE A — Supervision & Commande (~28%) ───────────
                 html.Div([
                     _mode_card(),
-                    _sequences_card(),
+                    _shutdown_card(),
                     _startup_phase_card(),
                     _valves_card(),
                 ], style={"flex": "7 1 0", "minWidth": "0"}),

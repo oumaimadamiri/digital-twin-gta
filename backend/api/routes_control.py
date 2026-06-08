@@ -276,6 +276,27 @@ def startup_couple_grid(body: OperatorAction = OperatorAction()):
     return result
 
 
+# ── Arrêt programmé (atomique pas-à-pas) ─────────────────────────────────────
+
+@router.post("/shutdown/close-esv")
+def shutdown_close_esv(body: OperatorAction = OperatorAction()):
+    """Étape arrêt 4 : ferme l'ESV après V1=0 et découplage.
+    Interlock : machine_state != GRID_CONNECTED et V1 ≤ 5 %."""
+    result = controller.cmd_close_esv(operator=body.operator)
+    if not result.get("accepted"):
+        raise HTTPException(status_code=400, detail=result["message"])
+    return result
+
+
+@router.post("/shutdown/close-barrage")
+def shutdown_close_barrage(body: OperatorAction = OperatorAction()):
+    """Étape arrêt 5 : ferme la vapeur de barrage. Interlock : vitesse < 500 RPM."""
+    result = controller.cmd_close_barrage(operator=body.operator)
+    if not result.get("accepted"):
+        raise HTTPException(status_code=400, detail=result["message"])
+    return result
+
+
 # ── Couplage / Découplage réseau ──────────────────────────────────────────────
 
 @router.post("/grid/synchronize")

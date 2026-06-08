@@ -103,7 +103,8 @@ class ProtectionSystem:
         now       = time.time()
         triggered = []
 
-        conditions = self._build_conditions(params, avr_controller)
+        grid_connected_at = getattr(controller, "_grid_connected_at", None)
+        conditions = self._build_conditions(params, avr_controller, grid_connected_at)
 
         for name, is_fault in conditions.items():
             prot = self._protections.get(name)
@@ -132,7 +133,7 @@ class ProtectionSystem:
     # CONDITIONS DE DÉCLENCHEMENT
     # ──────────────────────────────────────────────────────────────────────
 
-    def _build_conditions(self, params, avr_controller) -> dict[str, bool]:
+    def _build_conditions(self, params, avr_controller, grid_connected_at=None) -> dict[str, bool]:
         """Évalue chaque condition et retourne un dict name → bool."""
         spd  = params.turbine_speed
         freq = params.grid_frequency
@@ -143,6 +144,13 @@ class ProtectionSystem:
         machine_state  = getattr(params, "machine_state", "STOPPED")
         grid_connected = machine_state == "GRID_CONNECTED"
         machine_moving = machine_state not in ("STOPPED",)
+        # Fenêtre de grâce de 10 s après couplage — inhibe REVERSE_POWER pendant le transitoire de montée en puissance
+        _now = time.time()
+        in_coupling_grace = (
+            grid_connected
+            and grid_connected_at is not None
+            and (_now - grid_connected_at) < 15.0
+        )
 
         return {
             # Tier 1 — TRIP
@@ -158,11 +166,11 @@ class ProtectionSystem:
             "HP_OVERTEMP":     params.temperature_hp  > PROT_TEMP_HP_MAX_C,
             "OVERVOLTAGE":     params.voltage          > PROT_VOLTAGE_MAX_KV,
             "OVERCURRENT":     params.current_a        > PROT_CURRENT_MAX_A,
-            "REVERSE_POWER":   params.active_power     < PROT_REVERSE_POWER_MW,
+            "REVERSE_POWER":   grid_connected and not in_coupling_grace and params.active_power < PROT_REVERSE_POWER_MW,
             # Tier 2 — DISCONNECT (seulement si couplé réseau)
-            "LOSS_OF_SYNC":   grid_connected and abs(spd  - NOMINAL_SPEED) > PROT_SYNC_LOSS_RPM,
-            "FREQ_DEVIATION": grid_connected and abs(freq - NOMINAL_FREQ)  > PROT_FREQ_DEVIATION_HZ,
-            "LOSS_OF_EXCIT":  grid_connected and e_fd < PROT_EXCITATION_MIN_PU,
+            "LOSS_OF_SYNC":   grid_connected and not in_coupling_grace and abs(spd  - NOMINAL_SPEED) > PROT_SYNC_LOSS_RPM,
+            "FREQ_DEVIATION": grid_connected and not in_coupling_grace and abs(freq - NOMINAL_FREQ)  > PROT_FREQ_DEVIATION_HZ,
+            "LOSS_OF_EXCIT":  grid_connected and not in_coupling_grace and e_fd < PROT_EXCITATION_MIN_PU,
             # Tier 3 — ALARM
             "VIB_ALARM":      vib  > PROT_VIB_ALARM_MMS,
             "BEARING_ALARM":  t_b  > PROT_BEARING_TEMP_ALARM_C,

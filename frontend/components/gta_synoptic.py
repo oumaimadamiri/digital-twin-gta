@@ -279,7 +279,7 @@ def _build_synoptic_div(data: dict, static_ids: bool, show_table: bool = True, i
                                w=55, param_name=_p("steam_flow_hp"))
         tag_spd  = _tag_static(755, 265, "Vit. arbre",  "syn-spd",  f"{speed:.0f}", "RPM",  alm_spd,
                                w=55, param_name=_p("turbine_speed"))
-        tag_v1   = _tag_static(330, 273, "Adm. HP",     "syn-v1t",  f"{v1:.0f}",    "%",    False, w=60)
+      #   tag_v1   = _tag_static(330, 273, "Adm. HP",     "syn-v1t",  f"{v1:.0f}",    "%",    False, w=60)
         tag_vit2 = _tag_static(915, 264, "Vit.",        "syn-vit2", "1500",          "RPM",  False, w=55)
         tag_turbine_int = _group_tag_static(
             435, 133, "⋯ Param Turbine", "syn-turbine-int-launcher",
@@ -302,7 +302,7 @@ def _build_synoptic_div(data: dict, static_ids: bool, show_table: bool = True, i
         tag_thp  = _tag(80,  289, "Température", f"{t_hp:.0f}",  "°C",  alm_thp)
         tag_qhp  = _tag(185, 193, "Débit HP",    f"{q_hp:.0f}",  "T/h", alm_qhp, w=55)
         tag_spd  = _tag(755, 265, "Vit. arbre",  f"{speed:.0f}", "RPM", alarm=alm_spd, w=55)
-        tag_v1   = _tag(330, 273, "Adm. HP",     f"{v1:.0f}",    "%", w=60)
+      #   tag_v1   = _tag(330, 273, "Adm. HP",     f"{v1:.0f}",    "%", w=60)
         tag_vit2 = _tag(915, 264, "Vit.",         "1500",          "RPM", w=55)
         tag_turbine_int = ""
         tag_alt_group   = ""
@@ -593,7 +593,6 @@ def _build_synoptic_div(data: dict, static_ids: bool, show_table: bool = True, i
         stroke="#f97316" stroke-width="9" class="flow-hp"/>
 
   {vsym_v1}
-  {tag_v1}
   <line x1="350" y1="248" x2="385" y2="248"
         stroke="#f97316" stroke-width="9" class="flow-hp"/>
 

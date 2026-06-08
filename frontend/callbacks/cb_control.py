@@ -156,10 +156,6 @@ def register(app):
         # PID Speed readouts
         Output("ctrl-pid-speed-error-val",  "children"),
         Output("ctrl-pid-speed-output-val", "children"),
-        # Séquence
-        Output("ctrl-seq-progress-wrap",    "style"),
-        Output("ctrl-seq-bar",              "style"),
-        Output("ctrl-seq-label",            "children"),
         # Interlocks
         Output("ctrl-interlocks-list",      "children"),
         # AVR
@@ -176,7 +172,7 @@ def register(app):
         prevent_initial_call=False,
     )
     def poll_control_state(n, pathname):
-        n_out = 32
+        n_out = 29
         if pathname != "/control":
             return (no_update,) * n_out
 
@@ -230,13 +226,13 @@ def register(app):
         startup_phase            = state.get("startup_phase", "PRE_CHECKS")
         avr_mode_snap            = state.get("avr_mode", "OFF")
         # Sync arm : disponible en phase EXCITED (avant SYNCHRONIZING)
-        grid_sync_disabled       = startup_phase != "EXCITED" or tripped
+        grid_sync_disabled       = startup_phase != "EXCITED" or tripped or mode == "AUTO"
         grid_disconnect_disabled = machine_state != "GRID_CONNECTED"
         # Couplage : disponible uniquement en phase SYNCHRONIZING avec excitation + fréquence OK
         freq_snap  = state.get("grid_frequency", 0.0) or 0.0
         freq_ok    = 49.8 <= freq_snap <= 50.2
         excit_ok   = avr_mode_snap != "OFF"
-        couple_disabled = startup_phase != "SYNCHRONIZING" or not freq_ok or not excit_ok or tripped
+        couple_disabled = startup_phase != "SYNCHRONIZING" or not freq_ok or not excit_ok or tripped or mode == "AUTO"
         # Critères de synchronisation affichés dans l'étape 6
         _S_crit = {"fontFamily": "Share Tech Mono", "fontSize": "9px"}
         sync_criteria_children = html.Div([
@@ -266,22 +262,6 @@ def register(app):
         # ── PID Speed (governor) — erreur/sortie non encore exposées, placeholder ──
         speed_err_str = "— RPM"
         speed_out_str = "— %"
-
-        # ── Séquence ──
-        seq_state    = state.get("sequence_state", "IDLE")
-        seq_progress = state.get("sequence_progress")
-        if seq_state in ("STARTING", "STOPPING") and seq_progress is not None:
-            prog_pct  = round(seq_progress * 100)
-            seq_wrap  = {"display": "block"}
-            bar_style = {"height": "6px", "background": "#8b5cf6",
-                         "borderRadius": "4px", "width": f"{prog_pct}%",
-                         "transition": "width 0.5s ease"}
-            seq_lbl   = f"{seq_state} — {prog_pct}%"
-        else:
-            seq_wrap  = {"display": "none"}
-            bar_style = {"height": "6px", "background": "#8b5cf6",
-                         "borderRadius": "4px", "width": "0%"}
-            seq_lbl   = ""
 
         # ── Interlocks ──
         warnings = state.get("interlock_warnings", [])
@@ -377,7 +357,6 @@ def register(app):
             couple_disabled, sync_criteria_children,
             power_err_str, power_out_str,
             speed_err_str, speed_out_str,
-            seq_wrap, bar_style, seq_lbl,
             interlock_children,
             avr_vt_str, avr_efd_str, avr_cphi_str, sat_label, sat_style,
             avr_warn_style,
@@ -441,12 +420,11 @@ def register(app):
     def update_banner_counters(n, pathname):
         if pathname != "/control":
             return no_update, no_update
-        alarms_data, err = _get("/settings/alerts")
-        if err or not alarms_data:
+        alarms_data, err = _get("/settings/alerts?limit=10&only_active=true")
+        if err or not isinstance(alarms_data, list):
             return "—", "—"
-        active = [a for a in alarms_data if not a.get("acknowledged")]
-        trips  = [a for a in active if a.get("severity") in ("CRITICAL", "TRIP")]
-        return str(len(active)), str(len(trips))
+        trips = [a for a in alarms_data if (a.get("severity") or "").upper() in ("CRITICAL", "TRIP")]
+        return str(len(alarms_data)), str(len(trips))
 
     # ── Dialogue confirmation AU ─────────────────────────────────────
     @app.callback(
@@ -593,27 +571,37 @@ def register(app):
             return _status_err("Refusé — " + " | ".join(rejets))
         return _status_ok(f"✓ V1={v1}% V2={v2}% V3={v3}% BP={vbp}%")
 
-    # ── Séquences ────────────────────────────────────────────────────
+    # ── Arrêt programmé ──────────────────────────────────────────────
     @app.callback(
-        Output("ctrl-seq-status", "children"),
-        Input("ctrl-btn-seq-stop",   "n_clicks"),
-        Input("ctrl-btn-seq-cancel", "n_clicks"),
+        Output("ctrl-shutdown-status", "children"),
+        Input("ctrl-btn-shutdown-set-p0",    "n_clicks"),
+        Input("ctrl-btn-shutdown-disconnect","n_clicks"),
+        Input("ctrl-btn-shutdown-avr-off",   "n_clicks"),
+        Input("ctrl-btn-close-barrage",      "n_clicks"),
         State("store-operator-name", "data"),
         prevent_initial_call=True,
     )
-    def sequence_action(n_stop, n_cancel, operator):
+    def shutdown_action(n_p0, n_disconnect, n_avroff, n_barrage, operator):
         op = operator or "Opérateur"
         triggered = ctx.triggered_id
-        if triggered == "ctrl-btn-seq-stop":
-            data, err = _post("/control/sequence/stop",
-                              {"sequence": "stop_turbine", "operator": op})
-        elif triggered == "ctrl-btn-seq-cancel":
-            data, err = _post("/control/sequence/cancel", {"operator": op})
+        if triggered == "ctrl-btn-shutdown-set-p0":
+            data, err = _post("/control/setpoints",
+                              {"setpoints": {"power_mw": 0.0}, "operator": op})
+            ok_msg = "✓ Consigne P → 0 MW appliquée (rampe en cours)."
+        elif triggered == "ctrl-btn-shutdown-disconnect":
+            data, err = _post("/control/grid/disconnect", {"operator": op})
+            ok_msg = f"✓ {data.get('message', 'Découplage effectué')}" if data else "✓ Découplage effectué."
+        elif triggered == "ctrl-btn-shutdown-avr-off":
+            data, err = _post("/control/avr/mode", {"mode": "OFF", "operator": op})
+            ok_msg = "✓ AVR → OFF — excitation coupée."
+        elif triggered == "ctrl-btn-close-barrage":
+            data, err = _post("/control/shutdown/close-barrage", {"operator": op})
+            ok_msg = f"✓ {data.get('message', 'Barrage fermé')}" if data else "✓ Barrage fermé."
         else:
             return no_update
         if err:
             return _status_err(f"Erreur : {err}")
-        return _status_ok(f"✓ {data.get('message', 'OK')}")
+        return _status_ok(ok_msg)
 
     # ── Réglage PID (multi-boucle via onglets) ───────────────────────
     for _loop in ("power", "speed", "pressure"):
@@ -986,7 +974,7 @@ def register(app):
         # ── Calcul statut de chaque étape — piloté par startup_phase ──
         _PHASE_ACTIVE_STEP = {
             "PRE_CHECKS":      2,   # action live = ouvrir barrage (step2)
-            "BARRAGE_OPENED":  3,   # action live = ouvrir ESV (step3)
+            "BARRAGE_OPENED":  2,   # action live = ouvrir ESV (step3)
             "ESV_OPENED":      4,   # action live = ouvrir V1 (step4)
             "V1_OPENING":      5,
             "ACCELERATING":    5,
@@ -1018,6 +1006,11 @@ def register(app):
         step7 = _step_status(7)
         step8 = _step_status(8)
 
+        #Pendant BARRAGE_OPENED : step2 est encore "active" (préchauffage en cours)
+        # mais step3 est aussi "active" car le bouton ESV apparaît dès que le timer arrive à 0.
+        if phase == "BARRAGE_OPENED":
+              step2 = "active"
+              step3 = "future"  # ESV verrouillée tant que le préchauffage n'est pas fini
         # Correction step1 : si des warnings existent, forcer active même si PRE_CHECKS
         if not tripped and step1 == "active" and len(warnings) == 0:
             step1 = "done"
@@ -1060,9 +1053,17 @@ def register(app):
         _ESV_MIN_SPEED = 2800.0
 
         bp_spd_pct = min(100, round(speed / _BP_SPEED_THR * 100))
+        phase_remaining = state.get("phase_remaining_s")
+        phase_total     = state.get("phase_total_s")
+        if phase == "BARRAGE_OPENED" and phase_remaining is not None and phase_total:
+            mm, ss = divmod(int(phase_remaining), 60)
+            tot_mm, tot_ss = divmod(int(phase_total), 60)
+            timer_txt = f" • ⏳ {mm:02d}:{ss:02d} / {tot_mm:02d}:{tot_ss:02d} avant ESV"
+        else:
+            timer_txt = ""
         ind2 = _ind(step2,
-                    done_txt   = f"BP = {bp_admit:.0f} % ✓ — {speed:.0f} RPM",
-                    active_txt = f"BP = {bp_admit:.0f} % — vitesse {speed:.0f} / {_BP_SPEED_THR:.0f} RPM ({bp_spd_pct} %)")
+            done_txt   = f"BP = {bp_admit:.0f} % ✓ — {speed:.0f} RPM",
+            active_txt = f"BP = {bp_admit:.0f} % — vitesse {speed:.0f} / {_BP_SPEED_THR:.0f} RPM ({bp_spd_pct} %){timer_txt}")
 
         esv_open = (current or {}).get("esv_open", False) or False
         esv_spd_pct = min(100, round(speed / _ESV_MIN_SPEED * 100))
@@ -1147,7 +1148,7 @@ def register(app):
         btn_esv_disabled = (phase != "BARRAGE_OPENED") or mode == "AUTO" or tripped \
                            or speed < 2800
         btn_v1_disabled  = (phase != "ESV_OPENED")    or mode == "AUTO" or tripped
-        btn_avr_disabled = (phase != "READY_TO_EXCITE") or tripped
+        btn_avr_disabled = (phase != "READY_TO_EXCITE") or mode == "AUTO" or tripped
 
         # ── Barres de progression contextuelles (visibles seulement si step active) ──
         def prog_style(active, pct, color):
@@ -1267,19 +1268,17 @@ def register(app):
         if pathname != "/control":
             return no_update
         if ctx.triggered_id == "ctrl-btn-ack-all" and n_ack:
-            alarms_data, _ = _get("/settings/alerts")
-            if alarms_data:
-                for a in alarms_data:
-                    if not a.get("acknowledged"):
-                        _post(f"/settings/alerts/{a['id']}/acknowledge",
-                              params={"operator": operator or "Opérateur"})
-        alarms_data, err = _get("/settings/alerts")
-        if err or not alarms_data:
+            all_data, _ = _get("/settings/alerts?only_active=true")
+            if all_data:
+                for a in all_data:
+                    _post(f"/settings/alerts/{a['id']}/acknowledge",
+                          params={"operator": operator or "Opérateur"})
+        alarms_data, err = _get("/settings/alerts?limit=10&only_active=true")
+        if err or not isinstance(alarms_data, list):
             return html.Div("Aucune alarme récupérée.",
                             style={"fontSize": "11px", "color": "#64748b",
                                    "fontFamily": "Share Tech Mono"})
-        active = [a for a in alarms_data if not a.get("acknowledged")]
-        return alerts_panel(active)
+        return alerts_panel(alarms_data)
 
     # ── Journal des commandes ────────────────────────────────────────
     @app.callback(
