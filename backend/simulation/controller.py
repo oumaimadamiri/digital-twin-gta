@@ -30,8 +30,11 @@ from core.config import (
     SPEED_SYNC_THRESHOLD_RPM, SPEED_SYNC_HOLD_S,
     DROOP_ENABLED, DROOP_R, DROOP_FREQ_REF_HZ, DROOP_DEADBAND_HZ, DROOP_MAX_DELTA_MW,
     ESV_MIN_SPEED_RPM, GRID_COUPLE_FREQ_TOL_HZ,
-    AUTO_STEP_DELAY_BARRAGE_S, BARRAGE_WARMUP_MIN_S, AUTO_STEP_DELAY_V1_S,
+    AUTO_STEP_DELAY_BARRAGE_S, BARRAGE_WARMUP_MIN_S,
+    BARRAGE_WARMUP_MIN_LIMIT_S, BARRAGE_WARMUP_MAX_LIMIT_S,
+    AUTO_STEP_DELAY_V1_S,
     AUTO_STEP_DELAY_EXCITE_S, AUTO_STEP_DELAY_SYNC_ARM_S,
+    EXCITED_ARM_TIMEOUT_S,
     MW_RAMP_RATE_MW_PER_MIN, ROLLING_TO_STOPPED_RPM,
     NOMINAL,
 )
@@ -118,6 +121,9 @@ class Controller:
 
         # Rampe consigne puissance manuelle (amortissement thermique HP shell)
         self._effective_power_setpoint_mw: float | None = None
+        # Grâce PID puissance d'un tick post-couplage : laisse la physique
+        # propager le verrouillage rotor avant que le PID ne lise la mesure.
+        self._just_coupled_pid_grace: bool = False
 
         # Droop primaire — cache fréquence + dernier offset calculé
         self._last_freq_hz_cache: float = DROOP_FREQ_REF_HZ
@@ -130,6 +136,10 @@ class Controller:
         self.startup_phase:     str         = "GRID_CONNECTED"
         self._phase_entered_at: float       = time.time()
         self._phase_message:    str | None  = None
+        self._last_stop_request_at: float | None = None
+
+        # Durée préchauffage barrage configurable par l'opérateur (défaut = BARRAGE_WARMUP_MIN_S)
+        self._barrage_warmup_s: float = BARRAGE_WARMUP_MIN_S
 
     # ──────────────────────────────────────────────────────
     # COMMANDES MODE / SETPOINTS / GAINS
@@ -146,6 +156,10 @@ class Controller:
         if mode == "AUTO":
             current_v1 = valve_controller._valves["v1"].target
             if self.machine_state == "GRID_CONNECTED":
+                # Resync rampe consigne sur la puissance mesurée — évite que la rampe
+                # parte d'une valeur stale ≈ 0 (figée depuis le couplage manuel) et fasse
+                # s'effondrer V1 au premier tick AUTO → REVERSE_POWER trip.
+                self._effective_power_setpoint_mw = self._last_power_mw_cache
                 # Seed PID puissance pour bumpless transfer
                 error_0 = (self._setpoint_power_mw - self._last_power_mw_cache
                            if self._setpoint_power_mw else 0.0)
@@ -283,6 +297,7 @@ class Controller:
         self.tripped       = True
         self.machine_state = "TRIPPED"
         self._grid_connected_at = None
+        self._last_stop_request_at = None
         self._sequence_state = "TRIPPED"
         self._sequence_t0    = None
         self._pid.reset()
@@ -291,10 +306,10 @@ class Controller:
         self._regulation_target = "POWER"
         valve_controller.emergency_close()
 
-        # Libérer le rotor du réseau → la vitesse décroît librement vers 0
+        # Libérer le rotor du réseau → la vitesse décroît librement par inertie
         try:
             from simulation.dynamics import rotor_dynamics
-            rotor_dynamics.reset_to_stop()
+            rotor_dynamics.unlock_from_grid()
         except ImportError:
             pass
 
@@ -310,6 +325,7 @@ class Controller:
             return {"accepted": False, "message": "Aucun trip actif."}
         self.tripped         = False
         self.machine_state   = "STOPPED"
+        self._last_stop_request_at = None
         self._sequence_state = "IDLE"
         self._pid.reset()
         self._pid_speed.reset()
@@ -346,6 +362,18 @@ class Controller:
         )
         logger.info(f"[Controller] Trip réinitialisé → machine STOPPED, phase PRE_CHECKS")
         return {"accepted": True, "message": "Trip réinitialisé — machine prête pour démarrage."}
+
+    def set_barrage_warmup_s(self, seconds: float, operator: str = "Opérateur") -> dict:
+        """Modifie la durée de préchauffage barrage vapeur (300–600 s)."""
+        seconds = max(BARRAGE_WARMUP_MIN_LIMIT_S, min(BARRAGE_WARMUP_MAX_LIMIT_S, float(seconds)))
+        before = self._barrage_warmup_s
+        self._barrage_warmup_s = seconds
+        data_manager.log_operator_action(
+            user=operator, action_type="SETTING_CHANGE",
+            target="barrage_warmup_s", value_before=before, value_after=seconds,
+        )
+        logger.info(f"[Controller] barrage_warmup_s → {seconds:.0f} s (par {operator})")
+        return {"accepted": True, "barrage_warmup_s": seconds}
 
     # ──────────────────────────────────────────────────────
     # COMMANDES RÉSEAU (couplage / découplage)
@@ -403,6 +431,7 @@ class Controller:
             return {"accepted": False, "message": f"Séquence '{self._sequence_name}' déjà en cours."}
 
         if name == "start_turbine":
+            self._last_stop_request_at = None  # démarrage annule toute intention d'arrêt résiduelle
             if self.machine_state in ("STOPPED", "TRIPPED"):
                 # Séquence complète orchestrée pas-à-pas (AUTO) : STOPPED → ... → GRID_CONNECTED
                 # _check_auto_transitions pilotera chaque étape (barrage→ESV→V1→AVR→sync→couple)
@@ -433,6 +462,7 @@ class Controller:
             self._sequence_duration = SEQUENCE_STOP_DURATION_S
             self._sequence_start_mw = current_power_mw
             self._sequence_end_mw   = 0.0
+            self._last_stop_request_at = time.time()  # signal d'intention d'arrêt pour la garde GRID_CONNECTED
             if self.mode != "AUTO":
                 self.set_mode("AUTO", operator=operator)
 
@@ -453,9 +483,12 @@ class Controller:
         name     = self._sequence_name
         progress = self.get_sequence_progress() or 0.0
         was_starting = (self._sequence_state == "STARTING")
+        was_stopping = (self._sequence_state == "STOPPING")
         self._sequence_state = "IDLE"
         self._sequence_t0    = None
         self._sequence_name  = None
+        if was_stopping:
+            self._last_stop_request_at = None  # annulation stop → intention d'arrêt caduque
         # Si annulation d'un démarrage avant couplage réseau → retour STOPPED
         if was_starting and self.machine_state not in ("GRID_CONNECTED",):
             self.machine_state = "STOPPED"
@@ -592,7 +625,7 @@ class Controller:
             if phase == "PRE_CHECKS" and t_in_phase >= AUTO_STEP_DELAY_BARRAGE_S:
                 self.cmd_open_barrage(operator="AUTO")
 
-            elif phase == "BARRAGE_OPENED" and t_in_phase >= BARRAGE_WARMUP_MIN_S:
+            elif phase == "BARRAGE_OPENED" and t_in_phase >= self._barrage_warmup_s:
                 # Bypass interlock vitesse (vireur virtuel en AUTO) — respecte le préchauffage spec 5-10 min
                 valve_controller.open_esv()
                 self._advance_phase("ESV_OPENED")
@@ -607,15 +640,33 @@ class Controller:
             elif phase == "READY_TO_EXCITE" and t_in_phase >= AUTO_STEP_DELAY_EXCITE_S:
                 self.cmd_excite(operator="AUTO")
 
-            elif phase == "EXCITED" and t_in_phase >= AUTO_STEP_DELAY_SYNC_ARM_S:
+            elif phase == "EXCITED":
                 # Même fenêtre que cmd_couple_grid (GRID_COUPLE_FREQ_TOL_HZ) : on n'arme que
                 # si la fréquence est effectivement dans la fenêtre du couplage réseau.
                 _sync_arm_rpm = GRID_COUPLE_FREQ_TOL_HZ / 50.0 * nominal_rpm
                 speed_ok = abs(self._last_speed_rpm_cache - nominal_rpm) <= _sync_arm_rpm
                 v1_pos   = valve_controller._valves["v1"].current
                 v1_stable = v1_pos < 80.0  # V1 a baissé sous 80 % → équilibre atteint
-                if speed_ok and v1_stable:
+                if t_in_phase >= AUTO_STEP_DELAY_SYNC_ARM_S and speed_ok and v1_stable:
                     self.cmd_synchronize_arm(operator="AUTO")
+                elif t_in_phase >= EXCITED_ARM_TIMEOUT_S:
+                    # Watchdog EXCITED : le gouverneur n'a pas convergé dans la fenêtre
+                    # stricte (±25.7 RPM) après EXCITED_ARM_TIMEOUT_S. On force l'armement
+                    # en bypassant la garde de cmd_synchronize_arm ; le watchdog
+                    # SYNCHRONIZING finalisera le couplage de sécurité. Évite le blocage
+                    # permanent en EXCITED (affiché « SYNCHRO » côté opérateur).
+                    delta = abs(self._last_speed_rpm_cache - nominal_rpm)
+                    self._enter_synchronizing()
+                    self._advance_phase("SYNCHRONIZING")
+                    data_manager.log_operator_action(
+                        user="AUTO", action_type="STARTUP_PHASE",
+                        target="machine_state", value_before="EXCITED", value_after="SYNCHRONIZING",
+                    )
+                    logger.warning(
+                        "[Controller] EXCITED → SYNCHRONIZING forcé par watchdog "
+                        "(Δvitesse=%.0f RPM hors fenêtre %.1f RPM depuis %.0fs).",
+                        delta, _sync_arm_rpm, t_in_phase,
+                    )
 
             elif phase == "SYNCHRONIZING":
                 result = self.cmd_couple_grid(operator="AUTO")
@@ -676,17 +727,26 @@ class Controller:
                 self._enter_grid_connected()
 
         elif self.machine_state == "GRID_CONNECTED":
-            # Fin de séquence stop → machine arrêtée
-            # Exige AVR=OFF ou trip pour éviter transition parasite si excitation transitoirement nulle
-            if (self._sequence_state == "IDLE"
+            grace_elapsed = (
+                self._grid_connected_at is not None
+                and (time.time() - self._grid_connected_at) > 30.0
+            )
+            stop_requested = (
+                self._last_stop_request_at is not None
+                and (time.time() - self._last_stop_request_at) < 600.0
+            )
+            if (grace_elapsed
+                    and stop_requested
+                    and self._sequence_state == "IDLE"
                     and self._sequence_name is None
+                    and self.startup_phase in ("GRID_CONNECTED",)
                     and current_power_mw < 0.5
                     and valve_controller._valves["v1"].current < 2.0):
                 try:
                     from simulation.avr_controller import avr_controller as _avr_check
                     avr_off = _avr_check.mode == "OFF"
-                except Exception:
-                    avr_off = True
+                except ImportError:
+                    avr_off = False  # fail-safe : incertitude → ne pas arrêter
                 if avr_off or self.tripped:
                     self._enter_stopped()
 
@@ -730,6 +790,7 @@ class Controller:
         before = self.machine_state
         self.machine_state    = "GRID_CONNECTED"
         self._grid_connected_at = time.time()
+        self._last_stop_request_at = None  # reset l'intention d'arrêt sur nouveau couplage
         self._sync_entry_time = None
         # Seed les PIDs puissance et pression sur la position V1 courante (bumpless)
         current_v1 = valve_controller._valves["v1"].target
@@ -760,6 +821,7 @@ class Controller:
         before = self.machine_state
         self.machine_state = "STOPPED"
         self._grid_connected_at = None
+        self._last_stop_request_at = None
         self._pid.reset()
         self._pid_speed.reset()
         self._pid_pressure.reset()
@@ -822,11 +884,11 @@ class Controller:
         if self.startup_phase != "BARRAGE_OPENED":
             return {"accepted": False, "message": f"Phase actuelle : {self.startup_phase}. Requise : BARRAGE_OPENED."}
         t_in_barrage = time.time() - self._phase_entered_at
-        if t_in_barrage < BARRAGE_WARMUP_MIN_S:
-            remaining = int(BARRAGE_WARMUP_MIN_S - t_in_barrage)
+        if t_in_barrage < self._barrage_warmup_s:
+            remaining = int(self._barrage_warmup_s - t_in_barrage)
             return {"accepted": False,
                     "message": f"Préchauffage en cours — ESV disponible dans {remaining} s "
-                               f"(spec : {int(BARRAGE_WARMUP_MIN_S)} s min)."}
+                               f"(spec : {int(self._barrage_warmup_s)} s min)."}
         if self._last_speed_rpm_cache < ESV_MIN_SPEED_RPM:
             return {"accepted": False,
                     "message": f"Vitesse insuffisante ({self._last_speed_rpm_cache:.0f} < {ESV_MIN_SPEED_RPM:.0f} RPM). Attendez la montée du barrage."}
@@ -1047,7 +1109,7 @@ class Controller:
     def snapshot(self) -> dict:
         _phase_durations = {
             "PRE_CHECKS":     AUTO_STEP_DELAY_BARRAGE_S,
-            "BARRAGE_OPENED": BARRAGE_WARMUP_MIN_S,
+            "BARRAGE_OPENED": self._barrage_warmup_s,
             "ESV_OPENED":     AUTO_STEP_DELAY_V1_S,
             "READY_TO_EXCITE": AUTO_STEP_DELAY_EXCITE_S,
             "EXCITED":        AUTO_STEP_DELAY_SYNC_ARM_S,
@@ -1062,10 +1124,11 @@ class Controller:
         return {
             "control_mode":        self.mode,
             "machine_state":       self.machine_state,
-            "startup_phase":       self.startup_phase,
+            "startup_phase":         self.startup_phase,
             "startup_phase_message": self._phase_message,
-            "phase_remaining_s":   round(_remaining, 1) if _remaining is not None else None,
-            "phase_total_s":       _total,
+            "phase_remaining_s":     round(_remaining, 1) if _remaining is not None else None,
+            "phase_total_s":         _total,
+            "barrage_warmup_s":      self._barrage_warmup_s,
             "setpoint_power_mw":   self._setpoint_power_mw,
             "setpoint_speed_rpm":  self._setpoint_speed_rpm,
             "pid_kp":              self._pid.kp,

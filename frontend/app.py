@@ -74,6 +74,8 @@ app.layout = html.Div([
     dcc.Store(id="store-dash-panel-tab", data=0),
     # Nom de l'opérateur courant (sélectionnable dans Settings)
     dcc.Store(id="store-operator-name", data="Opérateur"),
+    # Bootstrap page Contrôle — peuplé une fois au load, relit /control/bootstrap
+    dcc.Store(id="store-control-bootstrap", data={}),
 
     # Intervalles (uniquement pour horloge et alertes, données viennent du WS)
     dcc.Interval(id="interval-fast", interval=1000, n_intervals=0, disabled=True),   # 1s  — horloge

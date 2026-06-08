@@ -622,14 +622,22 @@ class PhysicsModel:
         try:
             from simulation.controller import controller as _ctrl
             from simulation.avr_controller import avr_controller as _avr_ref
-            is_running = _ctrl.machine_state in ("ROLLING", "SYNCHRONIZING", "GRID_CONNECTED")
+            machine_st = _ctrl.machine_state
+            startup_ph = _ctrl.startup_phase
+            is_running = machine_st in ("ROLLING", "SYNCHRONIZING", "GRID_CONNECTED")
+            # Phase préchauffage : rotor en rotation lente, vapeur BP active mais ESV fermée
+            is_warming = (machine_st == "STOPPED"
+                          and startup_ph in ("BARRAGE_OPENED", "ESV_OPENED", "V1_OPENING"))
+            is_alive   = is_running or is_warming
             is_excited = _avr_ref.mode != "OFF" and _avr_ref.e_fd_pu > 0.1
         except Exception:
             is_running = True   # mode dégradé : ne pas bloquer les calculs
+            is_warming = False
+            is_alive   = True
             is_excited = True
 
-        if not is_running:
-            # Valeurs mécaniques / thermiques à zéro quand turbine à l'arrêt
+        if not is_alive:
+            # Machine vraiment à l'arrêt (STOPPED+PRE_CHECKS ou TRIPPED) — tout muet
             mech["vib_bearing_fwd"]    = 0.0
             mech["vib_bearing_aft"]    = 0.0
             mech["temp_bearing_fwd"]   = 25.0
@@ -642,17 +650,42 @@ class PhysicsModel:
             mech["lube_oil_temp_out"]  = 25.0
             mech["lube_oil_filter_dp"] = 0.0
             efficiency          = 0.0
-            p_bp_barillet       = 0.0       # barillet à pression atmosphérique
+            p_bp_barillet       = 0.0
             flow_condenser      = 0.0
             bp_dist = {
                 "flow_condenseur": 0.0, "flow_barillet_in": 0.0,
                 "flow_chauffage_as": 0.0, "flow_surchauffeur": 0.0,
             }
-            pressure_condenser_val = 0.0  # vide condenseur cassé → atmosphérique
+            pressure_condenser_val = 0.0
             active_power    = 0.0
             power_factor    = 0.0
             pressure_bp     = 1.013  # BP à pression atmosphérique
             temperature_bp  = 0.0
+            flow_v1 = flow_v2 = flow_v3 = 0.0
+            charge_site     = 0.0
+            excedent_reseau = 0.0
+        elif is_warming:
+            # Phase préchauffage barrage : rotor tourne (~3000 RPM), vapeur BP alimente.
+            # Mécanique conservée (vibration, dilatation, paliers calculés depuis turbine_speed).
+            # BP entrée = pression alimentation barrage (4.5 bar) tant que bp_admit > 0.
+            from core.config import PRESSURE_BP_BARRAGE_BAR
+            if valve_bp_admit > 1.0:
+                pressure_bp    = PRESSURE_BP_BARRAGE_BAR  # ~4.5 bar alimentation barrage
+                temperature_bp = 150.0                    # vapeur de barrage saturée typique
+            else:
+                pressure_bp    = 1.013
+                temperature_bp = 25.0
+            # Vide condenseur : 60 % du nominal (évite le 0 brutal qui génère des alarmes)
+            pressure_condenser_val = round(self.nominal["pressure_condenser"] * 0.6, 1)
+            # Électrique/réseau : muet (contrôlé par is_excited et is_grid_connected plus bas)
+            active_power    = 0.0
+            power_factor    = 0.0
+            p_bp_barillet   = 0.0
+            flow_condenser  = 0.0
+            bp_dist = {
+                "flow_condenseur": 0.0, "flow_barillet_in": 0.0,
+                "flow_chauffage_as": 0.0, "flow_surchauffeur": 0.0,
+            }
             flow_v1 = flow_v2 = flow_v3 = 0.0
             charge_site     = 0.0
             excedent_reseau = 0.0
@@ -691,7 +724,7 @@ class PhysicsModel:
             # Entrées primaires (arrondies)
             "pressure_hp":          round(pressure_hp, 2),
             "temperature_hp":       round(temperature_hp, 1),
-            "steam_flow_hp":        round(steam_flow_hp if is_running else 0.0, 1),
+            "steam_flow_hp":        round(steam_flow_hp if is_running else (steam_flow_bp_in if is_warming else 0.0), 1),
             # BP
             "pressure_bp_in":       round(pressure_bp, 3),
             "temperature_bp":       temperature_bp,

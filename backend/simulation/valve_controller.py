@@ -202,18 +202,15 @@ class ValveController:
         logger.critical("[ValveCtrl] FERMETURE D'URGENCE — V1/V2/V3/bp_admit fermées, BP=100%")
 
     def reset_after_trip(self) -> None:
-        """Remet V1 et bp_admit à zéro après un AU — posture de démarrage propre.
-        V2/V3 remises à 0 (current et target) pour éviter rampe non maîtrisée.
-        BP remise à nominal 80% pour préparer le redémarrage."""
-        for k in ("v1", "bp_admit"):
+        """Remet V1, V2, V3 et bp_admit à zéro après un AU — posture STOPPED stricte.
+        L'opérateur doit relancer la séquence de démarrage pour les ouvrir.
+        BP condenseur ramenée à 80 % (préparation redémarrage)."""
+        for k in ("v1", "v2", "v3", "bp_admit"):
             self._valves[k].current = 0.0
             self._valves[k].target  = 0.0
-        for k in ("v2", "v3"):
-            self._valves[k].current = 100.0
-            self._valves[k].target  = 100.0
         self._valves["bp"].target = self._valves["bp"].config.default  # 80%
         self._esv_open = False
-        logger.info("[ValveCtrl] Vannes réinitialisées post-trip (V2/V3=100%)")
+        logger.info("[ValveCtrl] Vannes réinitialisées post-trip (V1/V2/V3/bp_admit=0%)")
 
     def update(self, dt: float = 0.5):
         for valve in self._valves.values():

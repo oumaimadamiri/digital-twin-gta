@@ -128,6 +128,12 @@ class CondVacuumSetpointCommand(BaseModel):
     operator: str = "Opérateur"
 
 
+class BarrageWarmupCommand(BaseModel):
+    seconds:  float = Field(..., ge=300.0, le=600.0,
+                            description="Durée préchauffage barrage (s) — entre 300 s (5 min) et 600 s (10 min)")
+    operator: str   = "Opérateur"
+
+
 class OperatorAction(BaseModel):
     """Corps minimal pour les endpoints n'ayant besoin que du nom opérateur."""
     operator: str = "Opérateur"

@@ -315,8 +315,35 @@ def _startup_phase_card():
                                   style={"marginTop": "4px"}))
 
     # ── Étape 2 : Vapeur de barrage (bp_admit) ───────────────────────
+    _warmup_slider_style = {
+        "background": "#0a101a",
+        "border": "1px solid #1e3a5f",
+        "borderRadius": "6px",
+        "padding": "8px 10px 4px 10px",
+        "marginBottom": "6px",
+    }
     step2 = _step(2, "Base Pression démarrage", with_progress=True,
                   action=html.Div([
+                      html.Div([
+                          html.Div([
+                              html.Span("Durée préchauffage :",
+                                        style={"fontSize": "10px", "color": "#94a3b8",
+                                               "fontFamily": "Share Tech Mono"}),
+                              html.Span(id="ctrl-barrage-warmup-val",
+                                        children="5 min",
+                                        style={"fontSize": "10px", "color": "#22c55e",
+                                               "fontFamily": "Share Tech Mono",
+                                               "fontWeight": "700", "marginLeft": "6px"}),
+                          ], style={"marginBottom": "4px"}),
+                          dcc.Slider(
+                              id="ctrl-barrage-warmup-slider",
+                              min=5, max=10, step=1, value=5,
+                              marks={i: {"label": f"{i}",
+                                         "style": {"fontSize": "9px", "color": "#64748b"}}
+                                     for i in range(5, 11)},
+                              tooltip={"placement": "bottom", "always_visible": False},
+                          ),
+                      ], id="ctrl-barrage-warmup-container", style=_warmup_slider_style),
                       _action_btn("↗ Ouvrir vapeur barrage (100 %)",
                                   "ctrl-ph-btn-bp-admit", "#f97316"),
                       _action_status("ctrl-ph-bp-admit-status"),

@@ -462,7 +462,7 @@ def _build_synoptic_div(data: dict, static_ids: bool, show_table: bool = True, i
   </g>""" if show_table else ""
 
     svg = f"""
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="-20 -52 1430 664"
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-20 -20 1430 664"
      width="100%" height="100%"
      preserveAspectRatio="xMidYMin meet"
      style="font-family:'Share Tech Mono',monospace;background:transparent">
@@ -531,29 +531,23 @@ def _build_synoptic_div(data: dict, static_ids: bool, show_table: bool = True, i
       }}
     </style>
   </defs>
-
-  <!-- Tooltip hint (visible seulement sur / — Dashboard) -->
-  <text x="-18" y="-24" fill="#1e3a5f" font-size="8.5" font-family="Share Tech Mono">
-    ▲ Cliquez sur un tag pour voir sa tendance
-  </text>
-
-  <!-- Scénario actif -->
+   <!-- Scénario actif -->
   {f'''<rect x="300" y="6" width="{70 + len(scenario)*7}" height="28" rx="4"
         fill="rgba(239,68,68,0.1)" stroke="#ef4444" stroke-width="1"/>
   <circle cx="315" cy="20" r="5" fill="#ef4444" class="blink"/>
   <text x="326" y="24" fill="#ef4444" font-size="10" font-weight="700">{scenario.upper()}</text>''' if scenario else ''}
 
   <!-- Légende flux -->
-  <line x1="1180" y1="-30" x2="1155" y2="-30" stroke="#f97316" stroke-width="4"/>
-  <text x="1185" y="-27" fill="#94a3b8" font-size="9">Vapeur HP</text>
-  <line x1="1265" y1="-30" x2="1240" y2="-30" stroke="#a78bfa" stroke-width="4"/>
-  <text x="1270" y="-27" fill="#94a3b8" font-size="9">Extr. BP</text>
-  <line x1="1340" y1="-30" x2="1315" y2="-30" stroke="#38bdf8" stroke-width="4"/>
-  <text x="1345" y="-27" fill="#94a3b8" font-size="9">Vapeur Sortie</text>
-  <line x1="1180" y1="-15" x2="1155" y2="-15" stroke="#10b981" stroke-width="4"/>
-  <text x="1185" y="-12" fill="#94a3b8" font-size="9">Électrique</text>
-  <line x1="1265" y1="-15" x2="1240" y2="-15" stroke="#1d4ed8" stroke-width="2" stroke-dasharray="4,2"/>
-  <text x="1270" y="-12" fill="#94a3b8" font-size="9">Mvm Mécanique</text>
+  <line x1="-20" y1="0" x2="-5" y2="0" stroke="#f97316" stroke-width="4"/>
+  <text x="-3" y="3" fill="#94a3b8" font-size="9">Vapeur HP</text>
+  <line x1="45" y1="0" x2="62" y2="0" stroke="#a78bfa" stroke-width="4"/>
+  <text x="65" y="3" fill="#94a3b8" font-size="9">Extr. BP</text>
+  <line x1="110" y1="0" x2="127" y2="0" stroke="#38bdf8" stroke-width="4"/>
+  <text x="130" y="3" fill="#94a3b8" font-size="9">Vapeur Sortie</text>
+  <line x1="-20" y1="15" x2="-5" y2="15" stroke="#10b981" stroke-width="4"/>
+  <text x="-3" y="18" fill="#94a3b8" font-size="9">Électrique</text>
+  <line x1="50" y1="15" x2="68" y2="15" stroke="#1d4ed8" stroke-width="2" stroke-dasharray="4,2"/>
+  <text x="70" y="18" fill="#94a3b8" font-size="9">Mvm Mécanique</text>
 
   <!-- ════ SOURCE VAPEUR HP ════ -->
   <g filter="url(#go)">
@@ -881,9 +875,6 @@ def _build_synoptic_div(data: dict, static_ids: bool, show_table: bool = True, i
   {vsym_bp_admit}
   <line x1="251" y1="421" x2="385" y2="358"
         stroke="#38bdf8" stroke-width="2" stroke-dasharray="4,4" opacity="0.4"/>
-  <text x="175" y="405" fill="#38bdf8" font-size="8" opacity="0.6">
-    (démarrage uniquement)
-  </text>
   <text id="syn-bp-flow-in" x="175" y="418" fill="#38bdf8" font-size="9"
         font-weight="700" text-anchor="middle">0 T/h</text>
 

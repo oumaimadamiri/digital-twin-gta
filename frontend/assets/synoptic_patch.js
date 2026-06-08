@@ -369,9 +369,11 @@ window.patchGtaSynoptic = function(data) {
 
     // ── Animations dynamiques — turbine / réducteur / flux ────────────────────
 
-    /* Condition de rotation : vitesse > 50 RPM ET (V1 ou bp_admit ouvertes) */
+    /* Condition de rotation : pilotée uniquement par la vitesse réelle du rotor.
+       Permet d'animer la décélération par inertie après AU (soupapes fermées
+       mais rotor encore en rotation libre pendant ~25 s). */
     const v1_pct   = data.valve_v1 ?? 100;
-    const isTurning = speed > 50 && (v1_pct > 5 || bp_admit_pct > 20);
+    const isTurning = speed > 50;
 
     /* Durée de rotation couvrant la plage complète 0→6435 RPM avec courbe perceptuelle */
     const rpm_norm  = Math.min(Math.max(speed / 6435, 0), 1);

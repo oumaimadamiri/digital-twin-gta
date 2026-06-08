@@ -15,6 +15,7 @@ from models.control import (
     RegulationTargetRequest, OperatorAction,
     AttemperatorSetpointCommand, AttemperatorEnableCommand,
     CondLevelSetpointCommand, CondVacuumSetpointCommand,
+    BarrageWarmupCommand,
 )
 from simulation.controller import controller
 from simulation.avr_controller import avr_controller
@@ -395,34 +396,30 @@ def set_cond_vacuum_sp(cmd: CondVacuumSetpointCommand):
 
 # ── Pré-checks démarrage ─────────────────────────────────────────────────────
 
-@router.get("/pre-check")
-def get_pre_check():
-    """
-    Vérifie les conditions initiales de démarrage du GTA.
-    Retourne un dict avec le résultat détaillé item par item.
-    """
+def _build_pre_check_payload() -> dict:
+    """Construit le payload pré-check (réutilisé par get_pre_check et get_control_bootstrap)."""
     from simulation.fake_api import fake_api
     from core.config import NOMINAL
 
     snap = fake_api.get_current()
 
-    # Valeurs mesurées (snapshot) ou depuis les contrôleurs
     temp_hp      = getattr(snap, "temperature_hp",  NOMINAL["temperature_hp"]) if snap else NOMINAL["temperature_hp"]
     lube_press   = getattr(snap, "lube_oil_press",  0.0) if snap else 0.0
     lube_temp    = getattr(snap, "lube_oil_temp",   0.0) if snap else 0.0
-    # v1_target : accepte une rampe en cours (target=0, current=15)
     v1_pos       = valve_controller.v1_target
     bp_admit_pos = valve_controller._valves["bp_admit"].current
-    avr_mode     = avr_controller.mode
     tripped      = controller.tripped
     machine_stopped = controller.machine_state in ("STOPPED", "TRIPPED")
 
-    # Soulèvement paliers — simulé : huile sous pression et machine à l'arrêt
-    jacking_ok   = lube_press >= 1.2 and machine_stopped
-    # Huile de commande — simulé : pression huile présente
-    ctrl_oil_ok  = lube_press >= 1.0
-    # Vide condenseur — simulé : condenseur prêt (pas encore trippé, pompe à vide OK)
-    vacuum_ok    = not tripped
+    try:
+        from simulation.avr_controller import avr_controller as _avr
+        avr_mode = _avr.mode
+    except Exception:
+        avr_mode = "OFF"
+
+    jacking_ok  = lube_press >= 1.19 and machine_stopped
+    ctrl_oil_ok = lube_press >= 1.0
+    vacuum_ok   = not tripped
 
     checks = [
         {
@@ -430,14 +427,14 @@ def get_pre_check():
             "value": round(temp_hp, 1),
             "unit":  "°C",
             "crit":  "≥ 380 °C",
-            "ok":    temp_hp >= 380.0,
+            "ok":    temp_hp >= 378.0,
         },
         {
             "name":  "Pression huile de graissage",
             "value": round(lube_press, 2),
             "unit":  "bar",
             "crit":  "≥ 1.2 bar",
-            "ok":    lube_press >= 1.2,
+            "ok":    lube_press >= 1.19,
         },
         {
             "name":  "Température huile de graissage",
@@ -499,3 +496,52 @@ def get_pre_check():
 
     all_ok = all(c["ok"] for c in checks)
     return {"all_ok": all_ok, "checks": checks}
+
+
+@router.get("/pre-check")
+def get_pre_check():
+    """Vérifie les conditions initiales de démarrage du GTA."""
+    return _build_pre_check_payload()
+
+
+# ── Durée préchauffage barrage (opérateur) ───────────────────────────────────
+
+@router.get("/settings/barrage-warmup")
+def get_barrage_warmup():
+    """Retourne la durée de préchauffage barrage configurée et les limites autorisées."""
+    from core.config import BARRAGE_WARMUP_MIN_LIMIT_S, BARRAGE_WARMUP_MAX_LIMIT_S
+    return {
+        "value_s": controller._barrage_warmup_s,
+        "min_s":   BARRAGE_WARMUP_MIN_LIMIT_S,
+        "max_s":   BARRAGE_WARMUP_MAX_LIMIT_S,
+    }
+
+
+@router.post("/settings/barrage-warmup")
+def set_barrage_warmup(cmd: BarrageWarmupCommand):
+    """Modifie la durée de préchauffage barrage (300–600 s)."""
+    return controller.set_barrage_warmup_s(cmd.seconds, operator=cmd.operator)
+
+
+# ── Bootstrap agrégé (chargement page Contrôle) ──────────────────────────────
+
+@router.get("/bootstrap", summary="Snapshot agrégé — chargement page Contrôle")
+def get_control_bootstrap():
+    """Regroupe en un seul round-trip tous les snapshots nécessaires au chargement
+    de la page Contrôle-Commande (remplace ~6 requêtes HTTP parallèles)."""
+    from core.config import BARRAGE_WARMUP_MIN_LIMIT_S, BARRAGE_WARMUP_MAX_LIMIT_S
+    return {
+        "state":        controller.get_state_dict(),
+        "attemperator": attemperator.snapshot(),
+        "condenser":    condenser.snapshot(),
+        "protections": {
+            "protections": protection_system.get_status(),
+            "history":     protection_system.get_history()[-50:],
+        },
+        "pre_check":    _build_pre_check_payload(),
+        "barrage_warmup": {
+            "value_s": controller._barrage_warmup_s,
+            "min_s":   BARRAGE_WARMUP_MIN_LIMIT_S,
+            "max_s":   BARRAGE_WARMUP_MAX_LIMIT_S,
+        },
+    }

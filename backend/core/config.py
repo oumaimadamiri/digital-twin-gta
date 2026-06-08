@@ -220,9 +220,13 @@ MW_RAMP_RATE_MW_PER_MIN   = float(os.getenv("MW_RAMP_RATE_MW_PER_MIN",    2.0)) 
 # Délais (secondes) entre étapes en mode AUTO — tous surchargeables par env
 AUTO_STEP_DELAY_BARRAGE_S  = float(os.getenv("AUTO_STEP_DELAY_BARRAGE_S",   5.0))  # PRE_CHECKS → ouvrir barrage
 BARRAGE_WARMUP_MIN_S       = float(os.getenv("BARRAGE_WARMUP_MIN_S",      300.0))  # préchauffage barrage avant ESV (spec 5-10 min). En dev : BARRAGE_WARMUP_MIN_S=30
+BARRAGE_WARMUP_MIN_LIMIT_S = 300.0  # 5 min — limite plancher (opérateur ne peut pas descendre en dessous)
+BARRAGE_WARMUP_MAX_LIMIT_S = 600.0  # 10 min — limite plafond
+PRESSURE_BP_BARRAGE_BAR    = 4.5    # pression alimentation BP barrage (auxiliaire démarrage)
 AUTO_STEP_DELAY_V1_S       = float(os.getenv("AUTO_STEP_DELAY_V1_S",        3.0))  # ESV_OPENED → ouvrir V1
 AUTO_STEP_DELAY_EXCITE_S   = float(os.getenv("AUTO_STEP_DELAY_EXCITE_S",    3.0))  # READY_TO_EXCITE → activer AVR
 AUTO_STEP_DELAY_SYNC_ARM_S = float(os.getenv("AUTO_STEP_DELAY_SYNC_ARM_S",  5.0))  # EXCITED → armer sync
+EXCITED_ARM_TIMEOUT_S      = float(os.getenv("EXCITED_ARM_TIMEOUT_S",      30.0))  # watchdog : armement forcé si gouverneur non convergé dans la fenêtre stricte
 
 # ─────────────────────────────────────────────
 # DYNAMIQUE ROTOR — Swing equation (premier ordre)

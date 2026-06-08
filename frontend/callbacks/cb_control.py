@@ -16,16 +16,20 @@ _STATE_ORDER = ["STOPPED", "ROLLING", "SYNCHRONIZING", "GRID_CONNECTED"]
 
 
 def _fuse_state_badge(data: dict) -> tuple[str, str]:
-    """Fusionne machine_state + status en un libellé/couleur d'état opérateur.
+    """Fusionne machine_state + startup_phase + status en un libellé/couleur d'état opérateur.
     Priorités : TRIP > état transitoire (STOPPED/ROLLING/SYNC) > alarme (DEGRADED/CRITICAL) > NORMAL.
     """
     status        = (data.get("status") or "NORMAL").upper()
     machine_state = (data.get("machine_state") or "GRID_CONNECTED").upper()
+    startup_phase = (data.get("startup_phase") or "GRID_CONNECTED").upper()
     tripped       = bool(data.get("tripped", False))
 
     if tripped or status == "TRIPPED" or machine_state == "TRIPPED":
         return "AU/TRIP ACTIF", "#ef4444"
     if machine_state == "STOPPED":
+        # machine_state reste STOPPED de BARRAGE_OPENED à V1_OPENING — afficher DÉMARRAGE
+        if startup_phase in ("BARRAGE_OPENED", "ESV_OPENED", "V1_OPENING"):
+            return "DÉMARRAGE", "#f59e0b"
         return "MACHINE ARRÊTÉE", "#64748b"
     if machine_state == "ROLLING":
         return "DÉMARRAGE", "#f59e0b"
@@ -112,6 +116,18 @@ def register(app):
     )
     def update_banner_operator(name):
         return name or "—"
+
+    # ── Bootstrap : charge tous les snapshots statiques en 1 round-trip ──
+    @app.callback(
+        Output("store-control-bootstrap", "data"),
+        Input("url", "pathname"),
+        prevent_initial_call=False,
+    )
+    def load_control_bootstrap(pathname):
+        if pathname != "/control":
+            return no_update
+        data, err = _get("/control/bootstrap")
+        return data or {}
 
     # ── Mise à jour statut système depuis WebSocket ──────────────────
     @app.callback(
@@ -366,16 +382,15 @@ def register(app):
     # ── Sync cible régulation au chargement (non écrasé chaque seconde) ──
     @app.callback(
         Output("ctrl-regul-target", "value"),
+        Input("store-control-bootstrap", "data"),
         Input("url", "pathname"),
         prevent_initial_call=False,
     )
-    def sync_regul_target_on_load(pathname):
+    def sync_regul_target_on_load(boot, pathname):
         if pathname != "/control":
             return no_update
-        state, err = _get("/control/state")
-        if err or not state:
-            return no_update
-        return state.get("regulation_target", "POWER")
+        state = (boot or {}).get("state") or {}
+        return state.get("regulation_target", "POWER") or no_update
 
     # ── Pré-remplir gains PID au chargement ─────────────────────────
     @app.callback(
@@ -388,14 +403,15 @@ def register(app):
         Output("ctrl-pid-pressure-kp", "value"),
         Output("ctrl-pid-pressure-ki", "value"),
         Output("ctrl-pid-pressure-kd", "value"),
+        Input("store-control-bootstrap", "data"),
         Input("url", "pathname"),
         prevent_initial_call=False,
     )
-    def prefill_pid_gains(pathname):
+    def prefill_pid_gains(boot, pathname):
         if pathname != "/control":
             return (no_update,) * 9
-        state, err = _get("/control/state")
-        if err or not state:
+        state = (boot or {}).get("state") or {}
+        if not state:
             return (no_update,) * 9
         return (
             state.get("pid_kp",          2.0),
@@ -449,7 +465,7 @@ def register(app):
                           {"confirm": True, "operator": operator or "Opérateur"})
         if err:
             return _status_err(f"Erreur AU : {err}")
-        return _status_err("⚠ TRIP EXÉCUTÉ")
+        return no_update
 
     # ── Reset Trip ───────────────────────────────────────────────────
     @app.callback(
@@ -465,7 +481,7 @@ def register(app):
                           {"operator": operator or "Opérateur"})
         if err:
             return _status_err(f"Erreur : {err}")
-        return _status_ok("✓ Trip réinitialisé.")
+        return no_update
 
     # ── Changer mode ─────────────────────────────────────────────────
     @app.callback(
@@ -718,15 +734,19 @@ def register(app):
         Output("ctrl-attemp-current-temp", "children"),
         Output("ctrl-attemp-injection",    "children"),
         Input("ctrl-state-interval",       "n_intervals"),
-        Input("url",                       "pathname"),
+        Input("store-control-bootstrap",   "data"),
+        State("url",                       "pathname"),
         prevent_initial_call=False,
     )
-    def update_attemperator_display(n, pathname):
+    def update_attemperator_display(n, boot, pathname):
         if pathname != "/control":
             return no_update, no_update
-        data, err = _get("/control/attemperator")
-        if err or not data:
-            return "—", "—"
+        if ctx.triggered_id == "store-control-bootstrap" and boot:
+            data = (boot or {}).get("attemperator") or {}
+        else:
+            data, err = _get("/control/attemperator")
+            if err or not data:
+                return "—", "—"
         # Affiche la T° HP mesurée (depuis le snapshot nominal) plutôt que la consigne
         t_actual = data.get("attemp_current_temp")
         if t_actual is None:
@@ -768,15 +788,19 @@ def register(app):
         Output("ctrl-cond-level-val",  "children"),
         Output("ctrl-cond-vacuum-val", "children"),
         Input("ctrl-state-interval",   "n_intervals"),
-        Input("url",                   "pathname"),
+        Input("store-control-bootstrap", "data"),
+        State("url",                   "pathname"),
         prevent_initial_call=False,
     )
-    def update_condenser_display(n, pathname):
+    def update_condenser_display(n, boot, pathname):
         if pathname != "/control":
             return no_update, no_update
-        data, err = _get("/control/condenser")
-        if err or not data:
-            return "—", "—"
+        if ctx.triggered_id == "store-control-bootstrap" and boot:
+            data = (boot or {}).get("condenser") or {}
+        else:
+            data, err = _get("/control/condenser")
+            if err or not data:
+                return "—", "—"
         lv  = data.get("condenser_level_pct")
         vac = data.get("condenser_vacuum_mbar")
         return (f"{lv:.1f}" if lv is not None else "—",
@@ -815,17 +839,21 @@ def register(app):
     @app.callback(
         Output("ctrl-protections-list", "children"),
         Input("ctrl-protections-interval", "n_intervals"),
-        Input("url",                        "pathname"),
+        Input("store-control-bootstrap",   "data"),
+        State("url",                        "pathname"),
         prevent_initial_call=False,
     )
-    def update_protections_list(n, pathname):
+    def update_protections_list(n, boot, pathname):
         if pathname != "/control":
             return no_update
-        data, err = _get("/control/protections")
-        if err or not data:
-            return html.Div("Aucune protection récupérée.",
-                            style={"fontSize": "11px", "color": "#64748b",
-                                   "fontFamily": "Share Tech Mono"})
+        if ctx.triggered_id == "store-control-bootstrap" and boot:
+            data = (boot or {}).get("protections") or {}
+        else:
+            data, err = _get("/control/protections")
+            if err or not data:
+                return html.Div("Aucune protection récupérée.",
+                                style={"fontSize": "11px", "color": "#64748b",
+                                       "fontFamily": "Share Tech Mono"})
 
         _STATUS_COLOR = {
             "OK":       "#22c55e",
@@ -1145,8 +1173,11 @@ def register(app):
         # ── Gating séquentiel des boutons d'action — piloté par startup_phase ──
         btn_bp_disabled  = (phase != "PRE_CHECKS")    or mode == "AUTO" or tripped \
                            or not precheck_all_ok
+        warmup_running   = (phase == "BARRAGE_OPENED"
+                            and phase_remaining is not None
+                            and phase_remaining > 0)
         btn_esv_disabled = (phase != "BARRAGE_OPENED") or mode == "AUTO" or tripped \
-                           or speed < 2800
+                           or speed < 2800 or warmup_running
         btn_v1_disabled  = (phase != "ESV_OPENED")    or mode == "AUTO" or tripped
         btn_avr_disabled = (phase != "READY_TO_EXCITE") or mode == "AUTO" or tripped
 
@@ -1190,6 +1221,55 @@ def register(app):
              prog2, prog4, prog5, prog6,
              trip_style, bar_style, elapsed]
         )
+
+    # ── Slider durée préchauffage barrage : chargement initial ──────────
+    @app.callback(
+        Output("ctrl-barrage-warmup-slider", "value"),
+        Output("ctrl-barrage-warmup-val",    "children"),
+        Input("store-control-bootstrap", "data"),
+        Input("url", "pathname"),
+    )
+    def init_barrage_warmup_slider(boot, pathname):
+        if pathname != "/control":
+            return no_update, no_update
+        bw = (boot or {}).get("barrage_warmup") or {}
+        if not bw:
+            return 5, "5 min"
+        value_min = round((bw.get("value_s", 300.0)) / 60.0)
+        value_min = max(5, min(10, value_min))
+        return value_min, f"{value_min} min"
+
+    # ── Slider durée préchauffage barrage : désactivation hors PRE_CHECKS ──
+    @app.callback(
+        Output("ctrl-barrage-warmup-slider", "disabled"),
+        Input("ctrl-state-interval",   "n_intervals"),
+        Input("store-current-data",    "data"),
+        State("url",                   "pathname"),
+    )
+    def update_warmup_slider_state(n, ws_data, pathname):
+        if pathname != "/control":
+            return no_update
+        # startup_phase, tripped, control_mode sont dans GTAParameters → WebSocket
+        data    = ws_data or {}
+        phase   = data.get("startup_phase",  "PRE_CHECKS")
+        mode    = data.get("control_mode",   "MANUAL")
+        tripped = data.get("tripped",        False)
+        return phase != "PRE_CHECKS" or mode == "AUTO" or tripped
+
+    # ── Slider durée préchauffage barrage : POST sur changement ─────────
+    @app.callback(
+        Output("ctrl-barrage-warmup-val", "children", allow_duplicate=True),
+        Input("ctrl-barrage-warmup-slider", "value"),
+        State("store-operator-name", "data"),
+        prevent_initial_call=True,
+    )
+    def on_barrage_warmup_change(value_min, operator):
+        if value_min is None:
+            return no_update
+        seconds = float(value_min) * 60.0
+        op = operator or "Opérateur"
+        _post("/control/settings/barrage-warmup", {"seconds": seconds, "operator": op})
+        return f"{value_min} min"
 
     # ── Bouton action phase démarrage : Ouvrir vapeur barrage (bp_admit 100%) ──
     @app.callback(

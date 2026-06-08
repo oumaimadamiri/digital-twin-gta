@@ -104,6 +104,11 @@ class GTAParameters(BaseModel):
     # ── Contrôle Commande (renseigné sur params_sim uniquement) ──
     control_mode:        str            = Field("MANUAL", description="Mode opérateur: MANUAL | AUTO")
     machine_state:       str            = Field("STOPPED", description="État machine: STOPPED|ROLLING|SYNCHRONIZING|GRID_CONNECTED|TRIPPED")
+    startup_phase:         str            = Field("GRID_CONNECTED", description="Phase démarrage: PRE_CHECKS|BARRAGE_OPENED|ESV_OPENED|V1_OPENING|ACCELERATING|READY_TO_EXCITE|EXCITED|SYNCHRONIZING|GRID_CONNECTED")
+    startup_phase_message: Optional[str]  = Field(None,  description="Message contextuel phase")
+    phase_remaining_s:     Optional[float] = Field(None, description="Temps restant phase (s)")
+    phase_total_s:         Optional[float] = Field(None, description="Durée totale phase (s)")
+    barrage_warmup_s:      float           = Field(300.0, description="Durée préchauffage barrage configurée (s)")
     setpoint_power_mw:   Optional[float] = Field(None,    description="Consigne puissance active (MW)")
     pid_kp:              Optional[float] = Field(None,    description="Gain PID proportionnel")
     pid_ki:              Optional[float] = Field(None,    description="Gain PID intégral")
