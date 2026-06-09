@@ -78,25 +78,82 @@ def _status_err(text):
                                   "fontSize": "11px"})
 
 
+_notif_counter = [0]
+
+
+def _notify(title, message, kind="warning"):
+    _notif_counter[0] += 1
+    return {"title": title, "message": str(message), "kind": kind, "n": _notif_counter[0]}
+
+
 def _post(path, json_body=None, params=None):
     try:
         r = _session.post(f"{BACKEND}{path}", json=json_body, params=params, timeout=5)
-        r.raise_for_status()
+        if r.status_code >= 400:
+            try:
+                detail = r.json().get("detail") or r.text
+            except ValueError:
+                detail = r.text or f"HTTP {r.status_code}"
+            return None, detail
         return r.json(), None
-    except Exception as e:
-        return None, str(e)
+    except requests.exceptions.RequestException as e:
+        return None, f"Connexion impossible : {e}"
 
 
 def _get(path, params=None):
     try:
         r = _session.get(f"{BACKEND}{path}", params=params, timeout=5)
-        r.raise_for_status()
+        if r.status_code >= 400:
+            try:
+                detail = r.json().get("detail") or r.text
+            except ValueError:
+                detail = r.text or f"HTTP {r.status_code}"
+            return None, detail
         return r.json(), None
-    except Exception as e:
-        return None, str(e)
+    except requests.exceptions.RequestException as e:
+        return None, f"Connexion impossible : {e}"
 
 
 def register(app):
+
+    # ── Pop-up notification — affichage (DOM direct) ─────────────────
+    clientside_callback(
+        """
+        function(data) {
+            if (!data) return window.dash_clientside.no_update;
+            var modal = document.getElementById('ctrl-notif-modal');
+            var icon  = document.getElementById('ctrl-notif-icon');
+            var title = document.getElementById('ctrl-notif-title');
+            var msg   = document.getElementById('ctrl-notif-message');
+            if (!modal) return window.dash_clientside.no_update;
+            var icons  = {warning: '⚠', error: '⛔', info: 'ℹ'};
+            var colors = {warning: '#f59e0b', error: '#ef4444', info: '#60a5fa'};
+            icon.textContent  = icons[data.kind]  || '⚠';
+            title.textContent = data.title   || '';
+            title.style.color = colors[data.kind] || '#f59e0b';
+            msg.textContent   = data.message || '';
+            modal.style.display = 'flex';
+            return '';
+        }
+        """,
+        Output("ctrl-notif-dummy", "children"),
+        Input("ctrl-notif-store", "data"),
+        prevent_initial_call=True,
+    )
+
+    # ── Pop-up notification — fermeture (bouton OK) ──────────────────
+    @app.callback(
+        Output("ctrl-notif-modal", "style"),
+        Input("ctrl-notif-ok", "n_clicks"),
+        prevent_initial_call=True,
+    )
+    def close_notif(n):
+        return {
+            "display": "none", "position": "fixed", "top": 0, "left": 0,
+            "width": "100%", "height": "100%", "zIndex": "9999",
+            "background": "rgba(0,0,0,0.65)", "alignItems": "center",
+            "justifyContent": "center",
+        }
 
     # ── Horloge bandeau (clientside — aucun appel réseau) ────────────
     clientside_callback(
@@ -219,7 +276,16 @@ def register(app):
         if tripped:
             step_classes = ["stepper-pill stepper-pill-tripped"] * 4
         else:
-            idx = _STATE_ORDER.index(machine_state) if machine_state in _STATE_ORDER else 0
+            # Pendant les phases de démarrage (barrage / ESV / V1), machine_state reste STOPPED
+            # mais le rotor tourne — on affiche ROLLING comme étape active pour l'opérateur.
+            startup_phase_raw = state.get("startup_phase", "PRE_CHECKS")
+            if machine_state == "STOPPED" and startup_phase_raw in (
+                "BARRAGE_OPENED", "ESV_OPENED", "V1_OPENING"
+            ):
+                effective_state = "ROLLING"
+            else:
+                effective_state = machine_state
+            idx = _STATE_ORDER.index(effective_state) if effective_state in _STATE_ORDER else 0
             step_classes = []
             for i in range(4):
                 if i < idx:
@@ -454,38 +520,41 @@ def register(app):
     # ── Exécution AU ─────────────────────────────────────────────────
     @app.callback(
         Output("ctrl-au-status", "children"),
+        Output("ctrl-notif-store", "data", allow_duplicate=True),
         Input("ctrl-confirm-au", "submit_n_clicks"),
         State("store-operator-name", "data"),
         prevent_initial_call=True,
     )
     def execute_au(n, operator):
         if not n:
-            return no_update
+            return no_update, no_update
         data, err = _post("/control/emergency/trip",
                           {"confirm": True, "operator": operator or "Opérateur"})
         if err:
-            return _status_err(f"Erreur AU : {err}")
-        return no_update
+            return _status_err("✗"), _notify("Arrêt d'urgence refusé", err, "error")
+        return no_update, no_update
 
     # ── Reset Trip ───────────────────────────────────────────────────
     @app.callback(
         Output("ctrl-trip-status", "children"),
+        Output("ctrl-notif-store", "data", allow_duplicate=True),
         Input("ctrl-btn-reset-trip", "n_clicks"),
         State("store-operator-name", "data"),
         prevent_initial_call=True,
     )
     def reset_trip(n, operator):
         if not n:
-            return no_update
+            return no_update, no_update
         data, err = _post("/control/emergency/reset",
                           {"operator": operator or "Opérateur"})
         if err:
-            return _status_err(f"Erreur : {err}")
-        return no_update
+            return _status_err("✗"), _notify("Reset Trip impossible", err, "warning")
+        return no_update, no_update
 
     # ── Changer mode ─────────────────────────────────────────────────
     @app.callback(
         Output("ctrl-mode-apply-status", "children"),
+        Output("ctrl-notif-store", "data", allow_duplicate=True),
         Input("ctrl-btn-mode", "n_clicks"),
         State("ctrl-mode-radio",     "value"),
         State("store-operator-name", "data"),
@@ -493,15 +562,16 @@ def register(app):
     )
     def apply_mode(n, mode, operator):
         if not n:
-            return no_update
+            return no_update, no_update
         data, err = _post("/control/mode", {"mode": mode, "operator": operator or "Opérateur"})
         if err:
-            return _status_err(f"Erreur : {err}")
-        return _status_ok(f"✓ Mode {mode} appliqué")
+            return _status_err("✗"), _notify("Changement de mode refusé", err)
+        return _status_ok(f"✓ Mode {mode} appliqué"), no_update
 
     # ── Appliquer consignes ──────────────────────────────────────────
     @app.callback(
         Output("ctrl-setpoints-status", "children"),
+        Output("ctrl-notif-store", "data", allow_duplicate=True),
         Input("ctrl-btn-setpoints", "n_clicks"),
         State("ctrl-sp-power",       "value"),
         State("ctrl-sp-speed",       "value"),
@@ -511,26 +581,27 @@ def register(app):
     )
     def apply_setpoints(n, power, speed, pressure, operator):
         if not n:
-            return no_update
+            return no_update, no_update
         sp = {}
         if power    is not None: sp["power_mw"]       = power
         if speed    is not None: sp["speed_rpm"]       = speed
         if pressure is not None: sp["pressure_hp_bar"] = pressure
         if not sp:
-            return _status_err("Aucune consigne saisie.")
+            return _status_err("Aucune consigne saisie."), no_update
         data, err = _post("/control/setpoints",
                           {"setpoints": sp, "operator": operator or "Opérateur"})
         if err:
-            return _status_err(f"Erreur : {err}")
+            return _status_err("✗"), _notify("Consignes refusées", err)
         parts = []
         if power    is not None: parts.append(f"P={power} MW")
         if speed    is not None: parts.append(f"N={speed} RPM")
         if pressure is not None: parts.append(f"P_HP={pressure} bar")
-        return _status_ok(f"✓ {' | '.join(parts)}")
+        return _status_ok(f"✓ {' | '.join(parts)}"), no_update
 
     # ── Cible de régulation ──────────────────────────────────────────
     @app.callback(
         Output("ctrl-regul-target-status", "children"),
+        Output("ctrl-notif-store", "data", allow_duplicate=True),
         Input("ctrl-btn-regul-target", "n_clicks"),
         State("ctrl-regul-target",   "value"),
         State("store-operator-name", "data"),
@@ -538,12 +609,12 @@ def register(app):
     )
     def apply_regul_target(n, target, operator):
         if not n:
-            return no_update
+            return no_update, no_update
         data, err = _post("/control/regulation-target",
                           {"target": target, "operator": operator or "Opérateur"})
         if err:
-            return _status_err(f"Erreur : {err}")
-        return _status_ok(f"✓ Cible → {target}")
+            return _status_err("✗"), _notify("Bascule régulation impossible", err)
+        return _status_ok(f"✓ Cible → {target}"), no_update
 
     # ── Affichage sliders vannes ─────────────────────────────────────
     @app.callback(
@@ -562,6 +633,7 @@ def register(app):
     # ── Appliquer vannes ─────────────────────────────────────────────
     @app.callback(
         Output("ctrl-valves-status", "children"),
+        Output("ctrl-notif-store", "data", allow_duplicate=True),
         Input("ctrl-btn-valves", "n_clicks"),
         State("slider-ctrl-v1", "value"),
         State("slider-ctrl-v2", "value"),
@@ -572,7 +644,7 @@ def register(app):
     )
     def apply_valves(n, v1, v2, v3, vbp, operator):
         if not n:
-            return no_update
+            return no_update, no_update
         body = {"operator": operator or "Opérateur"}
         if v1  is not None: body["valve_v1"] = v1
         if v2  is not None: body["valve_v2"] = v2
@@ -580,16 +652,18 @@ def register(app):
         if vbp is not None: body["valve_bp"] = vbp
         data, err = _post("/control/valve", body)
         if err:
-            return _status_err(f"Erreur : {err}")
+            return _status_err("✗"), _notify("Commande vannes refusée", err)
         results = data.get("results", {})
         rejets = [f"{k}: {v.get('message')}" for k, v in results.items() if not v.get("accepted")]
         if rejets:
-            return _status_err("Refusé — " + " | ".join(rejets))
-        return _status_ok(f"✓ V1={v1}% V2={v2}% V3={v3}% BP={vbp}%")
+            msg = " | ".join(rejets)
+            return _status_err("✗"), _notify("Commande vannes refusée", msg)
+        return _status_ok(f"✓ V1={v1}% V2={v2}% V3={v3}% BP={vbp}%"), no_update
 
     # ── Arrêt programmé ──────────────────────────────────────────────
     @app.callback(
         Output("ctrl-shutdown-status", "children"),
+        Output("ctrl-notif-store", "data", allow_duplicate=True),
         Input("ctrl-btn-shutdown-set-p0",    "n_clicks"),
         Input("ctrl-btn-shutdown-disconnect","n_clicks"),
         Input("ctrl-btn-shutdown-avr-off",   "n_clicks"),
@@ -614,16 +688,17 @@ def register(app):
             data, err = _post("/control/shutdown/close-barrage", {"operator": op})
             ok_msg = f"✓ {data.get('message', 'Barrage fermé')}" if data else "✓ Barrage fermé."
         else:
-            return no_update
+            return no_update, no_update
         if err:
-            return _status_err(f"Erreur : {err}")
-        return _status_ok(ok_msg)
+            return _status_err("✗"), _notify("Arrêt refusé", err)
+        return _status_ok(ok_msg), no_update
 
     # ── Réglage PID (multi-boucle via onglets) ───────────────────────
     for _loop in ("power", "speed", "pressure"):
         def _make_pid_callback(loop_name):
             @app.callback(
                 Output(f"ctrl-pid-{loop_name}-status", "children"),
+                Output("ctrl-notif-store", "data", allow_duplicate=True),
                 Input(f"ctrl-btn-pid-{loop_name}", "n_clicks"),
                 State(f"ctrl-pid-{loop_name}-kp", "value"),
                 State(f"ctrl-pid-{loop_name}-ki", "value"),
@@ -633,21 +708,22 @@ def register(app):
             )
             def apply_pid_loop(n, kp, ki, kd, operator, _ln=loop_name):
                 if not n:
-                    return no_update
+                    return no_update, no_update
                 if any(v is None for v in [kp, ki, kd]):
-                    return _status_err("Renseignez Kp, Ki, Kd.")
+                    return _status_err("Renseignez Kp, Ki, Kd."), no_update
                 data, err = _post("/control/pid", {
                     "kp": kp, "ki": ki, "kd": kd,
                     "loop": _ln, "operator": operator or "Opérateur",
                 })
                 if err:
-                    return _status_err(f"Erreur : {err}")
-                return _status_ok(f"✓ PID {_ln} : Kp={kp} Ki={ki} Kd={kd}")
+                    return _status_err("✗"), _notify(f"PID {_ln} refusé", err)
+                return _status_ok(f"✓ PID {_ln} : Kp={kp} Ki={ki} Kd={kd}"), no_update
         _make_pid_callback(_loop)
 
     # ── AVR — mode + setpoints ───────────────────────────────────────
     @app.callback(
         Output("ctrl-avr-status", "children"),
+        Output("ctrl-notif-store", "data", allow_duplicate=True),
         Input("ctrl-btn-avr", "n_clicks"),
         State("ctrl-avr-mode",       "value"),
         State("ctrl-avr-vset",       "value"),
@@ -658,19 +734,16 @@ def register(app):
     )
     def apply_avr(n, mode, vset, cosphi_set, efd_manual, operator):
         if not n:
-            return no_update
+            return no_update, no_update
         op = operator or "Opérateur"
-        # Bloquer le mode OFF quand la machine est couplée au réseau
         if mode == "OFF":
             state_check, _ = _get("/control/state")
             if (state_check or {}).get("machine_state") == "GRID_CONNECTED":
-                return _status_err(
-                    "⚠ Impossible de désexciter en GRID_CONNECTED — "
-                    "découpler la machine avant."
-                )
+                msg = "Impossible de désexciter en GRID_CONNECTED — découpler la machine avant."
+                return _status_err("✗"), _notify("AVR refusé", msg)
         _, err = _post("/control/avr/mode", {"mode": mode, "operator": op})
         if err:
-            return _status_err(f"Mode AVR : {err}")
+            return _status_err("✗"), _notify("Mode AVR refusé", err)
         if mode == "MANUAL" and efd_manual is not None:
             _post("/control/avr/manual", {"e_fd_pu": efd_manual, "operator": op})
         body = {}
@@ -679,13 +752,14 @@ def register(app):
         if body:
             _, err2 = _post("/control/avr/setpoint", {**body, "operator": op})
             if err2:
-                return _status_err(f"Consigne AVR : {err2}")
+                return _status_err("✗"), _notify("Consigne AVR refusée", err2)
         label = vset if mode == "VOLTAGE" else (cosphi_set if mode == "COSPHI" else efd_manual)
-        return _status_ok(f"✓ AVR {mode} → {label}")
+        return _status_ok(f"✓ AVR {mode} → {label}"), no_update
 
     # ── AVR — gains K_A / T_A ────────────────────────────────────────
     @app.callback(
         Output("ctrl-avr-gains-status", "children"),
+        Output("ctrl-notif-store", "data", allow_duplicate=True),
         Input("ctrl-btn-avr-gains", "n_clicks"),
         State("ctrl-avr-ka",         "value"),
         State("ctrl-avr-ta",         "value"),
@@ -694,18 +768,19 @@ def register(app):
     )
     def apply_avr_gains(n, ka, ta, operator):
         if not n:
-            return no_update
+            return no_update, no_update
         if any(v is None for v in [ka, ta]):
-            return _status_err("Renseignez K_A et T_A.")
+            return _status_err("Renseignez K_A et T_A."), no_update
         data, err = _post("/control/avr/gains",
                           {"k_a": ka, "t_a": ta, "operator": operator or "Opérateur"})
         if err:
-            return _status_err(f"Erreur : {err}")
-        return _status_ok(f"✓ K_A={ka}  T_A={ta} s")
+            return _status_err("✗"), _notify("Gains AVR refusés", err)
+        return _status_ok(f"✓ K_A={ka}  T_A={ta} s"), no_update
 
     # ── Couplage réseau ──────────────────────────────────────────────
     @app.callback(
         Output("ctrl-grid-status", "children"),
+        Output("ctrl-notif-store", "data", allow_duplicate=True),
         Input("ctrl-btn-grid-sync",       "n_clicks"),
         Input("ctrl-btn-grid-couple",     "n_clicks"),
         Input("ctrl-btn-grid-disconnect", "n_clicks"),
@@ -716,18 +791,16 @@ def register(app):
         op = operator or "Opérateur"
         triggered = ctx.triggered_id
         if triggered == "ctrl-btn-grid-sync":
-            # Arme uniquement la synchronisation (EXCITED → SYNCHRONIZING)
             data, err = _post("/control/startup/sync-arm", {"operator": op})
         elif triggered == "ctrl-btn-grid-couple":
-            # Couplage réseau avec vérifications f/U/excitation (SYNCHRONIZING → GRID_CONNECTED)
             data, err = _post("/control/startup/couple-grid", {"operator": op})
         elif triggered == "ctrl-btn-grid-disconnect":
             data, err = _post("/control/grid/disconnect", {"operator": op})
         else:
-            return no_update
+            return no_update, no_update
         if err:
-            return _status_err(f"Erreur : {err}")
-        return _status_ok(f"✓ {(data or {}).get('message', 'OK')}")
+            return _status_err("✗"), _notify("Action réseau refusée", err)
+        return _status_ok(f"✓ {(data or {}).get('message', 'OK')}"), no_update
 
     # ── Désurchauffeur ───────────────────────────────────────────────
     @app.callback(
@@ -759,6 +832,7 @@ def register(app):
 
     @app.callback(
         Output("ctrl-attemp-status", "children"),
+        Output("ctrl-notif-store", "data", allow_duplicate=True),
         Input("ctrl-btn-attemp", "n_clicks"),
         State("ctrl-attemp-enable",  "value"),
         State("ctrl-attemp-setpoint","value"),
@@ -767,21 +841,21 @@ def register(app):
     )
     def apply_attemperator(n, enabled_val, setpoint, operator):
         if not n:
-            return no_update
+            return no_update, no_update
         op = operator or "Opérateur"
         enabled = "ON" in (enabled_val or [])
         _, err1 = _post("/control/attemperator/enabled",
                         {"enabled": enabled, "operator": op})
         if err1:
-            return _status_err(f"Erreur enable : {err1}")
+            return _status_err("✗"), _notify("Attempérateur refusé", err1)
         if setpoint is not None:
             _, err2 = _post("/control/attemperator/setpoint",
                             {"setpoint_c": setpoint, "operator": op})
             if err2:
-                return _status_err(f"Erreur setpoint : {err2}")
+                return _status_err("✗"), _notify("Consigne attempérateur refusée", err2)
         state_txt = "actif" if enabled else "désactivé"
         sp_txt = f", consigne {setpoint}°C" if setpoint is not None else ""
-        return _status_ok(f"✓ Désurchauffeur {state_txt}{sp_txt}")
+        return _status_ok(f"✓ Désurchauffeur {state_txt}{sp_txt}"), no_update
 
     # ── Condenseur ───────────────────────────────────────────────────
     @app.callback(
@@ -808,6 +882,7 @@ def register(app):
 
     @app.callback(
         Output("ctrl-cond-status", "children"),
+        Output("ctrl-notif-store", "data", allow_duplicate=True),
         Input("ctrl-btn-cond", "n_clicks"),
         State("ctrl-cond-level",     "value"),
         State("ctrl-cond-vacuum",    "value"),
@@ -816,24 +891,24 @@ def register(app):
     )
     def apply_condenser(n, level, vacuum, operator):
         if not n:
-            return no_update
+            return no_update, no_update
         op = operator or "Opérateur"
         msgs = []
         if level is not None:
             _, err = _post("/control/condenser/level-setpoint",
                            {"setpoint_pct": level, "operator": op})
             if err:
-                return _status_err(f"Niveau : {err}")
+                return _status_err("✗"), _notify("Condenseur — niveau refusé", err)
             msgs.append(f"niveau {level}%")
         if vacuum is not None:
             _, err = _post("/control/condenser/vacuum-setpoint",
                            {"setpoint_mbar": vacuum, "operator": op})
             if err:
-                return _status_err(f"Vide : {err}")
+                return _status_err("✗"), _notify("Condenseur — vide refusé", err)
             msgs.append(f"vide {vacuum} mbar")
         if not msgs:
-            return _status_err("Aucune consigne saisie.")
-        return _status_ok(f"✓ Condenseur : {', '.join(msgs)}")
+            return _status_err("Aucune consigne saisie."), no_update
+        return _status_ok(f"✓ Condenseur : {', '.join(msgs)}"), no_update
 
     # ── Protections Tier-1 ───────────────────────────────────────────
     @app.callback(
@@ -1251,10 +1326,12 @@ def register(app):
             return no_update
         # startup_phase, tripped, control_mode sont dans GTAParameters → WebSocket
         data    = ws_data or {}
-        phase   = data.get("startup_phase",  "PRE_CHECKS")
         mode    = data.get("control_mode",   "MANUAL")
         tripped = data.get("tripped",        False)
-        return phase != "PRE_CHECKS" or mode == "AUTO" or tripped
+        phase   = data.get("startup_phase",  "PRE_CHECKS")
+        # En AUTO, la séquence pilote le timer seule — on verrouille pour éviter les conflits.
+        # En MANUAL, désactivé après la fin de la phase de préchauffage du barrage.
+        return mode == "AUTO" or tripped or phase not in ("PRE_CHECKS", "BARRAGE_OPENED")
 
     # ── Slider durée préchauffage barrage : POST sur changement ─────────
     @app.callback(
@@ -1274,66 +1351,70 @@ def register(app):
     # ── Bouton action phase démarrage : Ouvrir vapeur barrage (bp_admit 100%) ──
     @app.callback(
         Output("ctrl-ph-bp-admit-status", "children"),
+        Output("ctrl-notif-store", "data", allow_duplicate=True),
         Input("ctrl-ph-btn-bp-admit", "n_clicks"),
         State("store-operator-name", "data"),
         prevent_initial_call=True,
     )
     def ph_open_bp_admit(n, operator):
         if not n:
-            return no_update
+            return no_update, no_update
         op = operator or "Opérateur"
         data, err = _post("/control/startup/barrage", {"operator": op})
         if err:
-            return _status_err(f"Erreur : {err}")
-        return _status_ok("Vapeur barrage ouverte ✓")
+            return _status_err("✗"), _notify("Étape démarrage refusée", err)
+        return _status_ok("Vapeur barrage ouverte ✓"), no_update
 
     # ── Bouton action phase démarrage : Ouvrir ESV ──────────────────
     @app.callback(
         Output("ctrl-ph-esv-status", "children"),
+        Output("ctrl-notif-store", "data", allow_duplicate=True),
         Input("ctrl-ph-btn-esv", "n_clicks"),
         State("store-operator-name", "data"),
         prevent_initial_call=True,
     )
     def ph_open_esv(n, operator):
         if not n:
-            return no_update
+            return no_update, no_update
         op = operator or "Opérateur"
         data, err = _post("/control/open-esv", {"operator": op})
         if err:
-            return _status_err(f"Erreur : {err}")
-        return _status_ok(data.get("message", "ESV ouverte ✓"))
+            return _status_err("✗"), _notify("Étape démarrage refusée", err)
+        return _status_ok(data.get("message", "ESV ouverte ✓")), no_update
 
     # ── Bouton action phase démarrage : Ouvrir V1 ───────────────────
     @app.callback(
         Output("ctrl-ph-v1-status", "children"),
+        Output("ctrl-notif-store", "data", allow_duplicate=True),
         Input("ctrl-ph-btn-v1", "n_clicks"),
         State("store-operator-name", "data"),
         prevent_initial_call=True,
     )
     def ph_open_v1(n, operator):
         if not n:
-            return no_update
+            return no_update, no_update
         op = operator or "Opérateur"
         data, err = _post("/control/startup/v1", {"operator": op})
         if err:
-            return _status_err(f"Erreur : {err}")
-        return _status_ok("V1 en ouverture ✓")
+            return _status_err("✗"), _notify("Étape démarrage refusée", err)
+        return _status_ok("V1 en ouverture ✓"), no_update
 
     # ── Bouton action phase démarrage : Activer AVR ──────────────────
     @app.callback(
         Output("ctrl-ph-avr-status", "children"),
+        Output("ctrl-notif-store", "data", allow_duplicate=True),
         Input("ctrl-ph-btn-avr", "n_clicks"),
         State("store-operator-name", "data"),
         prevent_initial_call=True,
     )
     def ph_activate_avr(n, operator):
         if not n:
-            return no_update
+            return no_update, no_update
         op = operator or "Opérateur"
         _, err = _post("/control/startup/excite", {"operator": op})
         if err:
-            return _status_err(f"Erreur AVR : {err}")
-        return _status_ok("AVR VOLTAGE activé ✓")
+            return _status_err("✗"), _notify("Activation AVR refusée", err)
+        return _status_ok("AVR VOLTAGE activé ✓"), no_update
 
     # ── Alarmes (acquittement + rafraîchissement) ────────────────────
     @app.callback(

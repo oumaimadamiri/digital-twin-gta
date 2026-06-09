@@ -160,11 +160,11 @@ class Controller:
                 # parte d'une valeur stale ≈ 0 (figée depuis le couplage manuel) et fasse
                 # s'effondrer V1 au premier tick AUTO → REVERSE_POWER trip.
                 self._effective_power_setpoint_mw = self._last_power_mw_cache
-                # Seed PID puissance pour bumpless transfer
-                error_0 = (self._setpoint_power_mw - self._last_power_mw_cache
-                           if self._setpoint_power_mw else 0.0)
-                seed = (current_v1 - self._pid.kp * error_0) / self._pid.ki if self._pid.ki > 0 else current_v1
-                self._pid.seed(seed)
+                # Seed PIDs pour bumpless transfer pur (l'erreur immédiate vue par le PID sera ~0 car la rampe part de la mesure)
+                seed_power = current_v1 / self._pid.ki if self._pid.ki > 0 else current_v1
+                self._pid.seed(seed_power)
+                seed_pressure = current_v1 / self._pid_pressure.ki if self._pid_pressure.ki > 0 else current_v1
+                self._pid_pressure.seed(seed_pressure)
             elif self.machine_state == "ROLLING":
                 # Seed PID vitesse
                 sp_rpm = self._setpoint_speed_rpm or NOMINAL["turbine_speed"]
@@ -323,6 +323,14 @@ class Controller:
     def reset_trip(self, operator: str = "Opérateur") -> dict:
         if not self.tripped:
             return {"accepted": False, "message": "Aucun trip actif."}
+        
+        # Vérification d'arrêt complet avant de réarmer
+        current_state = data_manager.get_from_cache() or {}
+        speed = current_state.get("turbine_speed", 0.0)
+        if speed > 50.0:
+            logger.warning(f"[Controller] Refus de réarmer le trip par {operator} : vitesse {speed:.0f} > 50 RPM")
+            return {"accepted": False, "message": f"Arrêt total requis (<50 RPM) pour réarmer. Vitesse actuelle: {speed:.0f} RPM."}
+
         self.tripped         = False
         self.machine_state   = "STOPPED"
         self._last_stop_request_at = None
@@ -549,6 +557,18 @@ class Controller:
             self._update_speed_pid(dt, current_speed_rpm)
 
         elif self.machine_state == "GRID_CONNECTED":
+            grace = getattr(self, "_just_coupled_pid_grace", 0)
+            if grace > 0:
+                self._just_coupled_pid_grace = grace - 1
+                if grace == 1:
+                    self._effective_power_setpoint_mw = current_power_mw
+                    current_v1 = valve_controller._valves["v1"].target
+                    seed_power = current_v1 / self._pid.ki if self._pid.ki > 0 else current_v1
+                    seed_pressure = current_v1 / self._pid_pressure.ki if self._pid_pressure.ki > 0 else current_v1
+                    self._pid.seed(seed_power)
+                    self._pid_pressure.seed(seed_pressure)
+                return
+
             if self._regulation_target == "PRESSURE":
                 self._update_pressure_pid(dt, self._last_pressure_hp_bar_cache)
             else:
@@ -792,20 +812,14 @@ class Controller:
         self._grid_connected_at = time.time()
         self._last_stop_request_at = None  # reset l'intention d'arrêt sur nouveau couplage
         self._sync_entry_time = None
-        # Seed les PIDs puissance et pression sur la position V1 courante (bumpless)
-        current_v1 = valve_controller._valves["v1"].target
-        seed_power    = current_v1 / self._pid.ki if self._pid.ki > 0 else current_v1
-        seed_pressure = current_v1 / self._pid_pressure.ki if self._pid_pressure.ki > 0 else current_v1
-        self._pid.seed(seed_power)
-        self._pid_pressure.seed(seed_pressure)
+        # Active la période de grâce de 2 ticks pour laisser la physique calculer la puissance post-couplage
+        self._just_coupled_pid_grace = 2
         # Consigne puissance nominale si aucune fixée
         if self._setpoint_power_mw is None:
             self._setpoint_power_mw = NOMINAL["active_power"]
         # Consigne pression nominale si aucune fixée
         if self._setpoint_pressure_hp_bar is None:
             self._setpoint_pressure_hp_bar = PRESSURE_HP_SETPOINT_BAR
-        # Reset rampe MW pour re-init au premier tick (avoid stale value)
-        self._effective_power_setpoint_mw = float(self._last_power_mw_cache or 0.0)
         try:
             from simulation.dynamics import rotor_dynamics
             rotor_dynamics.lock_to_grid()
@@ -830,6 +844,21 @@ class Controller:
         self._setpoint_speed_rpm       = None
         self._setpoint_pressure_hp_bar = None
         self._effective_power_setpoint_mw = None
+        # Remettre la phase de démarrage à zéro → machine redémarrable
+        self._advance_phase("PRE_CHECKS")
+        self._sequence_state = "IDLE"
+        self._sequence_t0    = None
+        # Remettre les vannes en posture de démarrage propre
+        try:
+            valve_controller.reset_after_trip()
+        except Exception:
+            pass
+        # Couper l'excitation (pas de tension résiduelle au prochain démarrage)
+        try:
+            from simulation.avr_controller import avr_controller as _avr
+            _avr.shutdown(operator="SYSTÈME")
+        except Exception:
+            pass
         try:
             from simulation.dynamics import rotor_dynamics
             rotor_dynamics.unlock_from_grid()
@@ -839,7 +868,8 @@ class Controller:
             user="SYSTÈME", action_type="STATE_TRANSITION",
             target="machine_state", value_before=before, value_after="STOPPED",
         )
-        logger.info("[Controller] → STOPPED (machine à l'arrêt)")
+        logger.info("[Controller] → STOPPED (machine à l'arrêt, phase PRE_CHECKS, prête au redémarrage)")
+
 
     # ──────────────────────────────────────────────────────
     # PHASE DE DÉMARRAGE MANUEL

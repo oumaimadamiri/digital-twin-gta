@@ -34,11 +34,13 @@ _SPARK_PARAMS = {
     "pressure_hp":    {"label": "P HP",      "unit": "bar", "color": "#f97316", "y_range": [58,  62]},
     "steam_flow_hp":  {"label": "Débit HP",  "unit": "T/h", "color": "#06b6d4", "y_range": [80,   135]},
     "turbine_speed":  {"label": "Vitesse",   "unit": "RPM", "color": "#818cf8", "y_range": [6200, 6600]},
+    "alternator_speed":{"label": "Vit. Alter.","unit": "RPM","color": "#10b981", "y_range": [1480, 1520]},
     "temperature_hp": {"label": "T HP",      "unit": "°C",  "color": "#ef4444", "y_range": [400,  500]},
     "efficiency":           {"label": "Rendement", "unit": "%",   "color": "#38bdf8", "y_range": [50,    70]},
     "power_factor":         {"label": "cosφ",      "unit": "",    "color": "#fbbf24", "y_range": [0.80, 0.95]},
     "pressure_bp_in":       {"label": "P BP",      "unit": "bar", "color": "#38bdf8", "y_range": [4.2,   4.55]},
     "steam_flow_condenser": {"label": "Q cond.",   "unit": "T/h", "color": "#7dd3fc", "y_range": [84,    94]},
+    "steam_flow_bp_in":     {"label": "Débit src BP","unit": "T/h","color": "#38bdf8", "y_range": [0,   120]},
     "current_a":            {"label": "Courant",   "unit": "A",   "color": "#60a5fa", "y_range": [1360, 1485]},
     "apparent_power":       {"label": "S app.",    "unit": "MVA", "color": "#a78bfa", "y_range": [25,    27]},
     "reactive_power":       {"label": "Q réact.",  "unit": "MVAR","color": "#818cf8", "y_range": [12.75,    14]},
@@ -277,7 +279,20 @@ def register(app):
             line_width=1.2,
         )
         fig.update_layout(**_SPARK_LAYOUT_BASE, uirevision=actual)
-        fig.update_yaxes(range=cfg["y_range"])
+
+        # Calcul d'une plage Y dynamique :
+        # - Garde une "fenêtre" (span) de la même taille que la plage nominale pour éviter d'amplifier le bruit.
+        # - Centre ou étend cette fenêtre pour s'assurer que toutes les données (min_y, max_y) sont visibles,
+        #   ce qui est essentiel lors des démarrages ou arrêts.
+        nom_min, nom_max = cfg["y_range"]
+        span = nom_max - nom_min
+        min_y, max_y = min(ys), max(ys)
+        data_center = (min_y + max_y) / 2.0
+        
+        plot_min = min(min_y - span * 0.1, data_center - span / 2.0)
+        plot_max = max(max_y + span * 0.1, data_center + span / 2.0)
+        
+        fig.update_yaxes(range=[plot_min, plot_max])
 
         n_pts  = len(ys)
         v_last = f"{ys[-1]:.2f} {unit}" if ys else "—"

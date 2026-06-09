@@ -545,7 +545,7 @@ class PhysicsModel:
         Retourne un dict complet prêt pour GTAParameters.
         """
         # ── Débit BP source barrage (nul quand ESV ouverte — HP prend le relais) ──
-        steam_flow_bp_in = 0.0 if esv_open else round(STEAM_FLOW_BP_NOMINAL * (valve_bp_admit / 100.0), 1)
+        steam_flow_bp_in = round(STEAM_FLOW_BP_NOMINAL * (valve_bp_admit / 100.0), 1)
 
         # ── Thermodynamique ──
         active_power   = self.compute_active_power(
@@ -659,8 +659,10 @@ class PhysicsModel:
             pressure_condenser_val = 0.0
             active_power    = 0.0
             power_factor    = 0.0
-            pressure_bp     = 1.013  # BP à pression atmosphérique
-            temperature_bp  = 0.0
+            # Source BP IMACID : alimentation externe toujours disponible même machine trippée
+            from core.config import PRESSURE_BP_BARRAGE_BAR
+            pressure_bp    = PRESSURE_BP_BARRAGE_BAR   # 4.5 bar — source indépendante de la turbine
+            temperature_bp = self.nominal["temperature_bp"]  # ~226 °C — source IMACID
             flow_v1 = flow_v2 = flow_v3 = 0.0
             charge_site     = 0.0
             excedent_reseau = 0.0
@@ -691,6 +693,9 @@ class PhysicsModel:
             excedent_reseau = 0.0
         else:
             pressure_condenser_val = self.nominal["pressure_condenser"]
+            if valve_bp_admit > 1.0:
+                from core.config import PRESSURE_BP_BARRAGE_BAR
+                pressure_bp = max(pressure_bp, PRESSURE_BP_BARRAGE_BAR)
 
         if not is_excited:
             # Pas d'excitation → pas de tension ni de signaux électriques ni de puissance
@@ -724,7 +729,7 @@ class PhysicsModel:
             # Entrées primaires (arrondies)
             "pressure_hp":          round(pressure_hp, 2),
             "temperature_hp":       round(temperature_hp, 1),
-            "steam_flow_hp":        round(steam_flow_hp if is_running else (steam_flow_bp_in if is_warming else 0.0), 1),
+            "steam_flow_hp":        round(steam_flow_hp if is_running else 0.0, 1),
             # BP
             "pressure_bp_in":       round(pressure_bp, 3),
             "temperature_bp":       temperature_bp,

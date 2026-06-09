@@ -932,12 +932,53 @@ def _alarms_card():
     )
 
 
+# ── Pop-up notification opérateur ─────────────────────────────────────
+
+def _notif_modal():
+    _overlay = {
+        "display": "none", "position": "fixed", "top": 0, "left": 0,
+        "width": "100%", "height": "100%", "zIndex": "9999",
+        "background": "rgba(0,0,0,0.65)", "alignItems": "center",
+        "justifyContent": "center",
+    }
+    _card = {
+        "background": "#0f1f3d", "border": "1px solid #1e3a5f",
+        "borderRadius": "12px", "padding": "28px 32px",
+        "maxWidth": "440px", "width": "90%",
+        "boxShadow": "0 8px 32px rgba(0,0,0,0.7)",
+        "textAlign": "center",
+    }
+    return html.Div(id="ctrl-notif-modal", style=_overlay, children=[
+        html.Div([
+            html.Div(id="ctrl-notif-icon",
+                     style={"fontSize": "36px", "marginBottom": "10px"}),
+            html.Div(id="ctrl-notif-title",
+                     style={"fontFamily": "Share Tech Mono", "fontSize": "13px",
+                            "fontWeight": "700", "color": "#f59e0b",
+                            "marginBottom": "12px", "letterSpacing": "1px"}),
+            html.Div(id="ctrl-notif-message",
+                     style={"fontFamily": "Share Tech Mono", "fontSize": "12px",
+                            "color": "#cbd5e1", "marginBottom": "22px",
+                            "lineHeight": "1.7", "whiteSpace": "pre-wrap"}),
+            html.Button("OK", id="ctrl-notif-ok",
+                        style={"background": "#1e40af", "color": "white",
+                               "border": "1px solid #3b82f6", "borderRadius": "6px",
+                               "padding": "8px 36px", "fontSize": "12px",
+                               "fontFamily": "Share Tech Mono", "cursor": "pointer",
+                               "letterSpacing": "1px"}),
+            html.Span(id="ctrl-notif-dummy", style={"display": "none"}),
+        ], style=_card),
+    ])
+
+
 # ── Layout principal ──────────────────────────────────────────────────
 
 def layout():
     return html.Div([
         create_sidebar(active_path="/control"),
         html.Div([
+            dcc.Store(id="ctrl-notif-store"),
+            _notif_modal(),
 
             # Bandeau sticky full-width
             _sticky_banner(),

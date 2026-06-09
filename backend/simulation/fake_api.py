@@ -208,6 +208,9 @@ class FakeAPI:
                 "valve_v2":       actual_nom.get("v2", 0.0),
                 "valve_v3":       actual_nom.get("v3", 0.0),
                 "valve_bp":       actual_nom.get("bp",  NOMINAL["valve_bp"]),
+                # Inclus ici pour que compute_all calcule steam_flow_bp_in correctement
+                # (la vanne bp_admit est active pendant le barrage même machine STOPPED)
+                "valve_bp_admit": actual_nom.get("bp_admit", 0.0),
             }
         else:
             # Machine en marche : vannes réelles, paramètres vapeur nominaux
@@ -240,7 +243,9 @@ class FakeAPI:
             # État machine et AVR (nécessaire pour que le frontend affiche le bon état)
             nom_ctrl = _controller.snapshot()
             computed_nom["machine_state"]  = nom_ctrl.get("machine_state", "STOPPED")
+            computed_nom["startup_phase"]  = nom_ctrl.get("startup_phase", "PRE_CHECKS")
             computed_nom["tripped"]        = nom_ctrl.get("tripped", False)
+            computed_nom["control_mode"]   = nom_ctrl.get("control_mode", "MANUAL")
             computed_nom.update(_avr.snapshot())   # avr_mode + avr_e_fd_pu + champs AVR
 
             # Status nominal calculé (pas NORMAL forcé) ; STOPPED → NORMAL par convention

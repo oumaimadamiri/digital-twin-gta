@@ -55,6 +55,11 @@ window.patchGtaSynoptic = function(data) {
     /* ── Gate machine_state ── (machine_state inclus dans le flux nominal depuis fake_api) */
     const ms        = data.machine_state ?? "GRID_CONNECTED";
     const isRunning = ms === "ROLLING" || ms === "SYNCHRONIZING" || ms === "GRID_CONNECTED";
+    /* isWarming : rotor en rotation barrage (STOPPED + phase barrage/ESV/V1) */
+    const sp        = data.startup_phase ?? "";
+    const isWarming = ms === "STOPPED" && (sp === "BARRAGE_OPENED" || sp === "ESV_OPENED" || sp === "V1_OPENING");
+    /* isAlive : tout ce qui nécessite d'afficher la mécanique réelle */
+    const isAlive   = isRunning || isWarming;
 
     /* ── Extraction des valeurs ── (défauts = 0 : représentent machine à l'arrêt) */
     const p_hp    = data.pressure_hp          ?? 60.0;   // source HP externe — présente même à l'arrêt
@@ -110,17 +115,17 @@ window.patchGtaSynoptic = function(data) {
        Ici on garde uniquement le gate isRunning comme défense en profondeur pour les
        paramètres mécaniques/thermiques, en cas de donnée résiduelle invalide.
        Les signaux électriques sont déjà corrects tels qu'envoyés par le backend.      */
-    const eff_d      = isRunning ? eff     : 0.0;
-    const vib_fwd_d  = isRunning ? vib_fwd : 0.0;
-    const vib_aft_d  = isRunning ? vib_aft : 0.0;
-    const temp_fwd_d = isRunning ? temp_fwd : 25.0;
-    const temp_aft_d = isRunning ? temp_aft : 25.0;
-    const axial_d    = isRunning ? axial   : 0.0;
-    const casing_d   = isRunning ? casing  : 0.0;
-    const p_bar_bp_d = isRunning ? p_bar_bp : 1.0;
+    const eff_d      = isRunning ? eff     : 0.0;          // rendement uniquement en régime HP
+    const vib_fwd_d  = isAlive  ? vib_fwd : 0.0;          // vibration active dès barrage
+    const vib_aft_d  = isAlive  ? vib_aft : 0.0;
+    const temp_fwd_d = isAlive  ? temp_fwd : 25.0;        // paliers chauffent dès rotation barrage
+    const temp_aft_d = isAlive  ? temp_aft : 25.0;
+    const axial_d    = isAlive  ? axial   : 0.0;
+    const casing_d   = isAlive  ? casing  : 0.0;
+    const p_bar_bp_d = isRunning ? p_bar_bp : 1.0;        // barillet BP seulement en régime HP
     const q_cond_d   = isRunning ? q_cond   : 0.0;
     const p_cond_d   = isRunning ? p_cond   : 1.013;
-    const freq_d     = isRunning ? freq     : 0.0;
+    const freq_d     = isAlive  ? freq     : 0.0;          // fréquence visible dès que rotor tourne
     // Signaux électriques — valeurs directes du backend (déjà gérées côté serveur)
     const power_d   = power;
     const pf_d      = pf;
@@ -131,7 +136,7 @@ window.patchGtaSynoptic = function(data) {
 
     /* ── Vitesse alternateur après réducteur ── */
     const altSpd   = data.alternator_speed ?? (speed / 4.29);
-    const altSpdD  = isRunning ? altSpd : 0.0;
+    const altSpdD  = isAlive ? altSpd : 0.0;
 
     /* ── Overlay AU/TRIP sur synoptique ── */
     const tripped = data.tripped ?? (ms === "TRIPPED");
@@ -149,6 +154,14 @@ window.patchGtaSynoptic = function(data) {
     /* ── Débit BP barrage (nul quand ESV ouverte — HP prend le relais) ── */
     const qBpIn = data.steam_flow_bp_in ?? 0.0;
     _setText("syn-bp-flow-in", qBpIn.toFixed(0) + " T/h");
+
+    /* ── Tag Débit src BP (syn-qbp) ── */
+    const qbpValEl = document.getElementById("syn-qbp-val");
+    if (qbpValEl) {
+        const tspan = qbpValEl.querySelector("tspan");
+        qbpValEl.childNodes[0].textContent = qBpIn.toFixed(0) + " ";
+        if (tspan) tspan.textContent = "T/h";
+    }
 
     /* ── Couleurs statut ── */
     const STATUS_COL = { NORMAL: "#10b981", DEGRADED: "#f59e0b", CRITICAL: "#ef4444" };
@@ -462,7 +475,9 @@ window.patchGtaSynoptic = function(data) {
     _setText("syn-tbl2-casing", casing_d.toFixed(1));
     _setFill("syn-tbl2-casing", alm_casing ? "#ef4444" : "#10b981");
 
-    /* ── Table État Système — page 3 (électrique) ────────────────────────── */
+    /* ── Table État Système — page 3 (électrique + BP source) ──────────────── */
+    _setText("syn-tbl3-qbpin", qBpIn.toFixed(0));
+    _setFill("syn-tbl3-qbpin", qBpIn > 0.5 ? "#38bdf8" : "#475569");
     _setText("syn-tbl3-power", power_d.toFixed(1));
     _setFill("syn-tbl3-power", alm_pow ? "#ef4444" : alt_col);
     _setText("syn-tbl3-qmvar", q_mvar_d.toFixed(1));

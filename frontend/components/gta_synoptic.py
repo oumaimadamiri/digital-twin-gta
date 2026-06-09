@@ -234,6 +234,7 @@ def _build_synoptic_div(data: dict, static_ids: bool, show_table: bool = True, i
     bp_admit     = data.get("valve_bp_admit", 0.0)
     bp_admit_tgt = data.get("valve_bp_admit_target", 0.0)
     vc_bp_admit  = _vc(bp_admit, "#f59e0b")
+    q_bp_src     = data.get("steam_flow_bp_in", 0.0)
 
     # ── Couleurs table État Système ──────────────────────────────────────────
     c_tbl_php  = "#ef4444" if alm_php else "#f97316"
@@ -248,6 +249,7 @@ def _build_synoptic_div(data: dict, static_ids: bool, show_table: bool = True, i
     c_tbl_dot  = {"NORMAL": "#10b981", "DEGRADED": "#f59e0b", "CRITICAL": "#ef4444"}.get(status, "#10b981")
     tbl_pulse  = "pulse" if status != "NORMAL" else ""
     # Page 2 — couleurs initiales
+    c_tbl3_qbpin  = "#38bdf8" if q_bp_src > 0.5 else "#475569"
     c_tbl2_pbpin  = "#38bdf8"
     c_tbl2_qcond  = "#7dd3fc"
     c_tbl2_pcond  = "#a78bfa"
@@ -277,10 +279,13 @@ def _build_synoptic_div(data: dict, static_ids: bool, show_table: bool = True, i
                                param_name=_p("temperature_hp"))
         tag_qhp  = _tag_static(185, 193, "Débit HP",    "syn-qhp",  f"{q_hp:.0f}",  "T/h",  alm_qhp,
                                w=55, param_name=_p("steam_flow_hp"))
+        tag_qbp  = _tag_static(180, 450, "Débit src BP", "syn-qbp", f"{q_bp_src:.0f}", "T/h", False,
+                               w=70, param_name=_p("steam_flow_bp_in"))
         tag_spd  = _tag_static(755, 265, "Vit. arbre",  "syn-spd",  f"{speed:.0f}", "RPM",  alm_spd,
                                w=55, param_name=_p("turbine_speed"))
       #   tag_v1   = _tag_static(330, 273, "Adm. HP",     "syn-v1t",  f"{v1:.0f}",    "%",    False, w=60)
-        tag_vit2 = _tag_static(915, 264, "Vit.",        "syn-vit2", "1500",          "RPM",  False, w=55)
+        tag_vit2 = _tag_static(915, 264, "Vit.",        "syn-vit2", "1500",          "RPM",  False, w=55,
+                               param_name=_p("alternator_speed"))
         tag_turbine_int = _group_tag_static(
             435, 133, "⋯ Param Turbine", "syn-turbine-int-launcher",
             "__turbine_int__" if interactive else None, "#38bdf8", w=90)
@@ -301,6 +306,7 @@ def _build_synoptic_div(data: dict, static_ids: bool, show_table: bool = True, i
         tag_php  = _tag(80,  251, "Pression",    f"{p_hp:.1f}",  "bar", alm_php)
         tag_thp  = _tag(80,  289, "Température", f"{t_hp:.0f}",  "°C",  alm_thp)
         tag_qhp  = _tag(185, 193, "Débit HP",    f"{q_hp:.0f}",  "T/h", alm_qhp, w=55)
+        tag_qbp  = _tag(180, 450, "Débit src BP", f"{q_bp_src:.0f}", "T/h", False, w=70)
         tag_spd  = _tag(755, 265, "Vit. arbre",  f"{speed:.0f}", "RPM", alarm=alm_spd, w=55)
       #   tag_v1   = _tag(330, 273, "Adm. HP",     f"{v1:.0f}",    "%", w=60)
         tag_vit2 = _tag(915, 264, "Vit.",         "1500",          "RPM", w=55)
@@ -459,6 +465,11 @@ def _build_synoptic_div(data: dict, static_ids: bool, show_table: bool = True, i
   <text{sid("tbl3-smva")} x="1337" y="438" fill="#fbbf24" font-size="19"
        font-weight="700" text-anchor="middle">{s_mva:.1f}</text>
   <text x="1337" y="452" fill="#475569" font-size="8.5" text-anchor="middle">MVA</text>
+  <!-- Row 2 : Q BP source (débit vapeur barrage) -->
+  <text x="991"  y="492" fill="#64748b" font-size="9" text-anchor="middle">Q BP src</text>
+  <text{sid("tbl3-qbpin")} x="991" y="524" fill="{c_tbl3_qbpin}" font-size="19"
+       font-weight="700" text-anchor="middle">{q_bp_src:.0f}</text>
+  <text x="991"  y="540" fill="#475569" font-size="8.5" text-anchor="middle">T/h</text>
   </g>""" if show_table else ""
 
     svg = f"""
@@ -872,11 +883,11 @@ def _build_synoptic_div(data: dict, static_ids: bool, show_table: bool = True, i
         text-anchor="middle">226 <tspan fill="#64748b" font-size="8" font-weight="400">°C</tspan></text>
   <line x1="143" y1="472" x2="229" y2="431"
         stroke="#38bdf8" stroke-width="2" stroke-dasharray="4,4" opacity="0.4"/>
+<!-- ════ ARRIVÉE BP BARRAGE ════ -->
   {vsym_bp_admit}
+  {tag_qbp}
   <line x1="251" y1="421" x2="385" y2="358"
         stroke="#38bdf8" stroke-width="2" stroke-dasharray="4,4" opacity="0.4"/>
-  <text id="syn-bp-flow-in" x="175" y="418" fill="#38bdf8" font-size="9"
-        font-weight="700" text-anchor="middle">0 T/h</text>
 
   <!-- ════ CENTRALE HUILE LUBRIFICATION ════ -->
   <style>.flow-oil{{stroke-dasharray:8,4;animation:flow 2s linear infinite;}}</style>
