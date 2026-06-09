@@ -1502,4 +1502,3 @@ def register(app):
         return rows or html.Div("Aucune commande.",
                                 style={"fontSize": "11px", "color": "#64748b",
                                        "fontFamily": "Share Tech Mono"})
-
