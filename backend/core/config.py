@@ -226,7 +226,7 @@ PRESSURE_BP_BARRAGE_BAR    = 4.5    # pression alimentation BP barrage (auxiliai
 AUTO_STEP_DELAY_V1_S       = float(os.getenv("AUTO_STEP_DELAY_V1_S",        3.0))  # ESV_OPENED → ouvrir V1
 AUTO_STEP_DELAY_EXCITE_S   = float(os.getenv("AUTO_STEP_DELAY_EXCITE_S",    3.0))  # READY_TO_EXCITE → activer AVR
 AUTO_STEP_DELAY_SYNC_ARM_S = float(os.getenv("AUTO_STEP_DELAY_SYNC_ARM_S",  5.0))  # EXCITED → armer sync
-EXCITED_ARM_TIMEOUT_S      = float(os.getenv("EXCITED_ARM_TIMEOUT_S",      30.0))  # watchdog : armement forcé si gouverneur non convergé dans la fenêtre stricte
+EXCITED_ARM_TIMEOUT_S      = float(os.getenv("EXCITED_ARM_TIMEOUT_S",      12.0))  # watchdog : armement forcé si gouverneur non convergé dans la fenêtre stricte
 
 # ─────────────────────────────────────────────
 # DYNAMIQUE ROTOR — Swing equation (premier ordre)

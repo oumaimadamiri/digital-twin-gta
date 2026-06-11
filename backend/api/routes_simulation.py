@@ -7,6 +7,7 @@ from fastapi import APIRouter, HTTPException
 from models.scenario import ScenarioTrigger, ResetCommand
 from models.gta_parameters import ValveCommand
 from simulation.fake_api import fake_api
+from simulation.controller import controller
 from simulation.scenarios import get_all_scenarios, get_scenario
 from services.data_manager import data_manager
 
@@ -30,6 +31,12 @@ def trigger_scenario(body: ScenarioTrigger, operator: str = "Opérateur"):
     if scenario is None:
         logger.error(f"Tentative de déclenchement d'un scénario invalide : {body.scenario_id}")
         raise HTTPException(status_code=404, detail=f"Scénario {body.scenario_id} introuvable")
+
+    if controller.tripped or controller.machine_state == "STOPPED":
+        raise HTTPException(
+            status_code=400,
+            detail="Scénario indisponible — la machine doit être en marche (hors STOPPED) et hors AU pour déclencher un scénario.",
+        )
 
     fake_api.trigger_scenario(body.scenario_id)
     data_manager.log_operator_action(

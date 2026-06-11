@@ -272,12 +272,17 @@ def register(app):
         tripped = bool(d.get("tripped")) \
                   or (d.get("status") or "").upper() == "TRIPPED" \
                   or (d.get("machine_state") or "").upper() == "TRIPPED"
+        is_stopped = (d.get("machine_state") or "").upper() == "STOPPED"
         active_name = d.get("scenario")
 
         children, classes, disabled_list = [], [], []
         for name in btn_names:
             if tripped:
                 children.append("⛔ AU ACTIF")
+                classes.append("btn btn-scenario disabled-scenario-btn")
+                disabled_list.append(True)
+            elif not active_name and is_stopped:
+                children.append("⛔ MACHINE À L'ARRÊT")
                 classes.append("btn btn-scenario disabled-scenario-btn")
                 disabled_list.append(True)
             elif not active_name:

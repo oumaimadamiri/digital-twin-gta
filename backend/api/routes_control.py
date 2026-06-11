@@ -277,27 +277,6 @@ def startup_couple_grid(body: OperatorAction = OperatorAction()):
     return result
 
 
-# ── Arrêt programmé (atomique pas-à-pas) ─────────────────────────────────────
-
-@router.post("/shutdown/close-esv")
-def shutdown_close_esv(body: OperatorAction = OperatorAction()):
-    """Étape arrêt 4 : ferme l'ESV après V1=0 et découplage.
-    Interlock : machine_state != GRID_CONNECTED et V1 ≤ 5 %."""
-    result = controller.cmd_close_esv(operator=body.operator)
-    if not result.get("accepted"):
-        raise HTTPException(status_code=400, detail=result["message"])
-    return result
-
-
-@router.post("/shutdown/close-barrage")
-def shutdown_close_barrage(body: OperatorAction = OperatorAction()):
-    """Étape arrêt 5 : ferme la vapeur de barrage. Interlock : vitesse < 500 RPM."""
-    result = controller.cmd_close_barrage(operator=body.operator)
-    if not result.get("accepted"):
-        raise HTTPException(status_code=400, detail=result["message"])
-    return result
-
-
 # ── Couplage / Découplage réseau ──────────────────────────────────────────────
 
 @router.post("/grid/synchronize")
@@ -407,6 +386,7 @@ def _build_pre_check_payload() -> dict:
     lube_press   = getattr(snap, "lube_oil_press",  0.0) if snap else 0.0
     lube_temp    = getattr(snap, "lube_oil_temp",   0.0) if snap else 0.0
     v1_pos       = valve_controller.v1_target
+    turbine_speed = getattr(snap, "turbine_speed", 0.0) if snap else 0.0
     bp_admit_pos = valve_controller._valves["bp_admit"].current
     tripped      = controller.tripped
     machine_stopped = controller.machine_state in ("STOPPED", "TRIPPED")
@@ -491,6 +471,13 @@ def _build_pre_check_payload() -> dict:
             "unit":  "",
             "crit":  "Pas de trip",
             "ok":    not tripped,
+        },
+        {
+            "name":  "Vitesse rotor (arrêt complet)",
+            "value": round(turbine_speed, 0),
+            "unit":  "RPM",
+            "crit":  "< 50 RPM",
+            "ok":    turbine_speed < 50.0,
         },
     ]
 

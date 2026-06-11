@@ -164,7 +164,7 @@ window.patchGtaSynoptic = function(data) {
     }
 
     /* ── Couleurs statut ── */
-    const STATUS_COL = { NORMAL: "#10b981", DEGRADED: "#f59e0b", CRITICAL: "#ef4444" };
+    const STATUS_COL = { NORMAL: "#10b981", DEGRADED: "#f59e0b", CRITICAL: "#ef4444", "TRIPPED": "#ef4444" };
     const sc = STATUS_COL[status] || "#10b981";
 
     /* ── Alarmes ── */

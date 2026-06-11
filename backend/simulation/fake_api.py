@@ -203,7 +203,7 @@ class FakeAPI:
             state_nom = {
                 "pressure_hp":    NOMINAL["pressure_hp"],    # chaudière maintient la pression
                 "temperature_hp": NOMINAL["temperature_hp"],
-                "steam_flow_hp":  0.0,
+                "steam_flow_hp":  NOMINAL["steam_flow_hp"] if self._vc.esv_open else 0.0,
                 "valve_v1":       actual_nom.get("v1", 0.0),
                 "valve_v2":       actual_nom.get("v2", 0.0),
                 "valve_v3":       actual_nom.get("v3", 0.0),

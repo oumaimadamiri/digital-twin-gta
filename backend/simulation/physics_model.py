@@ -729,7 +729,7 @@ class PhysicsModel:
             # Entrées primaires (arrondies)
             "pressure_hp":          round(pressure_hp, 2),
             "temperature_hp":       round(temperature_hp, 1),
-            "steam_flow_hp":        round(steam_flow_hp if is_running else 0.0, 1),
+            "steam_flow_hp":        round(steam_flow_hp if esv_open else 0.0, 1),
             # BP
             "pressure_bp_in":       round(pressure_bp, 3),
             "temperature_bp":       temperature_bp,

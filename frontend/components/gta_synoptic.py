@@ -246,7 +246,7 @@ def _build_synoptic_div(data: dict, static_ids: bool, show_table: bool = True, i
     c_tbl_pbar = "#ef4444" if p_bar_bp > 5.0 else "#a78bfa"
     c_tbl_vib  = "#ef4444" if vib_fwd > 4.5 else "#fbbf24"
     c_tbl_oilt = "#ef4444" if oil_t > 60 else "#60a5fa"
-    c_tbl_dot  = {"NORMAL": "#10b981", "DEGRADED": "#f59e0b", "CRITICAL": "#ef4444"}.get(status, "#10b981")
+    c_tbl_dot  = {"NORMAL": "#10b981", "DEGRADED": "#f59e0b", "CRITICAL": "#ef4444", "TRIPPED": "#ef4444"}.get(status, "#10b981")
     tbl_pulse  = "pulse" if status != "NORMAL" else ""
     # Page 2 — couleurs initiales
     c_tbl3_qbpin  = "#38bdf8" if q_bp_src > 0.5 else "#475569"

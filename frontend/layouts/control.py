@@ -170,10 +170,6 @@ def _sticky_banner():
                         "boxShadow": "0 0 16px rgba(239,68,68,0.4)",
                     },
                 ),
-                dcc.ConfirmDialog(
-                    id="ctrl-confirm-au",
-                    message="⚠ CONFIRMER L'ARRÊT D'URGENCE ?\n\nCette action ferme instantanément la vanne V1 et bascule en mode MANUEL.\n\nContinuer ?",
-                ),
                 html.Div(id="ctrl-au-status", style={
                     "fontSize": "10px", "marginLeft": "8px",
                     "fontFamily": "Share Tech Mono",
@@ -217,51 +213,6 @@ def _mode_card():
         html.Div(id="ctrl-mode-apply-status", style={
             "fontSize": "11px", "color": "#60a5fa",
             "fontFamily": "Share Tech Mono", "marginTop": "6px",
-        }),
-    )
-
-
-def _shutdown_card():
-    btn_style = {
-        "fontSize": "10px", "padding": "6px 10px",
-        "display": "block", "width": "100%",
-        "fontFamily": "Share Tech Mono",
-        "borderColor": "#f59e0b", "color": "#f59e0b",
-    }
-    hint_style = {
-        "fontSize": "9px", "color": "#64748b",
-        "fontFamily": "Share Tech Mono", "margin": "2px 0 8px 0",
-        "lineHeight": "1.4",
-    }
-
-    def _step(num: int, label: str, btn_id: str, hint: str):
-        return html.Div([
-            html.Div([
-                html.Span(f"{num}. ", style={"color": "#f59e0b", "fontWeight": "700"}),
-                html.Span(label, style={"color": "#cbd5e1"}),
-            ], style={"fontSize": "11px", "fontFamily": "Share Tech Mono",
-                      "marginBottom": "4px"}),
-            html.Button(label, id=btn_id, className="btn btn-outline", style=btn_style),
-            html.Div(hint, style=hint_style),
-        ])
-
-    return _card(
-        _section_header("ARRÊT PROGRAMMÉ", "#f59e0b"),
-        html.Div("Procédure SCADA — exécutez dans l'ordre :",
-                 style={"fontSize": "10px", "color": "#cbd5e1",
-                        "fontFamily": "Share Tech Mono", "marginBottom": "8px"}),
-        _step(1, "↘ Réduire P → 0 MW",        "ctrl-btn-shutdown-set-p0",
-              "Rampe interne 2 MW/min — descente progressive de P."),
-        _step(2, "⏏ Découpler du réseau",     "ctrl-btn-shutdown-disconnect",
-              "Cliquer quand P ≈ 2 MW (avant motorisation 32R). "
-              "Ferme automatiquement ESV + V1/V2/V3 (interlock 52G)."),
-        _step(3, "🛑 AVR → OFF",              "ctrl-btn-shutdown-avr-off",
-              "Coupe l'excitation alternateur."),
-        _step(4, "↘ Fermer barrage",          "ctrl-btn-close-barrage",
-              "Disponible quand machine_state == STOPPED (rotor immobile)."),
-        html.Div(id="ctrl-shutdown-status", style={
-            "fontSize": "10px", "color": "#f59e0b",
-            "fontFamily": "Share Tech Mono", "marginTop": "6px", "minHeight": "14px",
         }),
     )
 
@@ -392,21 +343,34 @@ def _startup_phase_card():
     # ── Étape 8 : Couplage réseau ────────────────────────────────────
     step8 = _step(8, "Couplage réseau", connector=False,
                   action=html.Div([
-                      html.Button("⚡ Coupler au réseau", id="ctrl-btn-grid-couple",
-                                  className="btn",
-                                  style={**_btn_style_base,
-                                         "background": "#a855f7",
-                                         "border": "1px solid #a855f7",
-                                         "color": "#fff",
-                                         "marginRight": "6px"},
-                                  disabled=True),
-                      html.Button("⏏ Découpler", id="ctrl-btn-grid-disconnect",
-                                  className="btn btn-outline",
-                                  style={**_btn_style_base,
-                                         "borderColor": "#f97316", "color": "#f97316"},
-                                  disabled=True),
+                      html.Div([
+                          html.Button("⚡ Coupler au réseau", id="ctrl-btn-grid-couple",
+                                      className="btn",
+                                      style={**_btn_style_base,
+                                             "background": "#a855f7",
+                                             "border": "1px solid #a855f7",
+                                             "color": "#fff",
+                                             "marginRight": "6px"},
+                                      disabled=True),
+                          html.Button("⏏ Découpler", id="ctrl-btn-grid-disconnect",
+                                      className="btn btn-outline",
+                                      style={**_btn_style_base,
+                                             "borderColor": "#f97316", "color": "#f97316"},
+                                      disabled=True),
+                      ]),
+                      html.Div([
+                          html.Button("✖ Annuler démarrage", id="ctrl-btn-cancel-sequence",
+                                      className="btn btn-outline",
+                                      style={**_btn_style_base,
+                                             "borderColor": "#ef4444", "color": "#ef4444"},
+                                      disabled=True),
+                      ], style={"textAlign": "center", "width": "100%", "marginTop": "6px"}),
                       html.Div(id="ctrl-grid-status", style={
                           "fontSize": "10px", "color": "#a855f7",
+                          "fontFamily": "Share Tech Mono", "marginTop": "3px",
+                      }),
+                      html.Div(id="ctrl-cancel-seq-status", style={
+                          "fontSize": "10px", "color": "#94a3b8",
                           "fontFamily": "Share Tech Mono", "marginTop": "3px",
                       }),
                   ]))
@@ -419,14 +383,7 @@ def _startup_phase_card():
         ]),
         html.Div([step1, step2, step3, step4, step5, step6, step7, step8],
                  className="startup-timeline"),
-        html.Hr(style={"borderColor": "#0f2744", "margin": "10px 0 6px"}),
-        html.Div([
-            html.Div(id="ctrl-startup-bar", className="startup-bar-fill"),
-        ], className="startup-bar-track"),
-        html.Div(id="ctrl-startup-elapsed", className="startup-elapsed", children="—"),
     )
-
-
 
 def _valves_card():
     return _card(
@@ -931,7 +888,51 @@ def _alarms_card():
         html.Div(id="ctrl-alarms-list"),
     )
 
-
+def _au_confirm_modal():
+    _overlay = {
+        "display": "none", "position": "fixed", "top": 0, "left": 0,
+        "width": "100%", "height": "100%", "zIndex": "9999",
+        "background": "rgba(0,0,0,0.65)", "alignItems": "center",
+        "justifyContent": "center",
+    }
+    _card = {
+        "background": "#0f1f3d", "border": "1px solid #1e3a5f",
+        "borderRadius": "12px", "padding": "28px 32px",
+        "maxWidth": "440px", "width": "90%",
+        "boxShadow": "0 8px 32px rgba(0,0,0,0.7)",
+        "textAlign": "center",
+    }
+    return html.Div(id="ctrl-au-confirm-modal", style=_overlay, children=[
+        html.Div([
+            html.Div("⚠", style={"fontSize": "36px", "marginBottom": "10px", "color": "#ef4444"}),
+            html.Div("CONFIRMER L'ARRÊT D'URGENCE", style={
+                "fontFamily": "Share Tech Mono", "fontSize": "13px",
+                "fontWeight": "700", "color": "#ef4444",
+                "marginBottom": "12px", "letterSpacing": "1px",
+            }),
+            html.Div(
+                "Cette action ferme instantanément la vanne V1 et bascule en mode MANUEL.\n\nContinuer ?",
+                style={"fontFamily": "Share Tech Mono", "fontSize": "12px",
+                       "color": "#cbd5e1", "marginBottom": "22px",
+                       "lineHeight": "1.7", "whiteSpace": "pre-wrap"},
+            ),
+            html.Div([
+                html.Button("Annuler", id="ctrl-au-confirm-no",
+                            style={"background": "#1e293b", "color": "#cbd5e1",
+                                   "border": "1px solid #334155", "borderRadius": "6px",
+                                   "padding": "8px 28px", "fontSize": "12px",
+                                   "fontFamily": "Share Tech Mono", "cursor": "pointer",
+                                   "letterSpacing": "1px", "marginRight": "12px"}),
+                html.Button("Confirmer", id="ctrl-au-confirm-yes",
+                            style={"background": "#b91c1c", "color": "white",
+                                   "border": "1px solid #ef4444", "borderRadius": "6px",
+                                   "padding": "8px 28px", "fontSize": "12px",
+                                   "fontFamily": "Share Tech Mono", "cursor": "pointer",
+                                   "letterSpacing": "1px"}),
+            ]),
+            html.Span(id="ctrl-au-confirm-dummy", style={"display": "none"}),
+        ], style=_card),
+    ])
 # ── Pop-up notification opérateur ─────────────────────────────────────
 
 def _notif_modal():
@@ -978,7 +979,9 @@ def layout():
         create_sidebar(active_path="/control"),
         html.Div([
             dcc.Store(id="ctrl-notif-store"),
+            dcc.Store(id="ctrl-prev-machine-state"),
             _notif_modal(),
+            _au_confirm_modal(),
 
             # Bandeau sticky full-width
             _sticky_banner(),
@@ -989,7 +992,6 @@ def layout():
                 # ── ZONE A — Supervision & Commande (~28%) ───────────
                 html.Div([
                     _mode_card(),
-                    _shutdown_card(),
                     _startup_phase_card(),
                     _valves_card(),
                 ], style={"flex": "7 1 0", "minWidth": "0"}),

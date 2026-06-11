@@ -167,7 +167,7 @@ class Controller:
                 self._pid_pressure.seed(seed_pressure)
             elif self.machine_state == "ROLLING":
                 # Seed PID vitesse
-                sp_rpm = self._setpoint_speed_rpm or NOMINAL["turbine_speed"]
+                sp_rpm = self._setpoint_speed_rpm if self._setpoint_speed_rpm is not None else NOMINAL["turbine_speed"]
                 error_0 = sp_rpm - self._last_speed_rpm_cache
                 seed = (current_v1 - self._pid_speed.kp * error_0) / self._pid_speed.ki if self._pid_speed.ki > 0 else current_v1
                 self._pid_speed.seed(seed)
@@ -486,32 +486,55 @@ class Controller:
         return {"accepted": True, "sequence": name, "duration_s": self._sequence_duration}
 
     def cancel_sequence(self, operator: str = "Opérateur") -> dict:
-        if self._sequence_state not in ("STARTING", "STOPPING"):
+        # Démarrage manuel en cours (hors orchestrateur AUTO) : startup_phase avancée
+        # mais _sequence_state reste IDLE car aucune séquence n'a été lancée.
+        manual_startup_in_progress = (
+            self._sequence_state == "IDLE"
+            and self.startup_phase != "PRE_CHECKS"
+            and self.machine_state != "GRID_CONNECTED"
+        )
+        if self._sequence_state not in ("STARTING", "STOPPING") and not manual_startup_in_progress:
             return {"accepted": False, "message": "Aucune séquence en cours."}
-        name     = self._sequence_name
-        progress = self.get_sequence_progress() or 0.0
-        was_starting = (self._sequence_state == "STARTING")
+
+        name         = self._sequence_name or "manual_startup"
+        progress     = self.get_sequence_progress() or 0.0
+        was_starting = (self._sequence_state == "STARTING") or manual_startup_in_progress
         was_stopping = (self._sequence_state == "STOPPING")
+        before_mode  = self.mode
+
         self._sequence_state = "IDLE"
         self._sequence_t0    = None
         self._sequence_name  = None
         if was_stopping:
             self._last_stop_request_at = None  # annulation stop → intention d'arrêt caduque
-        # Si annulation d'un démarrage avant couplage réseau → retour STOPPED
+
+        # Si annulation d'un démarrage (AUTO ou MANUEL) avant couplage réseau → retour STOPPED
+        switched_to_manual = False
         if was_starting and self.machine_state not in ("GRID_CONNECTED",):
             self.machine_state = "STOPPED"
             self._pid.reset()
             self._pid_speed.reset()
             self._pid_pressure.reset()
+            self._advance_phase("PRE_CHECKS")
             try:
                 valve_controller.emergency_close()
             except Exception:
                 pass
+            # Annulation d'un démarrage AUTO → repasser en MANUEL pour laisser
+            # l'opérateur reprendre la main avant un nouveau lancement.
+            if before_mode == "AUTO":
+                self.mode = "MANUAL"
+                switched_to_manual = True
+
         data_manager.log_operator_action(
             user=operator, action_type="SEQUENCE_CANCEL", target=name,
-            value_before=f"progress={round(progress, 3)}", value_after="CANCELLED",
+            value_before=f"mode={before_mode}, progress={round(progress, 3)}",
+            value_after="CANCELLED → MANUAL" if switched_to_manual else "CANCELLED",
         )
-        return {"accepted": True, "message": f"Séquence '{name}' annulée."}
+        msg = "Démarrage annulé — machine arrêtée."
+        if switched_to_manual:
+            msg += " Mode basculé en MANUEL."
+        return {"accepted": True, "message": msg}
 
     # ──────────────────────────────────────────────────────
     # BOUCLE PRINCIPALE — appelée depuis fake_api._generate_dual()
@@ -544,6 +567,16 @@ class Controller:
         # Transitions passives de phase (MANUAL et AUTO) — V1_OPENING/ACCELERATING/READY_TO_EXCITE
         self._tick_manual_phase(dt, current_speed_rpm)
 
+        # Coast-down → STOPPED : doit s'appliquer en MANUEL aussi (ex. après découplage
+        # réseau manuel, ESV fermée, le rotor décélère librement vers l'arrêt
+        # indépendamment du mode de pilotage).
+        if self.machine_state == "ROLLING":
+            v1_pos   = valve_controller._valves["v1"].current
+            esv_open = valve_controller.esv_open
+            if (not esv_open or v1_pos < 1.0) and current_speed_rpm < ROLLING_TO_STOPPED_RPM:
+                self._enter_stopped()
+                return
+            
         if self.mode != "AUTO":
             return
 
@@ -576,7 +609,7 @@ class Controller:
 
     def _update_speed_pid(self, dt: float, current_speed_rpm: float):
         """PID vitesse (governor) actif pendant la phase ROLLING."""
-        sp_rpm   = self._setpoint_speed_rpm or NOMINAL["turbine_speed"]
+        sp_rpm   = self._setpoint_speed_rpm if self._setpoint_speed_rpm is not None else NOMINAL["turbine_speed"]
         v1_target = self._pid_speed.compute(sp_rpm, current_speed_rpm, dt)
         self._last_pid_output = round(v1_target, 2)
         self._last_pid_error  = round(self._pid_speed.error, 3)
@@ -664,7 +697,7 @@ class Controller:
                 # Même fenêtre que cmd_couple_grid (GRID_COUPLE_FREQ_TOL_HZ) : on n'arme que
                 # si la fréquence est effectivement dans la fenêtre du couplage réseau.
                 _sync_arm_rpm = GRID_COUPLE_FREQ_TOL_HZ / 50.0 * nominal_rpm
-                speed_ok = abs(self._last_speed_rpm_cache - nominal_rpm) <= _sync_arm_rpm
+                speed_ok = abs(self._last_speed_rpm_cache - nominal_rpm) <= SPEED_SYNC_THRESHOLD_RPM
                 v1_pos   = valve_controller._valves["v1"].current
                 v1_stable = v1_pos < 80.0  # V1 a baissé sous 80 % → équilibre atteint
                 if t_in_phase >= AUTO_STEP_DELAY_SYNC_ARM_S and speed_ok and v1_stable:
@@ -716,6 +749,7 @@ class Controller:
                     self._sequence_name  = None
                     self._sequence_t0    = None
                     self._enter_grid_connected()
+                    self._advance_phase("GRID_CONNECTED")
                     data_manager.log_operator_action(
                         user="AUTO", action_type="SEQUENCE_END",
                         target=name, value_before="STARTING",
@@ -738,7 +772,7 @@ class Controller:
                 self._enter_stopped()
                 return
             # Vitesse proche du nominal → passer en SYNCHRONIZING (démarrage normal)
-            if abs(current_speed_rpm - nominal_rpm) < SPEED_SYNC_THRESHOLD_RPM:
+            if esv_open and abs(current_speed_rpm - nominal_rpm) < SPEED_SYNC_THRESHOLD_RPM:
                 self._enter_synchronizing()
 
         elif self.machine_state == "SYNCHRONIZING":
@@ -836,6 +870,9 @@ class Controller:
         self.machine_state = "STOPPED"
         self._grid_connected_at = None
         self._last_stop_request_at = None
+        # Tout retour à STOPPED non planifié repasse en MANUEL — évite un
+        if self.mode == "AUTO":
+            self.mode = "MANUAL"
         self._pid.reset()
         self._pid_speed.reset()
         self._pid_pressure.reset()
@@ -929,48 +966,6 @@ class Controller:
             target="esv", value_before="BARRAGE_OPENED", value_after="ESV_OPENED",
         )
         return {"accepted": True, "message": "ESV ouverte — admission HP disponible. Ouvrez V1."}
-
-    # ── ARRÊT PROGRAMMÉ (procédure SCADA pas-à-pas) ────────────────────────
-    def cmd_close_esv(self, operator: str = "Opérateur") -> dict:
-        """Fermeture programmée de l'ESV. Interlocks SCADA :
-        - pas en GRID_CONNECTED (découpler d'abord),
-        - V1 ≤ 5 % (sinon coup de bélier sur la conduite HP)."""
-        if self.tripped:
-            return {"accepted": False, "message": "Trip actif — ESV déjà fermée."}
-        if self.machine_state == "GRID_CONNECTED":
-            return {"accepted": False,
-                    "message": "Découplez du réseau avant de fermer l'ESV."}
-        v1_pos = valve_controller._valves["v1"].current
-        if v1_pos > 5.0:
-            return {"accepted": False,
-                    "message": f"V1 ouverte à {v1_pos:.0f} % — fermez V1 (=0) avant l'ESV (risque coup de bélier)."}
-        valve_controller.close_esv()
-        data_manager.log_operator_action(
-            user=operator, action_type="SHUTDOWN_STEP",
-            target="esv", value_before="OPEN", value_after="CLOSED",
-        )
-        logger.info("[Controller] ESV fermée par %s (arrêt programmé).", operator)
-        return {"accepted": True, "message": "ESV fermée — admission HP isolée."}
-
-    def cmd_close_barrage(self, operator: str = "Opérateur") -> dict:
-        """Fermeture programmée de la vapeur de barrage (gland/sealing steam).
-        Interlock : machine_state == STOPPED (rotor immobile / équivalent turning gear).
-        Spec industrielle : couper avant rotor stoppé → air ingress + oxydation interne
-        (IEC 60045-1, GE GEK-72281)."""
-        if self.tripped:
-            return {"accepted": False, "message": "Trip actif — barrage déjà coupée."}
-        if self.machine_state != "STOPPED":
-            speed = self._last_speed_rpm_cache
-            return {"accepted": False,
-                    "message": f"Machine en état {self.machine_state} ({speed:.0f} RPM). "
-                               f"Requis : STOPPED (rotor immobile)."}
-        valve_controller.set_valve("bp_admit", 0.0)
-        data_manager.log_operator_action(
-            user=operator, action_type="SHUTDOWN_STEP",
-            target="bp_admit", value_before="OPEN", value_after="CLOSED",
-        )
-        logger.info("[Controller] Vapeur de barrage coupée par %s (arrêt programmé).", operator)
-        return {"accepted": True, "message": "Vapeur de barrage coupée — étanchéité levée."}
 
     def cmd_open_v1(self, operator: str = "Opérateur") -> dict:
         """Étape 4 : ouvre V1 (admission HP) — interlock ESV ouverte."""
