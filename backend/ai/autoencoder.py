@@ -11,8 +11,8 @@ from core.config import AUTOENCODER_PATH, AUTOENCODER_THRESHOLD
 class Autoencoder:
     """
     Autoencodeur pour la détection d'anomalies non supervisée.
-    En l'absence de TensorFlow, fonctionne avec un modèle statistique simplifié
-    (distance de Mahalanobis) qui peut être remplacé par un vrai réseau de neurones.
+    Réseau Keras dense (7→4→2→4→7) entraîné sur données nominales normalisées.
+    Fallback : distance de Mahalanobis simplifiée si TensorFlow/modèle indisponible.
     """
 
     FEATURES = [
@@ -23,45 +23,97 @@ class Autoencoder:
     def __init__(self):
         self.threshold      = AUTOENCODER_THRESHOLD
         self._is_trained    = False
+        self._model         = None
         self._mean: np.ndarray  = None
         self._std:  np.ndarray  = None
-        # Chargement si modèle existant
         self._load()
 
+    def _stats_path(self) -> str:
+        return AUTOENCODER_PATH.replace(".h5", "_stats.npz")
+
     def _load(self):
-        """Charge les paramètres du modèle depuis le disque."""
-        stats_path = AUTOENCODER_PATH.replace(".h5", "_stats.npz")
+        """Charge les paramètres de normalisation/seuil et, si possible, le modèle Keras."""
+        stats_path = self._stats_path()
         if os.path.exists(stats_path):
             data = np.load(stats_path)
             self._mean       = data["mean"]
             self._std        = data["std"]
+            if "threshold" in data:
+                self.threshold = float(data["threshold"])
             self._is_trained = True
+
+        if os.path.exists(AUTOENCODER_PATH):
+            try:
+                from tensorflow.keras.models import load_model
+                self._model = load_model(AUTOENCODER_PATH)
+            except Exception:
+                self._model = None
 
     def train(self, data: list[dict]):
         """Entraîne le modèle sur des données nominales (liste de dicts)."""
         X = self._to_matrix(data)
+
+        # Normalisation (utilisée par le réseau ET par le fallback Mahalanobis)
         self._mean       = X.mean(axis=0)
-        # Évite des écarts-types quasi nuls qui exploseraient la distance
         raw_std          = X.std(axis=0)
         min_std          = np.abs(self._mean) * 0.01  # au moins 1% de la valeur nominale
         self._std        = np.maximum(raw_std, min_std) + 1e-8
         self._is_trained = True
-        # Sauvegarde
+
         os.makedirs(os.path.dirname(AUTOENCODER_PATH), exist_ok=True)
-        stats_path = AUTOENCODER_PATH.replace(".h5", "_stats.npz")
-        np.savez(stats_path, mean=self._mean, std=self._std)
+        np.savez(self._stats_path(), mean=self._mean, std=self._std, threshold=self.threshold)
+
+        X_norm = (X - self._mean) / self._std
+
+        try:
+            from tensorflow.keras.models import Sequential
+            from tensorflow.keras.layers import Dense
+            from tensorflow.keras.callbacks import EarlyStopping
+
+            n_features = X_norm.shape[1]
+            model = Sequential([
+                Dense(4, activation="relu", input_shape=(n_features,)),
+                Dense(2, activation="relu"),
+                Dense(4, activation="relu"),
+                Dense(n_features, activation="linear"),
+            ])
+            model.compile(optimizer="adam", loss="mse")
+            model.fit(
+                X_norm, X_norm,
+                epochs=50, batch_size=32,
+                validation_split=0.15,
+                callbacks=[EarlyStopping(patience=5, restore_best_weights=True)],
+                verbose=0,
+            )
+            model.save(AUTOENCODER_PATH)
+            self._model = model
+        except ImportError:
+            self._model = None  # TensorFlow absent → fallback Mahalanobis actif
+
+    def set_threshold(self, threshold: float):
+        """Met à jour le seuil de détection et le persiste avec les stats de normalisation."""
+        self.threshold = threshold
+        np.savez(self._stats_path(), mean=self._mean, std=self._std, threshold=threshold)
 
     def reconstruction_error(self, params: dict) -> float:
         """
-        Calcule l'erreur de reconstruction (distance normalisée au nominal).
-        En production, remplacer par la vraie erreur de reconstruction du réseau.
+        Calcule l'erreur de reconstruction.
+        - Si modèle Keras chargé : MSE entre l'entrée normalisée et sa reconstruction.
+        - Sinon : distance de Mahalanobis simplifiée (fallback).
         """
         if not self._is_trained:
             return 0.0
-        x      = self._extract_features(params)
-        z      = (x - self._mean) / self._std
-        error  = float(np.sqrt(np.mean(z ** 2)))
-        return round(error, 4)
+
+        x = self._extract_features(params)
+        z = (x - self._mean) / self._std
+
+        if self._model is not None:
+            recon = self._model.predict(z[np.newaxis, :], verbose=0)[0]
+            error = float(np.mean((z - recon) ** 2))
+        else:
+            error = float(np.sqrt(np.mean(z ** 2)))
+
+        return round(error, 6)
 
     def predict(self, params: dict) -> dict:
         """Retourne le résultat de détection pour un snapshot."""

@@ -111,7 +111,15 @@ def train_autoencoder():
     logger.info(f"  Données nominales générées : {len(nominal_data)} points")
 
     autoencoder.train(nominal_data)
-    logger.info(f"  Modèle entraîné — seuil : {autoencoder.threshold}")
+    backend = "Keras (réseau dense 7-4-2-4-7)" if autoencoder._model is not None else "fallback Mahalanobis (TensorFlow absent)"
+    logger.info(f"  Modèle entraîné — backend : {backend}")
+
+    # ── Calibration du seuil sur un jeu de validation nominal (μ + 3σ) ──
+    val_nominal    = generate_nominal_data(n=500)
+    nominal_errors = np.array([autoencoder.reconstruction_error(d) for d in val_nominal])
+    threshold      = float(nominal_errors.mean() + 3 * nominal_errors.std())
+    autoencoder.set_threshold(threshold)
+    logger.info(f"  Seuil calibré (μ+3σ sur nominal) : {threshold:.6f}")
 
     # Validation sur données anomales
     anomaly_data    = generate_anomaly_data(n=200)
