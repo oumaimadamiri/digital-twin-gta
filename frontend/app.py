@@ -23,9 +23,10 @@ from layouts.ai_module  import layout as ai_layout
 from layouts.settings   import layout as settings_layout
 from layouts.audit      import layout as audit_layout
 from layouts.control    import layout as control_layout
+from layouts.control import _notif_modal
 
 # ── Import des callbacks ────────────────────────────────────────────
-from callbacks import cb_dashboard, cb_simulation, cb_analysis, cb_ai, cb_settings, cb_data, cb_audit, cb_control
+from callbacks import cb_dashboard, cb_simulation, cb_analysis, cb_ai, cb_settings, cb_data, cb_audit, cb_control, cb_notifications
 
 # ── Mode debug (désactivé en production) ────────────────────────────
 DEBUG = os.getenv("DASH_DEBUG", "false").lower() == "true"
@@ -77,6 +78,17 @@ app.layout = html.Div([
     # Bootstrap page Contrôle — peuplé une fois au load, relit /control/bootstrap
     dcc.Store(id="store-control-bootstrap", data={}),
 
+    # Notifications globales (toasts) — alarmes CRITICAL
+    dcc.Store(id="global-toast-store"),
+    html.Span(id="global-toast-dummy", style={"display": "none"}),
+    html.Div(id="global-toast-container", className="toast-container"),
+
+    # Pop-up/notifications opérateur — globales (toutes pages)
+    dcc.Store(id="ctrl-notif-store"),
+    dcc.Store(id="ctrl-prev-machine-state"),
+    dcc.Store(id="ctrl-prev-startup-phase"),
+    _notif_modal(),
+    
     # Intervalles (uniquement pour horloge et alertes, données viennent du WS)
     dcc.Interval(id="interval-fast", interval=1000, n_intervals=0, disabled=True),   # 1s  — horloge
     dcc.Interval(id="interval-slow", interval=5000, n_intervals=0),   # 5s  — alertes
@@ -114,7 +126,7 @@ cb_analysis.register(app)
 cb_ai.register(app)
 cb_settings.register(app)
 cb_audit.register(app)
-
+cb_notifications.register(app)
 # ── Lancement ───────────────────────────────────────────────────────
 if __name__ == "__main__":
     print("""

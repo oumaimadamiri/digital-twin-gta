@@ -267,6 +267,10 @@ class DataManager:
         data = self.get_operator_actions(start=start, end=end, user=user, limit=10_000)
         return pd.DataFrame(data).to_csv(index=False).encode("utf-8")
 
+    def export_ai_alerts_csv(self, limit: int = 500) -> bytes:
+        alerts = [a for a in self.get_alerts(limit=limit) if a.get("source") == "IA"]
+        return pd.DataFrame(alerts).to_csv(index=False).encode("utf-8")
+    
     # ──────────────────────────────────────────
     # KV STORE — persistance générique
     # ──────────────────────────────────────────

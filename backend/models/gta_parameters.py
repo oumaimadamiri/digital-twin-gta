@@ -100,6 +100,8 @@ class GTAParameters(BaseModel):
 
     # ── ESV / Soupape d'arrêt HP ──
     esv_open: bool = Field(False, description="Soupape d'arrêt ESV ouverte (admission HP)")
+    # ── Bac à sable simulation ──
+    sandbox_active: bool = Field(False, description="Fork simulé actif (scénario ou bac à sable manuel) — ESV/AVR/lubrification disponibles")
 
     # ── Contrôle Commande (renseigné sur params_sim uniquement) ──
     control_mode:        str            = Field("MANUAL", description="Mode opérateur: MANUAL | AUTO")

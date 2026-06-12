@@ -999,9 +999,6 @@ def layout():
     return html.Div([
         create_sidebar(active_path="/control"),
         html.Div([
-            dcc.Store(id="ctrl-notif-store"),
-            dcc.Store(id="ctrl-prev-machine-state"),
-            _notif_modal(),
             _au_confirm_modal(),
 
             # Bandeau sticky full-width

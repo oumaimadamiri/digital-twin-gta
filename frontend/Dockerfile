@@ -9,7 +9,7 @@ LABEL description="Interface de supervision SCADA — Dash"
 # Variables d'environnement
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    DASH_DEBUG=false \
+    DASH_DEBUG=True \
     BACKEND_URL=http://backend:8000
 
 WORKDIR /app

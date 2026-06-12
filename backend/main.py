@@ -145,18 +145,13 @@ async def lifespan(app: FastAPI):
 
 
 def _train_autoencoder_on_nominal():
-    """Génère 500 points nominaux et entraîne l'autoencodeur."""
+    """Entraîne l'autoencodeur sur des points nominaux couvrant 60-100% de charge."""
     from ai.autoencoder import autoencoder
-    from core.config import NOMINAL
-    import random, math
+    from ai.train_models import generate_nominal_data
 
-    data = []
-    for _ in range(500):
-        point = {k: v * (1 + random.gauss(0, 0.005)) for k, v in NOMINAL.items()
-                 if isinstance(v, (int, float))}
-        data.append(point)
+    data = generate_nominal_data(n=500)
     autoencoder.train(data)
-    logger.info("Autoencodeur entraîné sur 500 points nominaux.")
+    logger.info("Autoencodeur entraîné sur 500 points nominaux (charge 60-100%).")
 
 
 # ─────────────────────────────────────────────

@@ -108,12 +108,28 @@ class Autoencoder:
         z = (x - self._mean) / self._std
 
         if self._model is not None:
-            recon = self._model.predict(z[np.newaxis, :], verbose=0)[0]
+            recon = self._model(z[np.newaxis, :], training=False).numpy()[0]
             error = float(np.mean((z - recon) ** 2))
         else:
             error = float(np.sqrt(np.mean(z ** 2)))
 
         return round(error, 6)
+
+    def reconstruction_errors_batch(self, params_list: list[dict]) -> list[float]:
+        """Calcule l'erreur de reconstruction pour plusieurs snapshots en un seul appel modèle."""
+        if not self._is_trained or not params_list:
+            return [0.0] * len(params_list)
+
+        X = self._to_matrix(params_list)
+        Z = (X - self._mean) / self._std
+
+        if self._model is not None:
+            recon  = self._model(Z, training=False).numpy()
+            errors = np.mean((Z - recon) ** 2, axis=1)
+        else:
+            errors = np.sqrt(np.mean(Z ** 2, axis=1))
+
+        return [round(float(e), 6) for e in errors]
 
     def predict(self, params: dict) -> dict:
         """Retourne le résultat de détection pour un snapshot."""

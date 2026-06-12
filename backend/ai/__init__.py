@@ -69,7 +69,29 @@ class AIModule:
             "lstm_prediction":   prediction,
             "rul_estimation":    rul_result,
         }
+    def run_anomaly_history(self, history: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """
+        Recalcule l'erreur de reconstruction AE sur les derniers snapshots
+        de l'historique réel (ordre chronologique, le plus récent en dernier).
+        """
+        recent = list(reversed(history[:20]))
+        errors = self._autoencoder.reconstruction_errors_batch(recent)
+        return [
+            {"timestamp": h.get("timestamp"), "reconstruction_error": e}
+            for h, e in zip(recent, errors)
+        ]
+    
+    def get_last_training_date(self) -> str:
+        """Date du dernier (ré)entraînement de l'autoencodeur (mtime des stats sauvegardées)."""
+        import os
+        from datetime import datetime
+        from core.config import AUTOENCODER_PATH
 
+        stats_path = AUTOENCODER_PATH.replace(".h5", "_stats.npz")
+        if os.path.exists(stats_path):
+            ts = os.path.getmtime(stats_path)
+            return datetime.fromtimestamp(ts).strftime("%d/%m %H:%M")
+        return "N/A"
 
 # Instance globale utilisée par les routes FastAPI
 ai_module = AIModule()

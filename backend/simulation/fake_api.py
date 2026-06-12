@@ -22,7 +22,7 @@ from simulation.degradation import degradation as _degradation
 from simulation.attemperator import attemperator as _attemp
 from simulation.condenser import condenser as _cond
 from core.config import DEGRADATION_ENABLED, ATTEMPERATOR_ENABLED, CONDENSER_ENABLED
-
+from simulation.sim_machine import SimMachine
 
 logger = logging.getLogger("gta.simulation")
 
@@ -66,10 +66,17 @@ class FakeAPI:
 
         # Dernier snapshot calculé
         self._last_params: GTAParameters | None = None
-        self._last_nominal_power: float = 0.0
+        self._last_nominal_power: float = NOMINAL["active_power"]
         # Puissance, vitesse et pression HP simulées du dernier tick — utilisées par les PIDs
         self._last_simulated_power:       float = NOMINAL["active_power"]
         self._last_simulated_speed:       float = NOMINAL["turbine_speed"]
+        # Mesures NOMINALES du tick précédent — nourrissent le controller/AVR réels
+        self._last_nominal_speed:  float = NOMINAL["turbine_speed"]
+        self._last_nominal_params: GTAParameters | None = None
+        # Machine simulée « fork » — None hors scénario
+        self._sim: SimMachine | None = None
+        # Bac à sable manuel (fork sans scénario prédéfini) — pour ESV/AVR/lubrification
+        self._sandbox_manual: bool = False
 
         # Callback appelé à chaque nouveau snapshot
         self._on_new_data = None
@@ -83,12 +90,53 @@ class FakeAPI:
         self._on_new_data = callback
 
     def set_valves(self, v1=None, v2=None, v3=None, v_bp=None) -> dict:
-        """Délègue la commande vannes au contrôleur d'actionneurs (rampe + sécurité)."""
-        return self._vc.set_all(v1=v1, v2=v2, v3=v3, valve_bp=v_bp)
+        """Délègue la commande vannes au contrôleur actif : le fork simulé si un
+        scénario est en cours, sinon la machine réelle (sim == réelle hors scénario)."""
+        target = self._sim.valves if self._sim is not None else self._vc
+        return target.set_all(v1=v1, v2=v2, v3=v3, valve_bp=v_bp)
 
     def get_valve_positions(self) -> dict:
-        """Retourne l'état complet des vannes (position courante, cible, statut)."""
-        return self._vc.get_state()
+        """Retourne l'état des vannes du contrôleur actif (fork simulé si scénario
+        en cours, sinon machine réelle)."""
+        target = self._sim.valves if self._sim is not None else self._vc
+        return target.get_state()
+
+    def set_esv(self, open_: bool, operator: str = "Opérateur") -> dict:
+        """Ouvre/ferme l'ESV de la machine simulée — sandbox, scénario actif requis
+        (comme AVR/lubrification). N'agit jamais sur la machine réelle."""
+        if self._sim is None:
+            return {"accepted": False, "message": "Aucun scénario actif — lancez un scénario pour piloter l'ESV simulée."}
+        if open_:
+            self._sim.valves.open_esv()
+        else:
+            self._sim.valves.close_esv()
+        return {"accepted": True, "esv_open": self._sim.valves.esv_open}
+    
+    def set_lube_offsets(self, press_offset: float = 0.0, temp_offset: float = 0.0) -> dict:
+        """Applique un offset manuel pression/température huile sur la machine simulée
+        (sandbox, disponible uniquement pendant un scénario forké)."""
+        if self._sim is None:
+            return {"accepted": False, "message": "Aucun scénario actif — lancez un scénario pour utiliser le sandbox lubrification."}
+        self._sim.lube_press_offset = press_offset
+        self._sim.lube_temp_offset  = temp_offset
+        return {"accepted": True, "lube_press_offset": press_offset, "lube_temp_offset": temp_offset}
+    def set_avr_mode(self, mode: str, operator: str = "Opérateur") -> dict:
+        """Mode AVR de la machine simulée (sandbox, disponible uniquement pendant un scénario forké)."""
+        if self._sim is None:
+            return {"accepted": False, "message": "Aucun scénario actif — lancez un scénario pour piloter l'excitation simulée."}
+        return self._sim.avr.set_mode(mode, operator=operator)
+
+    def set_avr_setpoint(self, voltage_kv: float | None = None, cosphi: float | None = None,
+                          operator: str = "Opérateur") -> dict:
+        """Consigne AVR de la machine simulée (sandbox, disponible uniquement pendant un scénario forké)."""
+        if self._sim is None:
+            return {"accepted": False, "message": "Aucun scénario actif — lancez un scénario pour piloter l'excitation simulée."}
+        return self._sim.avr.set_setpoint(voltage_kv=voltage_kv, cosphi=cosphi, operator=operator)
+    def set_avr_efd_manual(self, e_fd_pu: float, operator: str = "Opérateur") -> dict:
+        """E_fd manuel AVR de la machine simulée (sandbox, disponible uniquement pendant un scénario forké)."""
+        if self._sim is None:
+            return {"accepted": False, "message": "Aucun scénario actif — lancez un scénario pour piloter l'excitation simulée."}
+        return self._sim.avr.set_e_fd_manual(e_fd_pu, operator=operator)
 
     def trigger_scenario(self, scenario_id: int):
         """Active un scénario de perturbation."""
@@ -131,7 +179,25 @@ class FakeAPI:
         self._power_factor_offset  = 0.0
         self._oscillation_t        = 0.0
         self._last_simulated_speed = 0.0
+        self._sim = None
+        self._sandbox_manual = False
         _rotor.reset_to_stop()
+
+    def reset_sim_machine(self):
+        """Reset machine simulée : efface un trip simulé, désactive le bac à sable
+        et arrête le scénario → re-sync sur la réelle."""
+        self._sim = None
+        self._sandbox_manual = False
+        self.stop_scenario()
+
+    def toggle_sandbox(self, active: bool, operator: str = "Opérateur") -> dict:
+        """Active/désactive le bac à sable manuel : crée/ferme le fork simulé sans
+        scénario prédéfini, pour piloter ESV/AVR/lubrification/vannes sur une copie
+        isolée de la machine sans perturber le flux nominal (IA/dashboard)."""
+        self._sandbox_manual = active
+        if not active and self._sim is not None and not self._sim.tripped and self._active_scenario is None:
+            self._sim = None
+        return {"accepted": True, "sandbox_active": self._sandbox_manual}
 
     def get_current(self) -> GTAParameters | None:
         return self._last_params
@@ -163,55 +229,49 @@ class FakeAPI:
     # ──────────────────────────────────────────
 
     def _generate_dual(self) -> tuple[GTAParameters, GTAParameters]:
-        """Calcule l'état nominal (stable) et l'état simulé (avec pannes)."""
+        """Calcule l'état nominal (machine réelle) et l'état simulé (fork sous scénario)."""
         dt = FAKE_API_INTERVAL_MS / 1000.0
 
-        # Superviseur Contrôle Commande : calcule la consigne V1 en AUTO avant le ramp
-        # Utilise la puissance et la vitesse SIMULÉES du tick précédent → les PIDs voient les perturbations
+        # Superviseur Contrôle-Commande nourri avec les mesures NOMINALES (machine réelle)
+        # → les scénarios (flux simulé) ne perturbent plus la régulation réelle.
         _controller.update(
             dt,
-            current_power_mw=self._last_simulated_power,
-            current_speed_rpm=self._last_simulated_speed,
+            current_power_mw=self._last_nominal_power,
+            current_speed_rpm=self._last_nominal_speed,
             current_freq_hz=_rotor.frequency_hz,
         )
 
-        # AVR : intègre E_fd depuis les mesures du tick précédent
-        # Au boot (last_params=None), utiliser 0.0 si STOPPED pour éviter biais nominal
+        # AVR : intègre E_fd depuis les mesures NOMINALES du tick précédent
         _avr_v_default = 0.0 if _controller.machine_state in ("STOPPED", "TRIPPED") else NOMINAL.get("voltage", 10.5)
         _avr.update(
             dt,
-            v_term_kv  =getattr(self._last_params, "voltage",         _avr_v_default),
-            cosphi     =getattr(self._last_params, "power_factor",     NOMINAL.get("power_factor",  0.85)),
-            i_stator_a =getattr(self._last_params, "current_a",        0.0),
-            q_mvar     =getattr(self._last_params, "reactive_power",   0.0),
+            v_term_kv  =getattr(self._last_nominal_params, "voltage",        _avr_v_default),
+            cosphi     =getattr(self._last_nominal_params, "power_factor",    NOMINAL.get("power_factor", 0.85)),
+            i_stator_a =getattr(self._last_nominal_params, "current_a",       0.0),
+            q_mvar     =getattr(self._last_nominal_params, "reactive_power",  0.0),
             s_max_mva  =NOMINAL.get("apparent_power_max", 41.0),
         )
 
-        # Avancer le contrôleur d'actionneurs (applique les rampes de positionnement)
+        # Avancer le contrôleur d'actionneurs réel (rampes)
         self._vc.update(dt)
-        actual = self._vc.get_positions()  # positions réelles après rampe {v1,v2,v3,bp}
-        
-        # 1) État NOMINAL — reflète l'état réel de la machine piloté par Contrôle-Commande
-        # Les vannes nominales = positions réelles (pas hard-codé sur NOMINAL)
-        actual_nom   = self._vc.get_positions()
-        machine_st   = _controller.machine_state
+        actual = self._vc.get_positions()
+
+        # ── 1) État NOMINAL (machine réelle) ───────────────────────────
+        actual_nom = self._vc.get_positions()
+        machine_st = _controller.machine_state
 
         if machine_st in ("STOPPED", "TRIPPED"):
-            # Machine à l'arrêt : pas de débit admis, vannes selon leur position réelle
             state_nom = {
-                "pressure_hp":    NOMINAL["pressure_hp"],    # chaudière maintient la pression
+                "pressure_hp":    NOMINAL["pressure_hp"],
                 "temperature_hp": NOMINAL["temperature_hp"],
                 "steam_flow_hp":  NOMINAL["steam_flow_hp"] if self._vc.esv_open else 0.0,
                 "valve_v1":       actual_nom.get("v1", 0.0),
                 "valve_v2":       actual_nom.get("v2", 0.0),
                 "valve_v3":       actual_nom.get("v3", 0.0),
                 "valve_bp":       actual_nom.get("bp",  NOMINAL["valve_bp"]),
-                # Inclus ici pour que compute_all calcule steam_flow_bp_in correctement
-                # (la vanne bp_admit est active pendant le barrage même machine STOPPED)
                 "valve_bp_admit": actual_nom.get("bp_admit", 0.0),
             }
         else:
-            # Machine en marche : vannes réelles, paramètres vapeur nominaux
             state_nom = {
                 "pressure_hp":    NOMINAL["pressure_hp"],
                 "temperature_hp": NOMINAL["temperature_hp"],
@@ -223,7 +283,6 @@ class FakeAPI:
             }
 
         state_nom_noisy = self._add_noise(state_nom)
-        # Pas de bruit sur les vannes à 100% (le max physique crée un biais vers le bas)
         for v in ["valve_v1", "valve_v2", "valve_v3"]:
             if state_nom[v] >= 100.0:
                 state_nom_noisy[v] = 100.0
@@ -231,24 +290,28 @@ class FakeAPI:
         try:
             computed_nom = self.physics.compute_all(**state_nom_noisy, esv_open=self._vc.esv_open)
             computed_nom["esv_open"] = self._vc.esv_open
-            # Targets vannes = cibles opérateur réelles (pas les valeurs NOMINAL hard-codées)
             computed_nom["valve_v1_target"] = self._vc._valves["v1"].target
             computed_nom["valve_v2_target"] = self._vc._valves["v2"].target
             computed_nom["valve_v3_target"] = self._vc._valves["v3"].target
             computed_nom["valve_bp_target"] = self._vc._valves["bp"].target
             computed_nom["valve_bp_admit"]        = actual_nom.get("bp_admit", 0.0)
             computed_nom["valve_bp_admit_target"] = self._vc._valves["bp_admit"].target
-            # État machine et AVR (nécessaire pour que le frontend affiche le bon état)
+
+            # Rotor NOMINAL piloté par la vitesse algébrique NOM simulée)
+            algebraic_speed_nom = computed_nom.get("turbine_speed", NOMINAL["turbine_speed"])
+            _rotor.update(dt, target_speed_rpm=algebraic_speed_nom)
+            computed_nom["turbine_speed"]    = _rotor.speed_rpm
+            computed_nom["grid_frequency"]   = _rotor.frequency_hz
+            computed_nom["alternator_speed"] = round(_rotor.speed_rpm / PhysicsModel.GEAR_RATIO, 1)
+
             nom_ctrl = _controller.snapshot()
             computed_nom["machine_state"]  = nom_ctrl.get("machine_state", "STOPPED")
             computed_nom["startup_phase"]  = nom_ctrl.get("startup_phase", "PRE_CHECKS")
             computed_nom["tripped"]        = nom_ctrl.get("tripped", False)
             computed_nom["control_mode"]   = nom_ctrl.get("control_mode", "MANUAL")
-            computed_nom.update(_avr.snapshot())   # avr_mode + avr_e_fd_pu + champs AVR
+            computed_nom.update(_avr.snapshot())
 
-            # Status nominal calculé (pas NORMAL forcé) ; STOPPED → NORMAL par convention
             status_nom = self._compute_status(computed_nom)
-
             params_nom = GTAParameters(
                 timestamp = datetime.utcnow() + timedelta(hours=TIMEZONE_OFFSET),
                 scenario  = None,
@@ -259,25 +322,42 @@ class FakeAPI:
             logger.error(f"Erreur lors de la création de params_nom: {e}")
             raise
 
-        # Réconciliation Trip ↔ Scénario : un AU coupe le scénario actif
+        # Réconciliation Trip ↔ Scénario sur la machine réelle
         if _controller.tripped and self._active_scenario is not None:
             self.stop_scenario()
 
-        # 2) État SIMULÉ (Vannes contrôlées avec rampe + Scénarios + Bruit)
+        # ── 2) Cycle de vie du fork machine simulée ────────────────────
+        if (self._active_scenario is not None or self._sandbox_manual) and self._sim is None:
+            self._sim = SimMachine()
+            self._sim.fork_from(_controller, self._vc, _rotor, _avr)
+        elif (self._active_scenario is None and not self._sandbox_manual
+              and self._sim is not None and not self._sim.tripped):
+            self._sim = None  # re-sync sur la machine réelle
+
+        forked = self._sim is not None
+        if forked:
+            # Supervision simulée : PID puissance + rampe vanneslé)
+            self._sim.step(dt, self._last_simulated_power)
+
+        # ── 3) État SIMULÉ ─────────────────────────────────────────────
         state_sim = self._state.copy()
-        # Remplacer les positions de vannes par les positions réelles du contrôleur
-        state_sim["valve_v1"]       = actual["v1"]
-        state_sim["valve_v2"]       = actual["v2"]
-        state_sim["valve_v3"]       = actual["v3"]
-        state_sim["valve_bp"]       = actual["bp"]
-        state_sim["valve_bp_admit"] = actual.get("bp_admit", 0.0)
+        if forked:
+            sim_pos = self._sim.valves.get_positions()
+            sim_esv = self._sim.valves.esv_open
+        else:
+            sim_pos = actual
+            sim_esv = self._vc.esv_open
+        state_sim["valve_v1"]       = sim_pos["v1"]
+        state_sim["valve_v2"]       = sim_pos["v2"]
+        state_sim["valve_v3"]       = sim_pos["v3"]
+        state_sim["valve_bp"]       = sim_pos["bp"]
+        state_sim["valve_bp_admit"] = sim_pos.get("bp_admit", 0.0)
 
         scenario_name = None
         if self._active_scenario is not None:
             state_sim, scenario_name = self._apply_scenario(state_sim)
         state_sim = self._add_noise(state_sim)
 
-        # Désurchauffeur — module T_HP avant IAPWS97 (Phase 1 — B.3)
         if ATTEMPERATOR_ENABLED:
             t_out, _inj = _attemp.step(state_sim["temperature_hp"], dt)
             state_sim["temperature_hp"] = t_out
@@ -292,20 +372,34 @@ class FakeAPI:
                 valve_v3       = state_sim["valve_v3"],
                 valve_bp       = state_sim["valve_bp"],
                 valve_bp_admit = state_sim.get("valve_bp_admit", 0.0),
-                esv_open       = self._vc.esv_open,
+                esv_open       = sim_esv,
             )
-            computed_sim["esv_open"] = self._vc.esv_open
-            # Targets depuis le contrôleur (consignes opérateur)
-            computed_sim["valve_v1_target"]       = self._vc._valves["v1"].target
-            computed_sim["valve_v2_target"]       = self._vc._valves["v2"].target
-            computed_sim["valve_v3_target"]       = self._vc._valves["v3"].target
-            computed_sim["valve_bp_target"]       = self._vc._valves["bp"].target
+            computed_sim["esv_open"] = sim_esv
+            computed_sim["sandbox_active"] = forked
+            _vsrc = self._sim.valves if forked else self._vc
+            computed_sim["valve_v1_target"]       = _vsrc._valves["v1"].target
+            computed_sim["valve_v2_target"]       = _vsrc._valves["v2"].target
+            computed_sim["valve_v3_target"]       = _vsrc._valves["v3"].target
+            computed_sim["valve_bp_target"]       = _vsrc._valves["bp"].target
             computed_sim["valve_bp_admit"]        = state_sim.get("valve_bp_admit", 0.0)
-            computed_sim["valve_bp_admit_target"] = self._vc._valves["bp_admit"].target
+            computed_sim["valve_bp_admit_target"] = _vsrc._valves["bp_admit"].target
 
-            # Appliquer les deltas du scénario sur les champs auxiliaires (non-primaires)
-            # _apply_scenario ne touche que les clés présentes dans _state (entrées primaires).
-            # Ce bloc post-traite les champs calculés (huile, paliers) qui ne sont pas dans _state.
+            # Lubrification — offsets manuels (sandbox, fork uniquement)
+            if forked and (self._sim.lube_press_offset or self._sim.lube_temp_offset):
+                p_off = self._sim.lube_press_offset
+                t_off = self._sim.lube_temp_offset
+                computed_sim["lube_oil_press"]     = round(max(0.0, computed_sim["lube_oil_press"] + p_off), 2)
+                computed_sim["lube_oil_temp"]      = round(max(0.0, computed_sim["lube_oil_temp"] + t_off), 1)
+                computed_sim["lube_oil_temp_out"]  = round(max(0.0, computed_sim["lube_oil_temp_out"] + t_off), 1)
+                # Conséquences mécaniques : huile chaude/basse pression → échauffement vibrations & paliers
+                temp_penalty = max(0.0, -p_off) * 8.0 + max(0.0, t_off) * 0.5
+                vib_penalty  = max(0.0, -p_off) * 1.5 + max(0.0, t_off)*0.5
+                computed_sim["temp_bearing_fwd"] = round(computed_sim.get("temp_bearing_fwd", 74.0) + temp_penalty, 2)
+                computed_sim["temp_bearing_aft"] = round(computed_sim.get("temp_bearing_aft", 76.0) + temp_penalty, 2)
+                computed_sim["vib_bearing_fwd"]  = round(computed_sim.get("vib_bearing_fwd", 2.1) + vib_penalty, 3)
+                computed_sim["vib_bearing_aft"]  = round(computed_sim.get("vib_bearing_aft", 1.8) + vib_penalty, 3)
+
+            # Deltas scénario sur champs auxiliaires (huile, paliers…)
             if self._active_scenario is not None and self._scenario_start_time is not None:
                 elapsed  = time.time() - self._scenario_start_time
                 progress = min(elapsed / self._active_scenario.duration_s, 1.0)
@@ -325,11 +419,12 @@ class FakeAPI:
                         except (TypeError, ValueError):
                             pass
 
-                # État pompe huile — override progressif pendant scénario 10
+                # Scénario 10 — pompe huile → trip de la machine SIMULÉE uniquement
                 if self._active_scenario.id == 10:
                     if progress > 0.7:
                         computed_sim["lube_oil_pump"] = "OFF"
-                        _controller.auto_trip_for_scenario(10, operator="SYSTÈME")
+                        if forked:
+                            self._sim.emergency_trip(operator="SCENARIO:10")
                     elif progress > 0.3:
                         computed_sim["lube_oil_pump"] = "AUX"
 
@@ -337,25 +432,20 @@ class FakeAPI:
                 computed_sim["power_factor"] = round(
                     max(PF_MIN_CLAMP, computed_sim["power_factor"] + self._power_factor_offset), 3
                 )
-            status_sim = self._compute_status(computed_sim)
-            
-            # Dynamique rotor : inertie TOUJOURS active (swing equation)
-            # En GRID_CONNECTED : raideur réseau (TAU_GRID), légères déviations visibles
-            # En ROLLING/STOPPED : inertie libre (TAU = J/D = 12.5 s)
-            algebraic_speed = computed_sim.get("turbine_speed", NOMINAL["turbine_speed"])
-            _rotor.update(dt, target_speed_rpm=algebraic_speed)
-            computed_sim["turbine_speed"]    = _rotor.speed_rpm
-            computed_sim["grid_frequency"]   = _rotor.frequency_hz
-            computed_sim["alternator_speed"] = round(_rotor.speed_rpm / PhysicsModel.GEAR_RATIO, 1)
-            params_nom.turbine_speed    = _rotor.speed_rpm
-            params_nom.grid_frequency   = _rotor.frequency_hz
-            params_nom.alternator_speed = computed_sim["alternator_speed"]
-            
-            # Dégradation Weibull — dérive lente rendement / vibration / paliers
+
+            # Rotor SIMULÉ : fork → rotor sim ; sinon → rotor nominal (identique au dashboard)
+            algebraic_speed_sim = computed_sim.get("turbine_speed", NOMINAL["turbine_speed"])
+            if forked:
+                self._sim.rotor.update(dt, target_speed_rpm=algebraic_speed_sim)
+                _rsrc = self._sim.rotor
+            else:
+                _rsrc = _rotor
+            computed_sim["turbine_speed"]    = _rsrc.speed_rpm
+            computed_sim["grid_frequency"]   = _rsrc.frequency_hz
+            computed_sim["alternator_speed"] = round(_rsrc.speed_rpm / PhysicsModel.GEAR_RATIO, 1)
+
             if DEGRADATION_ENABLED:
-                _drift = _degradation.update(
-                    dt, _controller.machine_state == "GRID_CONNECTED"
-                )
+                _drift = _degradation.update(dt, _controller.machine_state == "GRID_CONNECTED")
                 computed_sim["efficiency"] = round(
                     max(0.0, computed_sim["efficiency"] + _drift["eff_drift_pct"]), 3
                 )
@@ -366,27 +456,42 @@ class FakeAPI:
                     computed_sim.get("vib_bearing_aft", 1.8) + _drift["vib_drift_mms"], 3
                 )
                 computed_sim["temp_bearing_fwd"] = round(
-                    computed_sim.get("temp_bearing_fwd", 74.0) + _drift["bearing_temp_drift_c"], 2
+                    computed_sim.get("temp_bearing_fwd", 74.0) +_drift["bearing_temp_drift_c"], 2
                 )
                 computed_sim["temp_bearing_aft"] = round(
                     computed_sim.get("temp_bearing_aft", 76.0) + _drift["bearing_temp_drift_c"], 2
                 )
 
-            # Désurchauffeur snapshot (Phase 1 — B.3)
             if ATTEMPERATOR_ENABLED:
                 computed_sim.update(_attemp.snapshot())
-
-            # Condenseur (Phase 1 — B.4)
             if CONDENSER_ENABLED:
-                computed_sim.update(
-                    _cond.step(dt, computed_sim.get("steam_flow_condenser", 0.0))
-                )
+                computed_sim.update(_cond.step(dt, computed_sim.get("steam_flow_condenser", 0.0)))
 
-            # Fusionner l'état superviseur Contrôle Commande + AVR dans le snapshot simulé
-            ctrl_snap = _controller.snapshot()
-            computed_sim.update(ctrl_snap)
+            # Fusion superviseur + AVR (état réel), puis override par le contexte SIM si forké
+            computed_sim.update(_controller.snapshot())
             computed_sim.update(_avr.snapshot())
+            if forked:
+                computed_sim["machine_state"] = self._sim.machine_state
+                computed_sim["tripped"]       = self._sim.tripped
+                computed_sim["control_mode"]  = self._sim.mode
+                if self._sim.tripped:
+                    computed_sim["voltage"]        = 0.0
+                    computed_sim["current_a"]      = 0.0
+                    computed_sim["active_power"]   = 0.0
+                    computed_sim["reactive_power"] = 0.0
+                # AVR forké : excitation simulée indépendante de la machine réelle,
+                # nourrie par les mesures SIM du tick précédent (self._last_params)
+                self._sim.avr.update(
+                    dt,
+                    v_term_kv  = getattr(self._last_params, "voltage",       NOMINAL.get("voltage", 10.5)),
+                    cosphi     = getattr(self._last_params, "power_factor",  NOMINAL.get("power_factor", 0.85)),
+                    i_stator_a = getattr(self._last_params, "current_a",     0.0),
+                    q_mvar     = getattr(self._last_params, "reactive_power", 0.0),
+                    s_max_mva  = NOMINAL.get("apparent_power_max", 41.0),
+                )
+                computed_sim.update(self._sim.avr.snapshot())
 
+            status_sim = self._compute_status(computed_sim)
             params_sim = GTAParameters(
                 timestamp = datetime.utcnow() + timedelta(hours=TIMEZONE_OFFSET),
                 scenario  = scenario_name,
@@ -394,16 +499,21 @@ class FakeAPI:
                 **computed_sim
             )
 
-            # Couche de protections automatiques — après création du snapshot
-            _prot.check_all(params_sim, _controller, _avr)
+            # Protections : sur la machine SIMULÉE si forké, sin
+            if forked:
+                self._sim.protection.check_all(params_sim, self._sim, _avr)
+            else:
+                _prot.check_all(params_sim, _controller, _avr)
 
         except Exception as e:
             logger.error(f"Erreur lors de la création de params_sim: {e}")
             raise
 
-        self._last_nominal_power         = params_nom.active_power
-        self._last_simulated_power       = params_sim.active_power
-        self._last_simulated_speed       = params_sim.turbine_speed
+        self._last_nominal_power   = params_nom.active_power
+        self._last_nominal_speed   = params_nom.turbine_speed
+        self._last_nominal_params  = params_nom
+        self._last_simulated_power = params_sim.active_power
+        self._last_simulated_speed = params_sim.turbine_speed
         return params_nom, params_sim
 
     def _apply_scenario(self, state: dict) -> tuple[dict, str]:

@@ -10,6 +10,8 @@ from simulation.fake_api import fake_api
 from simulation.controller import controller
 from simulation.scenarios import get_all_scenarios, get_scenario
 from services.data_manager import data_manager
+from models.scenario import ScenarioTrigger, ResetCommand, ESVCommand, LubricationOffsetCommand, SandboxCommand
+from models.control import AVRModeCommand, AVRSetpointCommand, AVRManualCommand
 
 import logging
 
@@ -69,6 +71,73 @@ def stop_scenario(operator: str = "Opérateur"):
     logger.info(f"ACTION OPÉRATEUR [{operator}]: Arrêt du scénario en cours")
     return {"status": "stopped", "message": "Scénario arrêté"}
 
+@router.post("/reset-sim")
+def reset_sim_machine(operator: str = "Opérateur"):
+    """Réinitialise la machine simulée (efface un trip simulé) et re-synchronise sur la machine réelle."""
+    fake_api.reset_sim_machine()
+    data_manager.log_operator_action(
+        user=operator, action_type="SIM_RESET",
+        target="sim_machine", value_before="TRIPPED/forké", value_after="re-sync réel",
+    )
+    logger.info(f"ACTION OPÉRATEUR [{operator}]: Reset machine simulée")
+    return {"status": "reset", "message": "Machine simulée réinitialisée"}
+
+@router.post("/esv")
+def set_sim_esv(body: ESVCommand):
+    """Ouvre/ferme l'ESV — agit sur le fork simulé pendant un scénario, sur la machine réelle sinon."""
+    result = fake_api.set_esv(body.open, operator=body.operator)
+    data_manager.log_operator_action(
+        user=body.operator, action_type="SIM_ESV",
+        target="esv_sim",
+        value_before=str(not body.open), value_after=str(body.open),
+    )
+    logger.info(f"ACTION OPÉRATEUR [{body.operator}]: ESV (simulation) → {'ouverte' if body.open else 'fermée'}")
+    return result
+
+@router.post("/sandbox")
+def toggle_sandbox(body: SandboxCommand):
+    """Active/désactive le bac à sable manuel (fork sans scénario — ESV/AVR/lubrification/vannes)."""
+    result = fake_api.toggle_sandbox(body.active, operator=body.operator)
+    data_manager.log_operator_action(
+        user=body.operator, action_type="SIM_SANDBOX",
+        target="sandbox_sim",
+        value_before=str(not body.active), value_after=str(body.active),
+    )
+    logger.info(f"ACTION OPÉRATEUR [{body.operator}]: Bac à sable simulation → {'activé' if body.active else 'désactivé'}")
+    return result
+
+@router.post("/lubrication")
+def set_sim_lubrication(body: LubricationOffsetCommand):
+    """Offsets manuels pression/température huile — sandbox, scénario actif requis."""
+    result = fake_api.set_lube_offsets(body.press_offset, body.temp_offset)
+    if result.get("accepted"):
+        data_manager.log_operator_action(
+            user=body.operator, action_type="SIM_LUBE_OFFSET",
+            target="lube_sim",
+            value_before="0/0",
+            value_after=f"{body.press_offset}/{body.temp_offset}",
+        )
+        logger.info(
+            f"ACTION OPÉRATEUR [{body.operator}]: Offsets huile (simulation) → "
+            f"ΔP={body.press_offset} bar, ΔT={body.temp_offset} °C"
+        )
+    return result
+
+@router.post("/avr/mode")
+def set_sim_avr_mode(body: AVRModeCommand):
+    """Mode AVR de la machine simulée — sandbox, scénario actif requis."""
+    return fake_api.set_avr_mode(body.mode.value, operator=body.operator)
+
+
+@router.post("/avr/setpoint")
+def set_sim_avr_setpoint(body: AVRSetpointCommand):
+    """Consigne AVR (tension/cos φ) de la machine simulée — sandbox, scénario actif requis."""
+    return fake_api.set_avr_setpoint(voltage_kv=body.voltage_kv, cosphi=body.cosphi, operator=body.operator)
+
+@router.post("/avr/efd")
+def set_sim_avr_efd(body: AVRManualCommand):
+    """E_fd manuel AVR de la machine simulée — sandbox, scénario actif requis."""
+    return fake_api.set_avr_efd_manual(body.e_fd_pu, operator=body.operator)
 
 @router.get("/history")
 def get_scenario_history():

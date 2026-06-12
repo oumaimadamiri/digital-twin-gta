@@ -23,3 +23,17 @@ class ScenarioTrigger(BaseModel):
 
 class ResetCommand(BaseModel):
     confirm: bool = True
+
+class ESVCommand(BaseModel):
+    open: bool
+    operator: str = "Opérateur"
+
+
+class LubricationOffsetCommand(BaseModel):
+    press_offset: float = Field(0.0, ge=-1.5, le=1.5,  description="Offset pression huile (bar)")
+    temp_offset:  float = Field(0.0, ge=-20.0, le=40.0, description="Offset température huile (°C)")
+    operator: str = "Opérateur"
+
+class SandboxCommand(BaseModel):
+    active: bool
+    operator: str = "Opérateur"

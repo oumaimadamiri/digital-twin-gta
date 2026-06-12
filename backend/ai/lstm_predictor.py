@@ -32,13 +32,23 @@ class LSTMPredictor:
         self._load()
 
     def _load(self):
-        """Essaie de charger le modèle Keras, sinon mode statistique."""
+        """Charge le modèle Keras + ses stats de normalisation min-max, sinon mode statistique."""
+        self._data_min = None
+        self._data_max = None
+
+        norm_path = LSTM_PATH.replace(".h5", "_norm.npz")
+        if os.path.exists(norm_path):
+            stats = np.load(norm_path)
+            self._data_min = stats["data_min"]
+            self._data_max = stats["data_max"]
+
         if os.path.exists(LSTM_PATH):
             try:
                 from tensorflow.keras.models import load_model
                 self._model = load_model(LSTM_PATH)
             except Exception:
                 self._model = None
+
     def push(self, params: dict):
         """Ajoute un snapshot au buffer glissant."""
         self._buffer.append(self._extract(params))
@@ -63,7 +73,7 @@ class LSTMPredictor:
             accuracy = max(0.0, 1.0 - float(np.mean(rel_err)))
             self._precision_history.append(accuracy)
 
-        if self._model is not None:
+        if self._model is not None and self._data_min is not None:
             predictions = self._predict_lstm(data)
         else:
             predictions = self._predict_linear(data)
@@ -98,22 +108,27 @@ class LSTMPredictor:
         x = np.arange(n)
         predictions = np.zeros((self.horizon, data.shape[1]))
 
-        for i in range(data.shape[1]):
+        for i, feature in enumerate(self.FEATURES):
             y     = data[:, i]
-            coef  = np.polyfit(x, y, 1)          # pente + intercept
+            coef  = np.polyfit(x, y, 1)          # pente + inter
             x_fut = np.arange(n, n + self.horizon)
             pred  = np.polyval(coef, x_fut)
             # Clamping autour du nominal ±20%
-            nom = list(NOMINAL.values())[i] if i < len(NOMINAL) else pred[0]
+            nom = NOMINAL.get(feature, pred[0])
             predictions[:, i] = np.clip(pred, nom * 0.80, nom * 1.20)
 
         return predictions
 
     def _predict_lstm(self, data: np.ndarray) -> np.ndarray:
-        """Prédiction avec le vrai modèle LSTM Keras."""
-        x    = data[-self.seq_length:][np.newaxis, ...]   # (1, seq_len, features)
-        pred = self._model.predict(x, verbose=0)           # (1, horizon, features)
-        return pred[0]
+        """Prédiction avec le modèle LSTM Keras (entrée/sortie normalisées min-max)."""
+        data_range = self._data_max - self._data_min + 1e-8
+        x_norm = (data[-self.seq_length:] - self._data_min) / data_range
+        x      = x_norm[np.newaxis, ...]                  # (1, seq_len, features)
+
+        pred_norm = self._model.predict(x, verbose=0)[0]  # (horizon * features,)
+        pred_norm = pred_norm.reshape(self.horizon, len(self.FEATURES))
+
+        return pred_norm * data_range + self._data_min
 
     def _extract(self, params: dict) -> np.ndarray:
         return np.array([params.get(f, 0.0) for f in self.FEATURES], dtype=float)

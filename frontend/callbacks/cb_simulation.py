@@ -256,6 +256,158 @@ def register(app):
         except Exception as e:
             return f"Erreur arrêt : {e}"
 
+    # ── Reset machine simulée (efface un trip simulé) ─────────────────
+    @app.callback(
+        Output("scenario-feedback", "children", allow_duplicate=True),
+        Input("btn-reset-sim", "n_clicks"),
+        State("store-operator-name", "data"),
+        prevent_initial_call=True,
+    )
+    def reset_sim_machine_cb(n, operator):
+        if not n:
+            return no_update
+        operator = operator or "Opérateur"
+        try:
+            _session.post(f"{BACKEND}/simulation/reset-sim?operator={operator}", timeout=2)
+            ts = datetime.now().strftime("%H:%M:%S")
+            return f"[{ts}] Machine simulée réinitialisée (re-sync sur la machine réelle)"
+        except Exception as e:
+            return f"Erreur reset sim : {e}"
+
+    # ── ESV sandbox (scénario actif requis, comme AVR/lubrification) ──.
+    @app.callback(
+        Output("esv-feedback", "children"),
+        Input("btn-esv-open", "n_clicks"),
+        Input("btn-esv-close", "n_clicks"),
+        State("store-operator-name", "data"),
+        prevent_initial_call=True,
+    )
+    def apply_esv(n_open, n_close, operator):
+        triggered = ctx.triggered_id
+        if triggered not in ("btn-esv-open", "btn-esv-close"):
+            return no_update
+        open_ = (triggered == "btn-esv-open")
+        operator = operator or "Opérateur"
+        try:
+            _session.post(
+                f"{BACKEND}/simulation/esv?operator={operator}",
+                json={"open": open_, "operator": operator},
+                timeout=2,
+            )
+            ts = datetime.now().strftime("%H:%M:%S")
+            return f"[{ts}] ESV → {'ouverte' if open_ else 'fermée'}"
+        except Exception as e:
+            return f"Erreur ESV : {e}"
+        
+    # ── AVR sandbox (scénario actif requis) ────────────────────────────
+    @app.callback(
+        Output("avr-feedback", "children"),
+        Input("btn-apply-avr", "n_clicks"),
+        State("dd-avr-mode", "value"),
+        State("slider-avr-voltage", "value"),
+        State("slider-avr-cosphi", "value"),
+        State("slider-avr-efd", "value"),
+        State("store-operator-name", "data"),
+        prevent_initial_call=True,
+    )
+    def apply_avr(_, mode, voltage, cosphi, efd, operator):
+        operator = operator or "Opérateur"
+        ts = datetime.now().strftime("%H:%M:%S")
+        try:
+            r_mode = _session.post(
+                f"{BACKEND}/simulation/avr/mode",
+                json={"mode": mode, "operator": operator},
+                timeout=2,
+            )
+            data_mode = r_mode.json()
+            if not data_mode.get("accepted", True):
+                return f"[{ts}] {data_mode.get('message')}"
+
+            _session.post(
+                f"{BACKEND}/simulation/avr/setpoint",
+                json={"voltage_kv": voltage, "cosphi": cosphi, "operator": operator},
+                timeout=2,
+            )
+            if mode == "MANUAL":
+                _session.post(
+                    f"{BACKEND}/simulation/avr/efd",
+                    json={"e_fd_pu": efd, "operator": operator},
+                    timeout=2,
+                )
+            extra = f", E_fd={efd}p.u." if mode == "MANUAL" else ""
+            return f"[{ts}] AVR sandbox → mode {mode}, V_set={voltage}kV, cosφ_set={cosphi}{extra}"
+        except Exception as e:
+            return f"Erreur AVR : {e}"
+        
+    # ── Lubrification sandbox (scénario actif requis) ──────────────────
+    @app.callback(
+        Output("lube-feedback", "children"),
+        Input("btn-apply-lube", "n_clicks"),
+        State("slider-lube-press-offset", "value"),
+        State("slider-lube-temp-offset", "value"),
+        State("store-operator-name", "data"),
+        prevent_initial_call=True,
+    )
+    def apply_lube(_, p_off, t_off, operator):
+        operator = operator or "Opérateur"
+        ts = datetime.now().strftime("%H:%M:%S")
+        try:
+            r = _session.post(
+                f"{BACKEND}/simulation/lubrication",
+                json={"press_offset": p_off, "temp_offset": t_off, "operator": operator},
+                timeout=2,
+            )
+            data = r.json()
+            if not data.get("accepted", True):
+                return f"[{ts}] {data.get('message')}"
+            return f"[{ts}] Lubrification sandbox → ΔP={p_off} bar, ΔT={t_off} °C"
+        except Exception as e:
+            return f"Erreur lubrification : {e}"
+        
+    # ── Verrouillage AVR/lubrification/ESV hors fork (scénario ou bac à sable) ──
+    @app.callback(
+        Output("dd-avr-mode",              "disabled"),
+        Output("slider-avr-voltage",       "disabled"),
+        Output("slider-avr-cosphi",        "disabled"),
+        Output("slider-avr-efd",           "disabled"),
+        Output("btn-apply-avr",            "disabled"),
+        Output("slider-lube-press-offset", "disabled"),
+        Output("slider-lube-temp-offset",  "disabled"),
+        Output("btn-apply-lube",           "disabled"),
+        Output("btn-esv-open",             "disabled"),
+        Output("btn-esv-close",            "disabled"),
+        Input("store-simulation-data", "data"),
+    )
+    def lock_sandbox_controls(d):
+        d = d or {}
+        no_fork = not bool(d.get("sandbox_active"))
+        return (no_fork,) * 10
+
+    # ── Bascule bac à sable manuel ──────────────────────────────────────
+    @app.callback(
+        Output("sandbox-feedback",   "children"),
+        Output("btn-sandbox-toggle", "children"),
+        Input("btn-sandbox-toggle", "n_clicks"),
+        State("store-simulation-data", "data"),
+        State("store-operator-name", "data"),
+        prevent_initial_call=True,
+    )
+    def apply_sandbox_toggle(_, d, operator):
+        operator = operator or "Opérateur"
+        d = d or {}
+        new_active = not bool(d.get("sandbox_active"))
+        try:
+            _session.post(
+                f"{BACKEND}/simulation/sandbox",
+                json={"active": new_active, "operator": operator},
+                timeout=2,
+            )
+            ts = datetime.now().strftime("%H:%M:%S")
+            label = "🧪 Désactiver bac à sable" if new_active else "🧪 Activer bac à sable"
+            return f"[{ts}] Bac à sable {'activé' if new_active else 'désactivé'}", label
+        except Exception as e:
+            return f"Erreur bac à sable : {e}", no_update
+
     # ── Boutons scénarios dynamiques (Pattern Matching) ───────────────
     @app.callback(
         Output({"type": "btn-scenario", "index": dash.ALL}, "children"),
@@ -334,6 +486,9 @@ def register(app):
         _scen       = d.get("scenario") or "Aucun (Nominal)"
         _scen_short = (_scen[:26] + "…") if len(_scen) > 28 else _scen
         has_scenario = d.get("scenario") is not None
+        tripped = bool(d.get("tripped")) \
+                  or (d.get("status") or "").upper() == "TRIPPED" \
+                  or (d.get("machine_state") or "").upper() == "TRIPPED"
 
         row_style = {
             "fontFamily": "Share Tech Mono", "fontSize": "11px",
@@ -341,18 +496,15 @@ def register(app):
             "alignItems": "center", "marginBottom": "6px",
         }
 
-        panel = html.Div([
+        children = [
             html.Div([
                 html.Span("Actif: ", style={"color": "#475569", "flexShrink": "0"}),
                 html.Span(
-                    _scen_short,
-                    title=_scen,
+                    _scen_short, title=_scen,
                     style={
                         "color": "#818cf8" if has_scenario else "#64748b",
-                        "fontWeight": "700",
-                        "whiteSpace": "nowrap",
-                        "overflow": "hidden",
-                        "textOverflow": "ellipsis",
+                        "fontWeight": "700", "whiteSpace": "nowrap",
+                        "overflow": "hidden", "textOverflow": "ellipsis",
                     },
                 ),
             ], style=row_style),
@@ -360,15 +512,27 @@ def register(app):
                 html.Span("Statut: ", style={"color": "#475569", "flexShrink": "0"}),
                 html.Span(status, style={"color": s_color, "fontWeight": "700"}),
             ], style=row_style),
-        ])
+        ]
+
+        if tripped:
+            children.append(html.Button(
+                "↻ RESET MACHINE SIMULÉE",
+                id="btn-reset-sim", n_clicks=0,
+                className="btn",
+                style={
+                    "marginTop": "8px", "width": "100%", "display": "block",
+                    "fontSize": "11px", "padding": "6px 12px",
+                    "background": "#7f1d1d", "color": "#fecaca",
+                    "border": "1px solid #ef4444", "borderRadius": "4px",
+                    "cursor": "pointer", "fontFamily": "Share Tech Mono",
+                },
+            ))
+
+        panel = html.Div(children)
 
         stop_style = ({
-            "marginTop": "10px",
-            "width": "100%",
-            "display": "block",
-            "fontSize": "11px",
-            "padding": "6px 12px",
-            "opacity": "0.85",
+            "marginTop": "10px", "width": "100%", "display": "block",
+            "fontSize": "11px", "padding": "6px 12px", "opacity": "0.85",
         } if has_scenario else {"display": "none"})
 
         return panel, stop_style

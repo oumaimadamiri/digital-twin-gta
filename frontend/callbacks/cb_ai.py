@@ -1,13 +1,9 @@
 """
 callbacks/cb_ai.py — Callbacks module IA
-CORRECTIONS :
-  1. lstm-precision-value n'est plus hardcodé à "92%" — valeur réelle ou "N/A"
-  2. RUL : affichage couleur dynamique + tendance visuelle
-  3. prevent_initial_call=True conservé
 """
 import requests
 import plotly.graph_objects as go
-from dash import Input, Output, State, html, no_update, ctx, Patch
+from dash import Input, Output, html, no_update, ctx, Patch
 from config import BACKEND
 
 _session = requests.Session()
@@ -22,52 +18,91 @@ _AI_LAYOUT_BASE = dict(
            "gridcolor": "#1e293b", "color": "#334155"},
     uirevision="ai",
 )
+def _timeline_bars(anomaly_history, threshold):
+    """Construit les barres colorées de la timeline à partir de l'historique réel AE."""
+    if not anomaly_history:
+        return [html.Div(className="tl-bar tl-normal", style={"height": "4px"}) for _ in range(20)]
 
+    cap = max(threshold * 3, 1e-9)
+    bars = []
+    for pt in anomaly_history:
+        err = pt.get("reconstruction_error", 0.0)
+        pct = min(err / cap, 1.0)
+        height = max(4, round(pct * 50))
+        if err >= threshold * 2:
+            cls = "tl-crit"
+        elif err >= threshold:
+            cls = "tl-warn"
+        else:
+            cls = "tl-normal"
+        bars.append(html.Div(className=f"tl-bar {cls}", style={"height": f"{height}px"}))
+
+    # Complète à 20 barres si l'historique réel est encore court
+    while len(bars) < 20:
+        bars.insert(0, html.Div(className="tl-bar tl-normal", style={"height": "4px"}))
+
+    return bars[-20:]
 
 def register(app):
 
     @app.callback(
-        Output("ae-error-value",      "children"),
-        Output("ae-error-value",      "style"),
-        Output("lstm-precision-value","children"),
-        Output("rul-value",           "children"),
-        Output("ae-gauge",            "figure"),
-        Output("lstm-prediction-chart","figure"),
-        Output("ae-status-label",     "children"),
-        Output("rul-progress",        "children"),
-        Output("ai-alerts-table",     "children"),
+        Output("mc-ae-value",        "children"),
+        Output("mc-ae-sub",          "children"),
+        Output("mc-ae-badge",        "children"),
+        Output("mc-ae-badge",        "className"),
+        Output("mc-lstm-value",      "children"),
+        Output("mc-lstm-sub",        "children"),
+        Output("mc-xgb-value",       "children"),
+        Output("mc-xgb-sub",         "children"),
+        Output("ae-gauge",           "figure"),
+        Output("ae-status-label",    "children"),
+        Output("ae-timeline",        "children"),
+        Output("ae-timeline-start",  "children"),
+        Output("lstm-prediction-chart", "figure"),
+        Output("rul-value",          "children"),
+        Output("rul-progress",       "children"),
+        Output("ai-alerts-table",    "children"),
+        Output("ai-last-training-badge", "children"),
+        Output("ai-alerts-export-link",  "href"),
         Input("interval-ai", "n_intervals"),
         Input("url", "pathname"),
     )
     def update_ai(n_intervals, pathname):
         if pathname != "/ai":
-            return [no_update] * 9
+            return [no_update] * 18
 
         try:
-            results = _session.get(f"{BACKEND}/ai/analysis", timeout=2).json()
+            results = _session.get(f"{BACKEND}/ai/analysis", timeout=8).json()
         except Exception:
-            results = {}
+            return [no_update] * 18
+
+        if not results or results.get("ready") is False:
+            return [no_update] * 18
 
         try:
-            ai_alerts = _session.get(f"{BACKEND}/ai/alerts?limit=10", timeout=1).json()
+            ai_alerts = _session.get(f"{BACKEND}/ai/alerts?limit=10", timeout=2).json()
         except Exception:
             ai_alerts = []
 
         anomaly = results.get("anomaly_detection", {})
         lstm    = results.get("lstm_prediction",   {})
         rul     = results.get("rul_estimation",    {})
+        ae_hist = results.get("anomaly_history",   [])
 
         is_initial = (not n_intervals) or (ctx.triggered_id == "url")
-
-        # ── Autoencodeur ──────────────────────────────────────────────
+        # ── Carte Autoencodeur ──────────────────────────────────────────
         err      = anomaly.get("reconstruction_error", 0.0)
         is_anom  = anomaly.get("is_anomaly", False)
+        thresh   = anomaly.get("threshold", 0.05)
         ae_color = "#ff3d57" if is_anom else "#00e676"
-        ae_style = {"fontFamily": "var(--mono)", "fontSize": "32px",
-                    "fontWeight": "700", "color": ae_color}
 
-        thresh = anomaly.get("threshold", 0.05)
-        
+        mc_ae_value = f"{err:.4f}"
+        mc_ae_sub   = (f"Seuil critique : {thresh:.3f} · "
+                       f"{'Anomalie détectée' if is_anom else 'Reconstruction normale'}")
+        mc_ae_badge      = "ANOMALIE" if is_anom else "ACTIF"
+        mc_ae_badge_cls  = "mc-badge alert" if is_anom else "mc-badge"
+
+        # ── Jauge AE ──────────────────────────────────────────────────
         if is_initial:
             ae_gauge = go.Figure(go.Indicator(
                 mode="gauge+number", value=err,
@@ -79,8 +114,9 @@ def register(app):
                     "bar":  {"color": ae_color, "thickness": 0.25},
                     "bgcolor": "rgba(0,0,0,0)", "bordercolor": "#1e293b", "borderwidth": 1,
                     "steps": [
-                        {"range": [0, thresh],        "color": "rgba(16,185,129,0.1)"},
-                        {"range": [thresh, thresh*3],  "color": "rgba(239,68,68,0.1)"},
+                        {"range": [0, thresh],            "color": "rgba(16,185,129,0.15)"},
+                        {"range": [thresh, thresh * 2],    "color": "rgba(245,158,11,0.15)"},
+                        {"range": [thresh * 2, thresh * 3], "color": "rgba(239,68,68,0.15)"},
                     ],
                     "threshold": {"line": {"color": "#f59e0b", "width": 2},
                                   "value": thresh, "thickness": 0.8},
@@ -97,6 +133,8 @@ def register(app):
             ae_gauge["data"][0]["gauge"]["axis"]["range"] = [0, thresh * 3]
             ae_gauge["data"][0]["gauge"]["bar"]["color"] = ae_color
             ae_gauge["data"][0]["gauge"]["threshold"]["value"] = thresh
+            ae_gauge["data"][0]["gauge"]["steps"][1]["range"] = [thresh, thresh * 2]
+            ae_gauge["data"][0]["gauge"]["steps"][2]["range"] = [thresh * 2, thresh * 3]
 
         ae_status = html.Span(
             "⚠ ANOMALIE DÉTECTÉE" if is_anom else "✓ État nominal",
@@ -104,15 +142,20 @@ def register(app):
                    "fontSize": "12px", "fontWeight": "700"},
         )
 
-        # ── LSTM — précision RÉELLE mesurée en continu ────────────────
+        # ── Timeline réelle (historique des 20 derniers points, ~5s/pt) ──
+        timeline_bars = _timeline_bars(ae_hist, thresh)
+        n_points      = len(ae_hist) if ae_hist else 20
+        timeline_start = f"-{n_points * 5}s"
+
+        # ── Carte LSTM ────────────────────────────────────────────────
         if lstm.get("ready"):
             raw_precision = lstm.get("precision_pct")
-            if raw_precision is not None:
-                lstm_precision_text = f"{raw_precision:.0f}%"
-            else:
-                lstm_precision_text = "Calcul en cours…"
+            mc_lstm_value = f"{raw_precision:.0f}%" if raw_precision is not None else "—"
+            horizon_s = lstm.get("horizon_seconds", 0)
+            mc_lstm_sub = f"Horizon : {horizon_s:.0f}s · Précision mesurée en continu"
         else:
-            lstm_precision_text = "N/A"
+            mc_lstm_value = "N/A"
+            mc_lstm_sub = "Buffer insuffisant — en cours de constitution"
 
         # ── Graphique LSTM ─────────────────────────────────────────────
         lstm_fig = go.Figure()
@@ -135,7 +178,7 @@ def register(app):
                                                   fill="toself", fillcolor=fillcolor,
                                                   line={"color": "rgba(0,0,0,0)"},
                                                   showlegend=False))
-
+        
         lstm_fig.update_layout(
             margin={"t": 10, "b": 20, "l": 40, "r": 10},
             xaxis={**_AI_LAYOUT_BASE["xaxis"],
@@ -145,8 +188,8 @@ def register(app):
             **{k: v for k, v in _AI_LAYOUT_BASE.items() if k != "xaxis"},
         )
 
-        # ── RUL — affichage couleur + tendance ────────────────────────
-        rul_days  = rul.get("rul_days", 0.0)
+        # ── RUL ───────────────────────────────────────────────────────
+        rul_days = rul.get("rul_days", 0.0)
         if rul_days > 20:
             rul_color = "#00e676"
             rul_label = f"{rul_days:.0f} j"
@@ -157,43 +200,33 @@ def register(app):
             rul_color = "#ff3d57"
             rul_label = f"{rul_days:.1f} j"
 
-        # Barre de progression : 0j = vide, 30j = plein
         progress_pct = min(rul_days / 30 * 100, 100)
 
+        mc_xgb_value = rul_label
+        mc_xgb_sub   = f"Maintenance recommandée : {rul.get('estimated_failure', 'N/A')}"
         rul_progress = html.Div([
+            html.Div(className="rul-bar", children=[
+                html.Div(className="rul-fill", style={
+                    "width": f"{progress_pct:.0f}%",
+                    "background": rul_color,
+                }),
+            ]),
             html.Div([
-                html.Span("Date estimée de panne : ",
-                          style={"color": "var(--text3)", "fontSize": "11px"}),
+                html.Span("Date estimée de panne : ", style={"color": "var(--text3)"}),
                 html.Span(
                     rul.get("estimated_failure", "N/A"),
-                    style={"color": rul_color, "fontFamily": "var(--mono)", "fontSize": "12px",
-                           "fontWeight": "700" if rul_days <= 7 else "400"},
+                    style={"color": rul_color, "fontWeight": "700" if rul_days <= 7 else "400"},
                 ),
-            ], style={"marginBottom": "8px", "display": "flex", "alignItems": "center",
-                      "gap": "6px"}),
-
-            # Barre de progression
-            html.Div(style={
-                "height": "6px", "borderRadius": "3px",
-                "background": f"linear-gradient(90deg, {rul_color} {progress_pct:.0f}%, #1e293b 0%)",
-                "marginBottom": "6px",
-            }),
-
+            ], className="rul-sub", style={"marginBottom": "4px"}),
             html.Div([
-                html.Span(f"Score dégradation : ",
-                          style={"color": "var(--text3)", "fontSize": "10px"}),
-                html.Span(
-                    f"{rul.get('degradation_score', 0.0):.3f}",
-                    style={"color": rul_color, "fontFamily": "var(--mono)", "fontSize": "10px"},
-                ),
-                html.Span(f"  |  Paramètre critique : ",
-                          style={"color": "var(--text3)", "fontSize": "10px"}),
-                html.Span(
-                    rul.get("critical_parameter", "N/A"),
-                    style={"color": "#aa80ff", "fontFamily": "var(--mono)", "fontSize": "10px"},
-                ),
-            ]),
-        ], style={"marginTop": "10px"})
+                html.Span("Score dégradation : ", style={"color": "var(--text3)"}),
+                html.Span(f"{rul.get('degradation_score', 0.0):.3f}",
+                          style={"color": rul_color, "fontFamily": "var(--mono)"}),
+                html.Span("  |  Paramètre critique : ", style={"color": "var(--text3)"}),
+                html.Span(rul.get("critical_parameter", "N/A"),
+                          style={"color": "#aa80ff", "fontFamily": "var(--mono)"}),
+            ], className="rul-sub"),
+        ])
 
         # ── Alertes IA ────────────────────────────────────────────────
         if not ai_alerts:
@@ -215,9 +248,15 @@ def register(app):
             ]) for a in ai_alerts[:8]]
             tbl = html.Table([html.Thead(hdr), html.Tbody(rows)], className="data-table")
 
-        return (f"{err:.4f}", ae_style, lstm_precision_text, rul_label,
-                ae_gauge, lstm_fig, ae_status, rul_progress, tbl)
+        last_training = f"🔄 Dernier réentraînement : {results.get('last_training', 'N/A')}"
+        export_href = f"{BACKEND}/ai/alerts/export/csv"
 
+        return (mc_ae_value, mc_ae_sub, mc_ae_badge, mc_ae_badge_cls,
+                mc_lstm_value, mc_lstm_sub,
+                mc_xgb_value, mc_xgb_sub,
+                ae_gauge, ae_status, timeline_bars, timeline_start,
+                lstm_fig, rul_label, rul_progress, tbl,
+                last_training, export_href)
     # ── Bouton analyse manuelle ────────────────────────────────────────
     @app.callback(
         Output("ai-run-status", "children"),

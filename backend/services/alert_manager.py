@@ -160,7 +160,8 @@ class AlertManager:
     # ──────────────────────────────────────────
 
     def add_ai_alert(self, param: str, value: float,
-                     threshold: float, message: str = "") -> Alert:
+                     threshold: float, message: str = "",
+                     severity: SeverityLevel = SeverityLevel.WARNING) -> Alert:
         """Crée une alerte issue du module IA."""
         alert = Alert(
             timestamp  = datetime.utcnow() + timedelta(hours=TIMEZONE_OFFSET),
@@ -168,7 +169,7 @@ class AlertManager:
             parameter  = param,
             value      = round(value, 4),
             threshold  = threshold,
-            severity   = SeverityLevel.WARNING,
+            severity   = severity,
             source     = AlertSource.AI,
             message    = message or f"Anomalie IA détectée sur {param}",
         )

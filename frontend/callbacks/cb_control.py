@@ -126,13 +126,40 @@ def register(app):
         """
         function(data) {
             if (!data) return window.dash_clientside.no_update;
+
+            var icons  = {warning: '⚠', error: '⛔', info: 'ℹ', success: '✓'};
+            var colors = {warning: '#f59e0b', error: '#ef4444', info: '#60a5fa', success: '#22c55e'};
+
+            // Succès / info → toast non bloquant
+            if (data.kind === 'success' || data.kind === 'info') {
+                var container = document.getElementById('global-toast-container');
+                if (!container) return window.dash_clientside.no_update;
+
+                var toast = document.createElement('div');
+                toast.className = 'app-toast app-toast-' + data.kind;
+                toast.innerHTML =
+                    '<span class="app-toast-icon">' + (icons[data.kind] || '') + '</span>' +
+                    '<div class="app-toast-body">' +
+                      '<div class="app-toast-title" style="color:' + colors[data.kind] + '">' + (data.title || '') + '</div>' +
+                      '<div class="app-toast-message">' + (data.message || '') + '</div>' +
+                    '</div>' +
+                    '<span class="app-toast-close">\\u2715</span>';
+
+                toast.querySelector('.app-toast-close').onclick = function() {
+                    toast.remove();
+                };
+
+                container.appendChild(toast);
+                setTimeout(function() { toast.remove(); }, 5000);
+                return '';
+            }
+
+            // Warning / error → modale bloquante (nécessite acquittement)
             var modal = document.getElementById('ctrl-notif-modal');
             var icon  = document.getElementById('ctrl-notif-icon');
             var title = document.getElementById('ctrl-notif-title');
             var msg   = document.getElementById('ctrl-notif-message');
             if (!modal) return window.dash_clientside.no_update;
-            var icons  = {warning: '⚠', error: '⛔', info: 'ℹ', success: '✓'};
-            var colors = {warning: '#f59e0b', error: '#ef4444', info: '#60a5fa', success: '#22c55e'};
             icon.textContent  = icons[data.kind]  || '⚠';
             title.textContent = data.title   || '';
             title.style.color = colors[data.kind] || '#f59e0b';
@@ -160,20 +187,34 @@ def register(app):
         Input("ctrl-notif-ok", "n_clicks"),
         prevent_initial_call=True,
     )
+    
+    _AUTO_PHASE_MESSAGES = {
+        "BARRAGE_OPENED":  "Vapeur barrage ouverte",
+        "ESV_OPENED":      "ESV ouverte",
+        "V1_OPENING":      "V1 en ouverture",
+        "ACCELERATING":    "Accélération de la turbine en cours",
+        "READY_TO_EXCITE": "Vitesse nominale atteinte — prêt à exciter",
+        "EXCITED":         "AVR activé — excitation en cours",
+        "SYNCHRONIZING":   "Synchronisation au réseau en cours",
+        "GRID_CONNECTED":  "Machine démarrée et couplée au réseau",
+    }
 
-    # ── Notification : machine totalement arrêtée alors que mode=AUTO ──
+    # ── Notifications : machine arrêtée (AUTO) + avancement séquence démarrage AUTO ──
     @app.callback(
         Output("ctrl-notif-store", "data", allow_duplicate=True),
         Output("ctrl-prev-machine-state", "data"),
+        Output("ctrl-prev-startup-phase", "data"),
         Input("store-current-data", "data"),
         State("ctrl-prev-machine-state", "data"),
+        State("ctrl-prev-startup-phase", "data"),
         prevent_initial_call=True,
     )
-    def notify_stopped_in_auto(ws_data, prev_state):
+    def notify_auto_state_changes(ws_data, prev_state, prev_phase):
         data          = ws_data or {}
         machine_state = data.get("machine_state")
         mode          = data.get("control_mode", "MANUAL")
         tripped       = data.get("tripped", False)
+        phase         = data.get("startup_phase", "PRE_CHECKS")
         prev          = prev_state or {}
         new_state     = {"machine_state": machine_state}
 
@@ -182,26 +223,40 @@ def register(app):
                 and prev.get("machine_state") not in (None, "STOPPED")
                 and not tripped):
             if mode == "AUTO":
-                return _notify(
+                notif = _notify(
                     "Machine arrêtée",
                     "La machine est totalement arrêtée.\n\n"
                     "Le mode est toujours AUTO : passez en MANUEL pour accéder "
                     "au réglage de la durée de préchauffage du barrage avant "
                     "un nouveau démarrage.",
                     "info",
-                ), new_state
+                )
             else:
-                return _notify(
+                notif = _notify(
                     "Machine arrêtée",
                     "La machine est totalement arrêtée.\n\n"
                     "Mode MANUEL actif : vous pouvez lancer directement la "
                     "séquence de démarrage (barrage → ESV → V1 → excitation → "
                     "synchronisation → couplage).",
                     "info",
-                ), new_state
+                )
+            return notif, new_state, phase
 
-        return no_update, new_state
-    
+        # Avancement de la séquence de démarrage en AUTO
+        if prev_phase is None:
+            return no_update, new_state, phase
+
+        if mode != "AUTO" or phase == prev_phase:
+            return no_update, new_state, phase
+
+        message = _AUTO_PHASE_MESSAGES.get(phase)
+        if not message:
+            return no_update, new_state, phase
+
+        if phase == "GRID_CONNECTED":
+            return _notify("Machine démarrée", message, "success"), new_state, phase
+        return _notify("Démarrage automatique", message, "info"), new_state, phase
+
     # ── Horloge bandeau (clientside — aucun appel réseau) ────────────
     clientside_callback(
         """
@@ -803,6 +858,8 @@ def register(app):
         prevent_initial_call=True,
     )
     def grid_action(n_sync, n_couple, n_disc, operator):
+        if not (n_sync or n_couple or n_disc):
+            return no_update, no_update
         op = operator or "Opérateur"
         triggered = ctx.triggered_id
         if triggered == "ctrl-btn-grid-sync":

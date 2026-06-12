@@ -17,6 +17,7 @@ import logging
 import random
 import math
 import numpy as np
+from simulation.physics_model import PhysicsModel
 
 # Ajout du répertoire parent au path pour imports relatifs
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -35,24 +36,34 @@ logger = logging.getLogger("gta.train")
 # GÉNÉRATION DE DONNÉES SYNTHÉTIQUES
 # ─────────────────────────────────────────────
 
+_physics = PhysicsModel()
 def generate_nominal_data(n: int = 2000) -> list[dict]:
-    """
-    Génère n snapshots en régime nominal avec bruit gaussien faible (±0.5%).
-    Utilisé pour entraîner l'autoencodeur et le LSTM.
-    """
     data = []
     for i in range(n):
-        # Légère dérive cyclique pour simuler des variations journalières
-        cycle   = math.sin(2 * math.pi * i / 200) * 0.01
-        sample  = {}
+        cycle = math.sin(2 * math.pi * i / 200) * 0.02
+        load  = random.uniform(0.60, 1.0)
+        sample = {}
         for param, nom in NOMINAL.items():
             if not isinstance(nom, (int, float)):
                 continue
-            noise          = random.gauss(0, abs(nom) * 0.005)
-            sample[param]  = round(nom * (1 + cycle) + noise, 3)
+            noise = random.gauss(0, abs(nom) * 0.015)
+            if param in ("active_power", "steam_flow_hp"):
+                sample[param] = round(nom * load + noise, 3)
+            elif param == "temperature_hp":
+                sample[param] = round(nom * (0.97 + 0.04 * load) + noise, 3)
+            elif param == "pressure_hp":
+                sample[param] = round(nom * (0.90 + 0.10 * load) + noise, 3)
+            elif param == "turbine_speed":
+                sample[param] = round(nom + random.gauss(0, abs(nom) * 0.001), 3)
+            elif param == "efficiency":
+                continue
+            else:
+                sample[param] = round(nom * (1 + cycle) + noise,3)
+
+        eta_base = _physics._eta_is_hp_corrected(sample["temperature_hp"]) * 100
+        sample["efficiency"] = round(eta_base + random.gauss(0, 0.5), 2)
         data.append(sample)
     return data
-
 
 def generate_degraded_data(n: int = 500) -> list[dict]:
     """
@@ -122,12 +133,12 @@ def train_autoencoder():
     backend = "Keras (réseau dense 7-4-2-4-7)" if autoencoder._model is not None else "fallback Mahalanobis (TensorFlow absent)"
     logger.info(f"  Modèle entraîné — backend : {backend}")
 
-    # ── Calibration du seuil sur un jeu de validation nominal (μ + 3σ) ──
+    # ── Calibration du seuil sur un jeu de validation nominal (μ + 4σ) ──
     val_nominal    = generate_nominal_data(n=500)
     nominal_errors = np.array([autoencoder.reconstruction_error(d) for d in val_nominal])
-    threshold      = float(nominal_errors.mean() + 3 * nominal_errors.std())
+    threshold      = float(nominal_errors.mean() + 4 * nominal_errors.std())
     autoencoder.set_threshold(threshold)
-    logger.info(f"  Seuil calibré (μ+3σ sur nominal) : {threshold:.6f}")
+    logger.info(f"  Seuil calibré (μ+4σ sur nominal) : {threshold:.6f}")
 
     # Validation sur données anomales
     anomaly_data    = generate_anomaly_data(n=200, params_pool=autoencoder.FEATURES)
