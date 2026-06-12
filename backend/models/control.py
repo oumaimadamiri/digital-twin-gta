@@ -11,12 +11,6 @@ class ControlMode(str, Enum):
     MANUAL = "MANUAL"
     AUTO   = "AUTO"
 
-
-class RegulationTarget(str, Enum):
-    POWER    = "POWER"     # PID puissance asservit V1 (défaut)
-    PRESSURE = "PRESSURE"  # PID pression HP asservit V1
-
-
 class SequenceState(str, Enum):
     IDLE     = "IDLE"
     STARTING = "STARTING"
@@ -27,13 +21,6 @@ class SequenceState(str, Enum):
 class Setpoints(BaseModel):
     power_mw:         Optional[float] = Field(None, ge=0, le=30,   description="Consigne puissance active (MW)")
     speed_rpm:        Optional[float] = Field(None, ge=0, le=7000,  description="Consigne vitesse (RPM) — informatif")
-    pressure_hp_bar:  Optional[float] = Field(None, ge=0, le=80,   description="Consigne pression HP (bar) — informatif")
-
-
-class RegulationTargetRequest(BaseModel):
-    target:   RegulationTarget
-    operator: str = "Opérateur"
-
 
 class ModeCommand(BaseModel):
     mode:     ControlMode
@@ -49,7 +36,7 @@ class PIDTuningCommand(BaseModel):
     kp:       float = Field(..., ge=0, description="Gain proportionnel")
     ki:       float = Field(..., ge=0, description="Gain intégral")
     kd:       float = Field(..., ge=0, description="Gain dérivé")
-    loop:     str   = Field("power", description="Boucle cible : power | speed | pressure")
+    loop:     str   = Field("power", description="Boucle cible : power | speed ")
     operator: str   = "Opérateur"
 
 
@@ -143,7 +130,6 @@ class ControlState(BaseModel):
     mode:                    ControlMode   = ControlMode.MANUAL
     setpoint_power_mw:       Optional[float] = None
     setpoint_speed_rpm:      Optional[float] = None
-    setpoint_pressure_hp_bar: Optional[float] = None
     pid_kp:                  float = 2.0
     pid_ki:                  float = 0.5
     pid_kd:                  float = 0.05

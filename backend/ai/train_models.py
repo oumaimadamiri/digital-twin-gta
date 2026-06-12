@@ -56,9 +56,14 @@ def generate_nominal_data(n: int = 2000) -> list[dict]:
 
 def generate_degraded_data(n: int = 500) -> list[dict]:
     """
-    Génère des données avec dégradation progressive (pour entraînement RUL).
-    Simule une turbine qui se détériore sur la durée.
+    Génère des données avec dégradation progressive (pour entraînement LSTM/RUL).
+    La direction de dérive est fixée une fois par paramètre pour obtenir une
+    tendance lissée et cohérente sur la série (et non un bruit aléatoire à chaque pas).
     """
+    directions = {
+        param: random.choice([-1, 1])
+        for param, nom in NOMINAL.items() if isinstance(nom, (int, float))
+    }
     data = []
     for i in range(n):
         progress = i / n   # 0 → 1 (dégradation croissante)
@@ -66,29 +71,32 @@ def generate_degraded_data(n: int = 500) -> list[dict]:
         for param, nom in NOMINAL.items():
             if not isinstance(nom, (int, float)):
                 continue
-            # Dégradation : les paramètres s'éloignent progressivement du nominal
-            drift         = nom * progress * 0.08 * random.choice([-1, 1])
+            drift         = nom * progress * 0.08 * directions[param]
             noise         = random.gauss(0, abs(nom) * 0.008)
             sample[param] = round(nom + drift + noise, 3)
         data.append(sample)
     return data
 
 
-def generate_anomaly_data(n: int = 200) -> list[dict]:
+def generate_anomaly_data(n: int = 200, params_pool: list[str] | None = None) -> list[dict]:
     """
     Génère des données avec anomalies franches (pour validation de l'autoencodeur).
     Les valeurs dépassent les seuils définis.
+
+    params_pool : paramètres pouvant être perturbés (défaut : toutes les clés de
+    THRESHOLDS). Pour valider l'autoencodeur, restreindre à `autoencoder.FEATURES` —
+    sinon une partie des anomalies générées portent sur des paramètres que l'AE
+    ne surveille pas et ne peut donc jamais détecter.
     """
+    pool = params_pool or list(THRESHOLDS.keys())
     data = []
     for _ in range(n):
         sample = {}
-        # Choisir un paramètre à perturber aléatoirement
-        param_to_perturb = random.choice(list(THRESHOLDS.keys()))
+        param_to_perturb = random.choice(pool)
         for param, nom in NOMINAL.items():
             if not isinstance(nom, (int, float)):
                 continue
             if param == param_to_perturb:
-                # Valeur hors seuil (±15 à 30%)
                 direction     = random.choice([-1, 1])
                 sample[param] = round(nom * (1 + direction * random.uniform(0.15, 0.30)), 3)
             else:
@@ -122,7 +130,7 @@ def train_autoencoder():
     logger.info(f"  Seuil calibré (μ+3σ sur nominal) : {threshold:.6f}")
 
     # Validation sur données anomales
-    anomaly_data    = generate_anomaly_data(n=200)
+    anomaly_data    = generate_anomaly_data(n=200, params_pool=autoencoder.FEATURES)
     detected        = sum(1 for d in anomaly_data if autoencoder.predict(d)["is_anomaly"])
     recall          = detected / len(anomaly_data) * 100
     logger.info(f"  Validation anomalies : {detected}/{len(anomaly_data)} détectées ({recall:.1f}% recall)")
@@ -322,7 +330,7 @@ def populate_history_db(n: int = 500):
             conn.execute("""
                 INSERT INTO gta_history (
                     timestamp, pressure_hp, temperature_hp, steam_flow_hp,
-                    pressure_bp, temperature_bp, steam_flow_bp,
+                    pressure_bp_in, temperature_bp, steam_flow_bp_in,
                     turbine_speed, active_power, power_factor, efficiency,
                     valve_v1, valve_v2, valve_v3, status, scenario
                 ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
@@ -331,9 +339,9 @@ def populate_history_db(n: int = 500):
                 d.get("pressure_hp", 60),
                 d.get("temperature_hp", 486),
                 d.get("steam_flow_hp", 120),
-                d.get("pressure_bp", 4.5),
+                d.get("pressure_bp_in", 4.5),
                 d.get("temperature_bp", 226),
-                d.get("steam_flow_bp", 74),
+                d.get("steam_flow_bp_in", 64),
                 d.get("turbine_speed", 6435),
                 d.get("active_power", 24),
                 d.get("power_factor", 0.85),

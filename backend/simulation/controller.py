@@ -23,9 +23,6 @@ from core.config import (
     PID_POWER_OUT_MIN, PID_POWER_OUT_MAX,
     PID_SPEED_KP, PID_SPEED_KI, PID_SPEED_KD,
     PID_SPEED_OUT_MIN, PID_SPEED_OUT_MAX,
-    PID_PRESSURE_KP, PID_PRESSURE_KI, PID_PRESSURE_KD,
-    PID_PRESSURE_OUT_MIN, PID_PRESSURE_OUT_MAX,
-    PRESSURE_HP_SETPOINT_BAR,
     SEQUENCE_START_DURATION_S, SEQUENCE_STOP_DURATION_S,
     SPEED_SYNC_THRESHOLD_RPM, SPEED_SYNC_HOLD_S,
     DROOP_ENABLED, DROOP_R, DROOP_FREQ_REF_HZ, DROOP_DEADBAND_HZ, DROOP_MAX_DELTA_MW,
@@ -70,7 +67,6 @@ class Controller:
         # Consignes
         self._setpoint_power_mw:        float | None = NOMINAL["active_power"]
         self._setpoint_speed_rpm:       float | None = NOMINAL["turbine_speed"]
-        self._setpoint_pressure_hp_bar: float | None = NOMINAL["pressure_hp"]
 
         # PID puissance → V1 (actif en GRID_CONNECTED)
         self._pid = PID(
@@ -82,17 +78,6 @@ class Controller:
             kp=PID_SPEED_KP, ki=PID_SPEED_KI, kd=PID_SPEED_KD,
             out_min=PID_SPEED_OUT_MIN, out_max=PID_SPEED_OUT_MAX,
         )
-        # PID pression HP → V1 (actif en GRID_CONNECTED si regulation_target == "PRESSURE")
-        # Convention de signe : V1↑ → débit ↑ → pression header HP ↓ (boiler limité)
-        # On inverse setpoint/measured dans compute() pour obtenir le sens correct.
-        self._pid_pressure = PID(
-            kp=PID_PRESSURE_KP, ki=PID_PRESSURE_KI, kd=PID_PRESSURE_KD,
-            out_min=PID_PRESSURE_OUT_MIN, out_max=PID_PRESSURE_OUT_MAX,
-        )
-        # Cible de régulation : "POWER" (défaut) ou "PRESSURE"
-        self._regulation_target: str = "POWER"
-        # Cache pression HP pour le tick courant (évite couplage circulaire)
-        self._last_pressure_hp_bar_cache: float = NOMINAL["pressure_hp"]
 
         # Pré-seed intégrateurs : machine déjà au point d'équilibre nominal au boot.
         # output = ki · integral à erreur nulle → integral = V1_nominal / ki
@@ -100,11 +85,11 @@ class Controller:
         _v1_nom = NOMINAL["valve_v1"]  # 100.0
         if self._pid.ki > 0:
             self._pid.seed(_v1_nom / self._pid.ki)            # 100/0.5 = 200.0
-        if self._pid_pressure.ki > 0:
-            self._pid_pressure.seed(_v1_nom / self._pid_pressure.ki)  # 100/0.25 = 400.0
 
-        self._last_pid_output: float | None = None
-        self._last_pid_error:  float | None = None
+        self._last_power_pid_output: float | None = None
+        self._last_power_pid_error:  float | None = None
+        self._last_speed_pid_output: float | None = None
+        self._last_speed_pid_error:  float | None = None
 
         # Séquences
         self._sequence_state:    str         = "IDLE"
@@ -163,8 +148,6 @@ class Controller:
                 # Seed PIDs pour bumpless transfer pur (l'erreur immédiate vue par le PID sera ~0 car la rampe part de la mesure)
                 seed_power = current_v1 / self._pid.ki if self._pid.ki > 0 else current_v1
                 self._pid.seed(seed_power)
-                seed_pressure = current_v1 / self._pid_pressure.ki if self._pid_pressure.ki > 0 else current_v1
-                self._pid_pressure.seed(seed_pressure)
             elif self.machine_state == "ROLLING":
                 # Seed PID vitesse
                 sp_rpm = self._setpoint_speed_rpm if self._setpoint_speed_rpm is not None else NOMINAL["turbine_speed"]
@@ -174,8 +157,6 @@ class Controller:
         else:
             self._pid.reset()
             self._pid_speed.reset()
-            self._pid_pressure.reset()
-            self._regulation_target = "POWER"
             if self._sequence_state in ("STARTING", "STOPPING"):
                 progress = self.get_sequence_progress() or 0.0
                 data_manager.log_operator_action(
@@ -208,22 +189,18 @@ class Controller:
         self,
         power_mw:        float | None = None,
         speed_rpm:       float | None = None,
-        pressure_hp_bar: float | None = None,
         operator:        str = "Opérateur",
     ) -> dict:
         before = {
             "power_mw":        self._setpoint_power_mw,
             "speed_rpm":       self._setpoint_speed_rpm,
-            "pressure_hp_bar": self._setpoint_pressure_hp_bar,
         }
         if power_mw        is not None: self._setpoint_power_mw        = float(power_mw)
         if speed_rpm       is not None: self._setpoint_speed_rpm       = float(speed_rpm)
-        if pressure_hp_bar is not None: self._setpoint_pressure_hp_bar = float(pressure_hp_bar)
 
         after = {
             "power_mw":        self._setpoint_power_mw,
             "speed_rpm":       self._setpoint_speed_rpm,
-            "pressure_hp_bar": self._setpoint_pressure_hp_bar,
         }
         import json
         data_manager.log_operator_action(
@@ -234,44 +211,10 @@ class Controller:
         )
         return {"accepted": True, "setpoints": after}
 
-    def set_regulation_target(self, target: str, operator: str = "Opérateur") -> dict:
-        """Bascule entre régulation POWER (puissance → V1) et PRESSURE (pression HP → V1).
-        Réservé à l'état GRID_CONNECTED uniquement."""
-        if target not in ("POWER", "PRESSURE"):
-            return {"accepted": False, "message": f"Cible invalide '{target}'. Valeurs : POWER, PRESSURE."}
-        if target == "PRESSURE" and self.machine_state != "GRID_CONNECTED":
-            return {"accepted": False,
-                    "message": f"Régulation PRESSURE impossible en état {self.machine_state}. Requis : GRID_CONNECTED."}
-
-        before = self._regulation_target
-        if before == target:
-            return {"accepted": True, "message": f"Déjà en régulation {target}."}
-
-        current_v1 = valve_controller._valves["v1"].target
-
-        if target == "PRESSURE":
-            # Bumpless : seed _pid_pressure depuis position V1 courante
-            seed = current_v1 / self._pid_pressure.ki if self._pid_pressure.ki > 0 else current_v1
-            self._pid_pressure.seed(seed)
-            self._pid.reset()
-        else:  # POWER
-            # Bumpless : seed _pid puissance depuis position V1 courante
-            seed = current_v1 / self._pid.ki if self._pid.ki > 0 else current_v1
-            self._pid.seed(seed)
-            self._pid_pressure.reset()
-
-        self._regulation_target = target
-        data_manager.log_operator_action(
-            user=operator, action_type="REGULATION_TARGET_CHANGE",
-            target="regulation_target", value_before=before, value_after=target,
-        )
-        logger.info("[Controller] Régulation → %s (par %s)", target, operator)
-        return {"accepted": True, "regulation_target": target, "bumpless_seed": round(current_v1, 2)}
-
     def set_pid_gains(self, kp: float, ki: float, kd: float,
                       operator: str = "Opérateur", loop: str = "power") -> dict:
         import json
-        pid_map = {"power": self._pid, "speed": self._pid_speed, "pressure": self._pid_pressure}
+        pid_map = {"power": self._pid, "speed": self._pid_speed}
         pid = pid_map.get(loop, self._pid)
         before = json.dumps({"kp": pid.kp, "ki": pid.ki, "kd": pid.kd})
         pid.kp = kp
@@ -302,8 +245,6 @@ class Controller:
         self._sequence_t0    = None
         self._pid.reset()
         self._pid_speed.reset()
-        self._pid_pressure.reset()
-        self._regulation_target = "POWER"
         valve_controller.emergency_close()
 
         # Libérer le rotor du réseau → la vitesse décroît librement par inertie
@@ -337,8 +278,6 @@ class Controller:
         self._sequence_state = "IDLE"
         self._pid.reset()
         self._pid_speed.reset()
-        self._pid_pressure.reset()
-        self._regulation_target = "POWER"
         # Réarmer la couche de protections
         try:
             from simulation.protection import protection_system
@@ -514,7 +453,6 @@ class Controller:
             self.machine_state = "STOPPED"
             self._pid.reset()
             self._pid_speed.reset()
-            self._pid_pressure.reset()
             self._advance_phase("PRE_CHECKS")
             try:
                 valve_controller.emergency_close()
@@ -545,20 +483,16 @@ class Controller:
         dt: float,
         current_power_mw: float,
         current_speed_rpm: float = 0.0,
-        current_pressure_hp_bar: float | None = None,
         current_freq_hz: float | None = None,
     ):
         """
         Mise à jour du superviseur.
         - En AUTO + GRID_CONNECTED + POWER    : PID_POWER + droop → V1
-        - En AUTO + GRID_CONNECTED + PRESSURE : PID_PRESSURE → V1
         - En AUTO + ROLLING                   : PID_SPEED → V1  (governor)
         - En MANUAL ou TRIPPED                : ne touche pas aux vannes
         """
         self._last_power_mw_cache    = current_power_mw
         self._last_speed_rpm_cache   = current_speed_rpm
-        if current_pressure_hp_bar is not None:
-            self._last_pressure_hp_bar_cache = current_pressure_hp_bar
         self._last_freq_hz_cache = current_freq_hz if current_freq_hz is not None else DROOP_FREQ_REF_HZ
 
         if self.tripped:
@@ -597,22 +531,16 @@ class Controller:
                     self._effective_power_setpoint_mw = current_power_mw
                     current_v1 = valve_controller._valves["v1"].target
                     seed_power = current_v1 / self._pid.ki if self._pid.ki > 0 else current_v1
-                    seed_pressure = current_v1 / self._pid_pressure.ki if self._pid_pressure.ki > 0 else current_v1
                     self._pid.seed(seed_power)
-                    self._pid_pressure.seed(seed_pressure)
                 return
-
-            if self._regulation_target == "PRESSURE":
-                self._update_pressure_pid(dt, self._last_pressure_hp_bar_cache)
-            else:
-                self._update_power_pid(dt, current_power_mw)
+            self._update_power_pid(dt, current_power_mw)
 
     def _update_speed_pid(self, dt: float, current_speed_rpm: float):
         """PID vitesse (governor) actif pendant la phase ROLLING."""
         sp_rpm   = self._setpoint_speed_rpm if self._setpoint_speed_rpm is not None else NOMINAL["turbine_speed"]
         v1_target = self._pid_speed.compute(sp_rpm, current_speed_rpm, dt)
-        self._last_pid_output = round(v1_target, 2)
-        self._last_pid_error  = round(self._pid_speed.error, 3)
+        self._last_speed_pid_output = round(v1_target, 2)
+        self._last_speed_pid_error  = round(self._pid_speed.error, 3)
         result = valve_controller.set_valve("v1", v1_target)
         if not result.get("accepted"):
             self._pid_speed._integral -= self._pid_speed.error * dt
@@ -627,8 +555,8 @@ class Controller:
         effective_setpoint = max(0.0, effective_setpoint + droop_offset)
         effective_setpoint = self._compute_ramped_setpoint(effective_setpoint, dt)
         v1_target = self._pid.compute(effective_setpoint, current_power_mw, dt)
-        self._last_pid_output = round(v1_target, 2)
-        self._last_pid_error  = round(self._pid.error, 3)
+        self._last_power_pid_output = round(v1_target, 2)
+        self._last_power_pid_error  = round(self._pid.error, 3)
         result = valve_controller.set_valve("v1", v1_target)
         if not result.get("accepted"):
             self._pid._integral -= self._pid.error * dt
@@ -645,23 +573,6 @@ class Controller:
         df_eff = df - math.copysign(DROOP_DEADBAND_HZ, df)
         delta_mw = -(NOMINAL["active_power"] / DROOP_R) * (df_eff / DROOP_FREQ_REF_HZ)
         return max(-DROOP_MAX_DELTA_MW, min(DROOP_MAX_DELTA_MW, delta_mw))
-
-    def _update_pressure_pid(self, dt: float, current_pressure_hp_bar: float):
-        """PID pression HP actif quand regulation_target == 'PRESSURE'.
-
-        Sens : V1↑ → débit admis ↑ → pression header HP ↓ (boiler limité).
-        Pour obtenir ce comportement avec un PID standard (error = sp - meas),
-        on échange setpoint et measured : error = current - sp.
-        → pression trop haute → error > 0 → output ↑ → V1 ouvre → pression ↓.
-        """
-        sp = self._setpoint_pressure_hp_bar or PRESSURE_HP_SETPOINT_BAR
-        # Swap intentionnel : setpoint=current, measurement=sp → error = current - sp
-        v1_target = self._pid_pressure.compute(current_pressure_hp_bar, sp, dt)
-        self._last_pid_output = round(v1_target, 2)
-        self._last_pid_error  = round(current_pressure_hp_bar - sp, 3)
-        result = valve_controller.set_valve("v1", v1_target)
-        if not result.get("accepted"):
-            self._pid_pressure._integral -= self._pid_pressure.error * dt
 
     def _check_auto_transitions(self, current_speed_rpm: float, current_power_mw: float):
         """Transitions automatiques du MachineState pendant les séquences."""
@@ -851,9 +762,6 @@ class Controller:
         # Consigne puissance nominale si aucune fixée
         if self._setpoint_power_mw is None:
             self._setpoint_power_mw = NOMINAL["active_power"]
-        # Consigne pression nominale si aucune fixée
-        if self._setpoint_pressure_hp_bar is None:
-            self._setpoint_pressure_hp_bar = PRESSURE_HP_SETPOINT_BAR
         try:
             from simulation.dynamics import rotor_dynamics
             rotor_dynamics.lock_to_grid()
@@ -875,11 +783,9 @@ class Controller:
             self.mode = "MANUAL"
         self._pid.reset()
         self._pid_speed.reset()
-        self._pid_pressure.reset()
         self._sync_entry_time = None
         self._setpoint_power_mw        = None
         self._setpoint_speed_rpm       = None
-        self._setpoint_pressure_hp_bar = None
         self._effective_power_setpoint_mw = None
         # Remettre la phase de démarrage à zéro → machine redémarrable
         self._advance_phase("PRE_CHECKS")
@@ -1159,8 +1065,10 @@ class Controller:
             "pid_kp":              self._pid.kp,
             "pid_ki":              self._pid.ki,
             "pid_kd":              self._pid.kd,
-            "pid_error":           self._last_pid_error  if self.mode == "AUTO" else None,
-            "pid_output":          self._last_pid_output if self.mode == "AUTO" else None,
+            "pid_power_error":  self._last_power_pid_error  if (self.mode == "AUTO" and self.machine_state == "GRID_CONNECTED") else None,
+            "pid_power_output": self._last_power_pid_output if (self.mode == "AUTO" and self.machine_state == "GRID_CONNECTED") else None,
+            "pid_speed_error":  self._last_speed_pid_error  if (self.mode == "AUTO" and self.machine_state in ("ROLLING", "SYNCHRONIZING")) else None,
+            "pid_speed_output": self._last_speed_pid_output if (self.mode == "AUTO" and self.machine_state in ("ROLLING", "SYNCHRONIZING")) else None,
             "sequence_state":      self._sequence_state,
             "sequence_progress":   self.get_sequence_progress(),
             "tripped":             self.tripped,
@@ -1169,13 +1077,6 @@ class Controller:
             "pid_speed_kp":        self._pid_speed.kp,
             "pid_speed_ki":        self._pid_speed.ki,
             "pid_speed_kd":        self._pid_speed.kd,
-            # Gains PID pression HP
-            "pid_pressure_kp":     self._pid_pressure.kp,
-            "pid_pressure_ki":     self._pid_pressure.ki,
-            "pid_pressure_kd":     self._pid_pressure.kd,
-            # Régulation pression HP (Phase 0 — A.1)
-            "regulation_target":        self._regulation_target,
-            "setpoint_pressure_hp_bar": self._setpoint_pressure_hp_bar,
             # Droop primaire (Phase 1 — B.1)
             "droop_enabled":            DROOP_ENABLED,
             "droop_r":                  DROOP_R,
@@ -1189,7 +1090,6 @@ class Controller:
         from simulation.dynamics import rotor_dynamics
         return {
             **self.snapshot(),
-            "setpoint_pressure_hp_bar": self._setpoint_pressure_hp_bar,
             "pid_integral":             round(self._pid._integral, 4),
             "valve_state":              valve_controller.get_state(),
             "grid_frequency":           rotor_dynamics.frequency_hz,

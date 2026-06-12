@@ -70,7 +70,6 @@ class FakeAPI:
         # Puissance, vitesse et pression HP simulées du dernier tick — utilisées par les PIDs
         self._last_simulated_power:       float = NOMINAL["active_power"]
         self._last_simulated_speed:       float = NOMINAL["turbine_speed"]
-        self._last_simulated_pressure_hp: float = NOMINAL["pressure_hp"]
 
         # Callback appelé à chaque nouveau snapshot
         self._on_new_data = None
@@ -173,7 +172,6 @@ class FakeAPI:
             dt,
             current_power_mw=self._last_simulated_power,
             current_speed_rpm=self._last_simulated_speed,
-            current_pressure_hp_bar=self._last_simulated_pressure_hp,
             current_freq_hz=_rotor.frequency_hz,
         )
 
@@ -406,7 +404,6 @@ class FakeAPI:
         self._last_nominal_power         = params_nom.active_power
         self._last_simulated_power       = params_sim.active_power
         self._last_simulated_speed       = params_sim.turbine_speed
-        self._last_simulated_pressure_hp = params_sim.pressure_hp
         return params_nom, params_sim
 
     def _apply_scenario(self, state: dict) -> tuple[dict, str]:

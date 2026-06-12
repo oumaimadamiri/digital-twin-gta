@@ -12,7 +12,7 @@ from models.control import (
     ModeCommand, SetpointsCommand, PIDTuningCommand,
     SequenceCommand, EmergencyTripCommand, ValveControlCommand, ControlState,
     AVRModeCommand, AVRSetpointCommand, AVRGainsCommand, AVRManualCommand,
-    RegulationTargetRequest, OperatorAction,
+    OperatorAction,
     AttemperatorSetpointCommand, AttemperatorEnableCommand,
     CondLevelSetpointCommand, CondVacuumSetpointCommand,
     BarrageWarmupCommand,
@@ -36,7 +36,7 @@ def get_control_state(debug: bool = Query(False)):
     Passer ?debug=true pour inclure les intégrales PID internes."""
     state = controller.get_state_dict()
     if not debug:
-        for key in ("pid_integral", "pid_speed_integral", "pid_pressure_integral"):
+        for key in ("pid_integral", "pid_speed_integral"):
             state.pop(key, None)
     return state
 
@@ -57,7 +57,6 @@ def set_setpoints(cmd: SetpointsCommand):
     result = controller.set_setpoint(
         power_mw        = sp.power_mw,
         speed_rpm       = sp.speed_rpm,
-        pressure_hp_bar = sp.pressure_hp_bar,
         operator        = cmd.operator,
     )
     return result
@@ -65,7 +64,7 @@ def set_setpoints(cmd: SetpointsCommand):
 
 @router.post("/pid")
 def tune_pid(cmd: PIDTuningCommand):
-    """Règle les gains PID : power (défaut), speed ou pressure."""
+    """Règle les gains PID : power (défaut) ou speed"""
     result = controller.set_pid_gains(cmd.kp, cmd.ki, cmd.kd,
                                       operator=cmd.operator, loop=cmd.loop)
     return result
@@ -193,19 +192,6 @@ def inhibit_protection(name: str, inhibited: bool = True, body: OperatorAction =
         target=name, value_before=str(not inhibited), value_after=str(inhibited),
     )
     return result
-
-
-# ── Régulation cible (POWER / PRESSURE) ──────────────────────────────────────
-
-@router.post("/regulation-target")
-def set_regulation_target(req: RegulationTargetRequest):
-    """Bascule entre régulation POWER (puissance → V1) et PRESSURE (pression HP → V1).
-    Réservé à l'état GRID_CONNECTED."""
-    result = controller.set_regulation_target(req.target.value, operator=req.operator)
-    if not result.get("accepted"):
-        raise HTTPException(status_code=409, detail=result["message"])
-    return result
-
 
 # ── Dégradation Weibull ───────────────────────────────────────────────────────
 

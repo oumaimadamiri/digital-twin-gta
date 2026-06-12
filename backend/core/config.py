@@ -297,16 +297,6 @@ AVR_COSPHI_SETPOINT  = float(os.getenv("AVR_COSPHI_SETPOINT",  0.85))   # cos φ
 AVR_Q_SENSITIVITY    = float(os.getenv("AVR_Q_SENSITIVITY",    10.0))   # MVAR par p.u. E_fd (déviation / 1.0)
 
 # ─────────────────────────────────────────────
-# PHASE 0 — A.1 : PID pression HP (régule via V1)
-# ─────────────────────────────────────────────
-PID_PRESSURE_KP            = float(os.getenv("PID_PRESSURE_KP",   1.20))   # %/bar
-PID_PRESSURE_KI            = float(os.getenv("PID_PRESSURE_KI",   0.25))   # %/(bar·s)
-PID_PRESSURE_KD            = float(os.getenv("PID_PRESSURE_KD",   0.05))
-PID_PRESSURE_OUT_MIN       = 0.0
-PID_PRESSURE_OUT_MAX       = 100.0
-PRESSURE_HP_SETPOINT_BAR   = float(os.getenv("PRESSURE_HP_SETPOINT_BAR", 60.0))  # défaut = nominal
-
-# ─────────────────────────────────────────────
 # PHASE 0 — A.2 : Saturation tanh sur Q réactive
 # ─────────────────────────────────────────────
 Q_TANH_SCALE_MVAR          = float(os.getenv("Q_TANH_SCALE_MVAR", 25.0))   # enveloppe de saturation (MVAR)

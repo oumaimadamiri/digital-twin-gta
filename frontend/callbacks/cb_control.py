@@ -264,7 +264,6 @@ def register(app):
         Output("ctrl-setpoints-overlay",    "style"),
         Output("ctrl-valves-overlay",       "style"),
         Output("ctrl-avr-overlay",          "style"),
-        Output("ctrl-regul-target-overlay", "style"),
         # Boutons grid
         Output("ctrl-btn-grid-sync",        "disabled"),
         Output("ctrl-btn-grid-disconnect",  "disabled"),
@@ -285,7 +284,6 @@ def register(app):
         Output("ctrl-avr-cosphi-val",       "children"),
         Output("ctrl-avr-sat-badge",        "children"),
         Output("ctrl-avr-sat-badge",        "style"),
-        Output("ctrl-avr-grid-warning",     "style"),
         Output("ctrl-avr-preview",          "children"),
         Output("ctrl-avr-preview",          "style"),
         Input("ctrl-state-interval",        "n_intervals"),
@@ -293,7 +291,7 @@ def register(app):
         prevent_initial_call=False,
     )
     def poll_control_state(n, pathname):
-        n_out = 30
+        n_out = 28
         if pathname != "/control":
             return (no_update,) * n_out
 
@@ -304,7 +302,6 @@ def register(app):
         mode         = state.get("control_mode", "MANUAL")
         machine_state = state.get("machine_state", "STOPPED")
         tripped      = state.get("tripped", False)
-        reg_target   = state.get("regulation_target", "POWER")
 
         # ── Mode badge ──
         mode_color = {"MANUAL": "#f97316", "AUTO": "#22c55e"}.get(mode, "#60a5fa")
@@ -347,10 +344,6 @@ def register(app):
         setpoints_style  = _GREYED if mode == "MANUAL" else _ACTIVE
         valves_style     = _GREYED if mode == "AUTO"   else _ACTIVE
         avr_style        = _GREYED if machine_state != "GRID_CONNECTED" else _ACTIVE
-        reg_target_style = _GREYED if machine_state != "GRID_CONNECTED" else _ACTIVE
-        # Avertissement AVR — visible uniquement en GRID_CONNECTED
-        avr_warn_style   = {"display": "block"} if machine_state == "GRID_CONNECTED" \
-                           else {"display": "none"}
 
         # ── Grid buttons — pilotés par startup_phase ──
         startup_phase            = state.get("startup_phase", "PRE_CHECKS")
@@ -393,14 +386,16 @@ def register(app):
         ])
 
         # ── PID Power ──
-        pid_err = state.get("pid_error")
-        pid_out = state.get("pid_output")
+        pid_err = state.get("pid_power_error")
+        pid_out = state.get("pid_power_output")
         power_err_str = f"{pid_err:+.3f} MW" if pid_err is not None else "—"
         power_out_str = f"{pid_out:.1f} %"   if pid_out is not None else "—"
 
-        # ── PID Speed (governor) — erreur/sortie non encore exposées, placeholder ──
-        speed_err_str = "— RPM"
-        speed_out_str = "— %"
+        # ── PID Speed (governor) ──
+        spd_err = state.get("pid_speed_error")
+        spd_out = state.get("pid_speed_output")
+        speed_err_str = f"{spd_err:+.1f} RPM" if spd_err is not None else "—"
+        speed_out_str = f"{spd_out:.1f} %"    if spd_out is not None else "—"
 
         # ── Interlocks ──
         warnings = state.get("interlock_warnings", [])
@@ -429,9 +424,6 @@ def register(app):
                 "color": "#22c55e" if bp_ok else "#ef4444",
             }),
         ], style={"marginTop": "4px"}))
-
-        # ── AVR warning ──
-        # (avr_warn_style calculé dans la section Overlays ci-dessus)
 
         # ── AVR preview (valeurs prévues post-couplage) ──
         _S_prev = {"fontFamily": "Share Tech Mono", "fontSize": "9px"}
@@ -491,29 +483,15 @@ def register(app):
             mode, mode_style,
             trip_banner_style, reset_btn_style,
             *step_classes,
-            setpoints_style, valves_style, avr_style, reg_target_style,
+            setpoints_style, valves_style, avr_style,
             grid_sync_disabled, grid_disconnect_disabled,
             couple_disabled, cancel_seq_disabled, sync_criteria_children,
             power_err_str, power_out_str,
             speed_err_str, speed_out_str,
             interlock_children,
             avr_vt_str, avr_efd_str, avr_cphi_str, sat_label, sat_style,
-            avr_warn_style,
             avr_preview_children, avr_preview_style,
         )
-
-    # ── Sync cible régulation au chargement (non écrasé chaque seconde) ──
-    @app.callback(
-        Output("ctrl-regul-target", "value"),
-        Input("store-control-bootstrap", "data"),
-        Input("url", "pathname"),
-        prevent_initial_call=False,
-    )
-    def sync_regul_target_on_load(boot, pathname):
-        if pathname != "/control":
-            return no_update
-        state = (boot or {}).get("state") or {}
-        return state.get("regulation_target", "POWER") or no_update
 
     # ── Pré-remplir gains PID au chargement ─────────────────────────
     @app.callback(
@@ -523,19 +501,16 @@ def register(app):
         Output("ctrl-pid-speed-kp",    "value"),
         Output("ctrl-pid-speed-ki",    "value"),
         Output("ctrl-pid-speed-kd",    "value"),
-        Output("ctrl-pid-pressure-kp", "value"),
-        Output("ctrl-pid-pressure-ki", "value"),
-        Output("ctrl-pid-pressure-kd", "value"),
         Input("store-control-bootstrap", "data"),
         Input("url", "pathname"),
         prevent_initial_call=False,
     )
     def prefill_pid_gains(boot, pathname):
         if pathname != "/control":
-            return (no_update,) * 9
+            return (no_update,) * 6
         state = (boot or {}).get("state") or {}
         if not state:
-            return (no_update,) * 9
+            return (no_update,) * 6
         return (
             state.get("pid_kp",          2.0),
             state.get("pid_ki",          0.5),
@@ -543,9 +518,6 @@ def register(app):
             state.get("pid_speed_kp",    0.5),
             state.get("pid_speed_ki",    0.1),
             state.get("pid_speed_kd",    0.01),
-            state.get("pid_pressure_kp", 1.0),
-            state.get("pid_pressure_ki", 0.2),
-            state.get("pid_pressure_kd", 0.02),
         )
 
     # ── Compteurs alarmes/trips dans le bandeau ──────────────────────
@@ -672,7 +644,6 @@ def register(app):
         Input("ctrl-btn-setpoints", "n_clicks"),
         State("ctrl-sp-power",       "value"),
         State("ctrl-sp-speed",       "value"),
-        State("ctrl-sp-pressure",    "value"),
         State("store-operator-name", "data"),
         prevent_initial_call=True,
     )
@@ -682,7 +653,6 @@ def register(app):
         sp = {}
         if power    is not None: sp["power_mw"]       = power
         if speed    is not None: sp["speed_rpm"]       = speed
-        if pressure is not None: sp["pressure_hp_bar"] = pressure
         if not sp:
             return _status_err("Aucune consigne saisie."), no_update
         data, err = _post("/control/setpoints",
@@ -692,27 +662,8 @@ def register(app):
         parts = []
         if power    is not None: parts.append(f"P={power} MW")
         if speed    is not None: parts.append(f"N={speed} RPM")
-        if pressure is not None: parts.append(f"P_HP={pressure} bar")
         return no_update, _notify_ok(' | '.join(parts), "Consignes appliquées")
-
-    # ── Cible de régulation ──────────────────────────────────────────
-    @app.callback(
-        Output("ctrl-regul-target-status", "children"),
-        Output("ctrl-notif-store", "data", allow_duplicate=True),
-        Input("ctrl-btn-regul-target", "n_clicks"),
-        State("ctrl-regul-target",   "value"),
-        State("store-operator-name", "data"),
-        prevent_initial_call=True,
-    )
-    def apply_regul_target(n, target, operator):
-        if not n:
-            return no_update, no_update
-        data, err = _post("/control/regulation-target",
-                          {"target": target, "operator": operator or "Opérateur"})
-        if err:
-            return _status_err(""), _notify("Bascule régulation impossible", err)
-        return no_update, _notify_ok(f"Cible de régulation → {target}","Régulation")
-
+    
     # ── Affichage sliders vannes ─────────────────────────────────────
     @app.callback(
         Output("val-ctrl-v1", "children"),
@@ -758,7 +709,7 @@ def register(app):
         return no_update, _notify_ok(f"V1={v1}% V2={v2}% V3={v3}% BP={vbp}%", "Vannes")
 
     # ── Réglage PID (multi-boucle via onglets) ───────────────────────
-    for _loop in ("power", "speed", "pressure"):
+    for _loop in ("power", "speed"):
         def _make_pid_callback(loop_name):
             @app.callback(
                 Output(f"ctrl-pid-{loop_name}-status", "children"),
@@ -912,6 +863,20 @@ def register(app):
         inj_str = f"{inj:.1f} %"       if inj      is not None else "—"
         return t_str, inj_str
 
+    @app.callback(
+        Output("ctrl-attemp-enable",   "value"),
+        Output("ctrl-attemp-setpoint", "value"),
+        Input("store-control-bootstrap", "data"),
+        prevent_initial_call=True,
+    )
+    def init_attemperator_controls(boot):
+        if not boot:
+            return no_update, no_update
+        data = boot.get("attemperator") or {}
+        enabled_val = ["ON"] if data.get("attemp_enabled") else []
+        setpoint    = data.get("attemp_setpoint_c")
+        return enabled_val, setpoint
+    
     @app.callback(
         Output("ctrl-attemp-status", "children"),
         Output("ctrl-notif-store", "data", allow_duplicate=True),

@@ -8,8 +8,8 @@ from components.sliders import slider_row
 
 # ── Helpers mise en page ──────────────────────────────────────────────
 
-def _section_header(title, color="var(--blue)"):
-    return html.Div([
+def _section_header(title, color="var(--blue)", info=None):
+    children = [
         html.Div(style={
             "width": "3px", "height": "14px", "flexShrink": "0",
             "background": color, "borderRadius": "2px",
@@ -17,8 +17,16 @@ def _section_header(title, color="var(--blue)"):
         html.Span(title, style={
             "fontWeight": "600", "fontSize": "12px", "letterSpacing": "0.5px",
         }),
-    ], style={"display": "flex", "alignItems": "center", "gap": "8px", "marginBottom": "12px"})
+    ]
+    if info:
+        children.append(_info_icon(info))
+    return html.Div(children, style={"display": "flex", "alignItems": "center", "gap": "8px", "marginBottom": "12px"})
 
+def _info_icon(text):
+    return html.Span([
+        "i",
+        html.Div(text, className="info-tooltip"),
+    ], className="info-icon")
 
 def _card(*children, extra_style=None):
     style = {"marginBottom": "16px"}
@@ -33,7 +41,14 @@ def _label(text):
         "fontFamily": "Share Tech Mono", "letterSpacing": "1px",
         "display": "block", "marginBottom": "4px",
     })
-
+def _label_with_info(text, info):
+    return html.Div([
+        html.Span(text, style={
+            "fontSize": "10px", "color": "#94a3b8",
+            "fontFamily": "Share Tech Mono", "letterSpacing": "1px",
+        }),
+        _info_icon(info),
+    ], style={"display": "flex", "alignItems": "center", "gap": "6px", "marginBottom": "4px"})
 
 def _subsection_divider(title, icon, color, first=False):
     return html.Div([
@@ -435,11 +450,19 @@ def _setpoints_card():
         ], style={"display": "flex", "alignItems": "center", "gap": "8px", "marginBottom": "8px"})
 
     return _card(
-        _section_header("CONSIGNES — MODE AUTO", "#f59e0b"),
+        _section_header("CONSIGNES — MODE AUTO", "#f59e0b", info=(
+            "Consignes utilisées par les régulateurs automatiques pour piloter "
+            "la vanne d'admission V1. "
+            "Puissance active (MW) : régule la production électrique une fois "
+            "la machine couplée au réseau. "
+            "Vitesse turbine (RPM) : consigne utilisée pendant la montée en "
+            "vitesse, avant le couplage au réseau. "
+            "Ce bloc est grisé en mode MANUEL : l'opérateur pilote directement "
+            "les vannes."
+        )),
         html.Div(id="ctrl-setpoints-overlay", children=[
             sp_row("Puissance active :", "ctrl-sp-power",    "MW",  "ex: 22.5", 0, 30),
             sp_row("Vitesse turbine :", "ctrl-sp-speed",     "RPM", "ex: 6435",  0, 7000),
-            sp_row("Pression HP :",    "ctrl-sp-pressure",   "bar", "ex: 60.0",  0, 80),
             html.Div([
                 html.Button("▶ Appliquer consignes", id="ctrl-btn-setpoints",
                             className="btn", style={"fontSize": "10px", "padding": "5px 12px"}),
@@ -450,39 +473,6 @@ def _setpoints_card():
             }),
         ]),
     )
-
-
-def _regulation_target_card():
-    return _card(
-        _section_header("CIBLE DE RÉGULATION", "#f59e0b"),
-        html.Div(id="ctrl-regul-target-overlay", children=[
-            _label("BOUCLE ACTIVE"),
-            dcc.RadioItems(
-                id="ctrl-regul-target",
-                options=[
-                    {"label": "  PUISSANCE (MW)   — régulation P_MW via V1",  "value": "POWER"},
-                    {"label": "  PRESSION (bar HP) — régulation P_HP via V1", "value": "PRESSURE"},
-                ],
-                value="POWER",
-                labelStyle={"display": "block", "marginBottom": "6px",
-                            "fontFamily": "Share Tech Mono", "fontSize": "11px",
-                            "color": "#cbd5e1", "cursor": "pointer"},
-                inputStyle={"marginRight": "8px"},
-            ),
-            html.Div([
-                html.Button("▶ Appliquer", id="ctrl-btn-regul-target",
-                            className="btn btn-outline",
-                            style={"fontSize": "10px", "padding": "5px 12px",
-                                   "borderColor": "#f59e0b", "color": "#f59e0b",
-                                   "marginTop": "6px"}),
-            ], style={"textAlign": "right"}),
-            html.Div(id="ctrl-regul-target-status", style={
-                "fontSize": "10px", "color": "#f59e0b",
-                "fontFamily": "Share Tech Mono", "marginTop": "6px",
-            }),
-        ]),
-    )
-
 
 def _pid_tab_content(loop, label_kp, label_ki, label_kd,
                      default_kp, default_ki, default_kd, color="#f59e0b"):
@@ -533,7 +523,16 @@ def _pid_tab_content(loop, label_kp, label_ki, label_kd,
 
 def _pid_card():
     return _card(
-        _section_header("RÉGULATEURS PID", "#f59e0b"),
+        _section_header("RÉGULATEURS PID", "#f59e0b", info=(
+            "Réglages des régulateurs automatiques (Kp/Ki/Kd) qui pilotent "
+            "la vanne V1. "
+            "Onglet Puissance MW : actif une fois la machine couplée au réseau, "
+            "ajuste V1 pour maintenir la puissance à la consigne. "
+            "Onglet Vitesse RPM : actif pendant la montée en vitesse, avant le "
+            "couplage, amène la turbine à sa vitesse nominale. "
+            "« Erreur »/« Sortie » affichent « — » quand le régulateur "
+            "correspondant n'est pas en service."
+        )),
         dcc.Tabs(
             id="ctrl-pid-tabs",
             value="power",
@@ -559,17 +558,6 @@ def _pid_card():
                                     "color": "#60a5fa", "background": "#0f2744",
                                     "borderTop": "2px solid #60a5fa", "padding": "4px 8px"},
                 ),
-                dcc.Tab(
-                    label="🔵 Pression HP",
-                    value="pressure",
-                    children=_pid_tab_content("pressure", "Kp", "Ki", "Kd", 1.0, 0.2, 0.02,
-                                              color="#a78bfa"),
-                    style={"fontFamily": "Share Tech Mono", "fontSize": "10px",
-                           "color": "#94a3b8", "padding": "4px 8px"},
-                    selected_style={"fontFamily": "Share Tech Mono", "fontSize": "10px",
-                                    "color": "#a78bfa", "background": "#0f2744",
-                                    "borderTop": "2px solid #a78bfa", "padding": "4px 8px"},
-                ),
             ],
             style={"marginTop": "4px"},
         ),
@@ -594,7 +582,16 @@ def _avr_card():
         ], style={"display": "flex", "alignItems": "center", "gap": "8px", "marginBottom": "7px"})
 
     return _card(
-        _section_header("RÉGULATION TENSION / COS φ — AVR", "#a855f7"),
+        _section_header("RÉGULATION TENSION / COS φ — AVR", "#a855f7", info=(
+            "Ce bloc régule l'excitation du générateur, c'est-à-dire le courant "
+            "envoyé dans le rotor de l'alternateur. Cette excitation détermine "
+            "la tension produite et la quantité d'énergie réactive échangée avec "
+            "le réseau électrique. "
+            "V_term : tension mesurée aux bornes du générateur (kV). "
+            "E_fd : niveau d'excitation actuel (1.0 = valeur nominale). "
+            "cos φ : facteur de puissance, c'est-à-dire la part d'énergie utile "
+            "(active) par rapport à l'énergie totale fournie au réseau."
+        )),
         html.Div(id="ctrl-avr-overlay", children=[
             # Indicateurs temps réel
             html.Div([
@@ -634,7 +631,18 @@ def _avr_card():
 
             # Mode AVR
             html.Div([
-                _label("MODE AVR"),
+                _label_with_info("MODE AVR", (
+                    "OFF : excitation coupée (uniquement machine à l'arrêt). "
+                    "TENSION : maintient la tension à la consigne V_set. "
+                    "cos φ : maintient le facteur de puissance à la consigne "
+                    "cos φ cible. "
+                    "MANUEL : l'opérateur fixe directement le niveau "
+                    "d'excitation (E_fd manuel). "
+                    "⚠ Une fois la machine couplée au réseau électrique, "
+                    "l'excitation doit rester active (TENSION ou cos φ). La "
+                    "couper en charge déclenche une protection — découpler la "
+                    "machine avant de passer en OFF."
+                )),
                 dcc.RadioItems(
                     id="ctrl-avr-mode",
                     options=[
@@ -650,26 +658,6 @@ def _avr_card():
                     inputStyle={"marginRight": "4px"},
                 ),
             ], style={"marginBottom": "8px"}),
-            # Avertissement — maintien excitation obligatoire en GRID_CONNECTED
-            html.Div(
-                id="ctrl-avr-grid-warning",
-                children=[
-                    html.Span("⚠ ", style={"color": "#f59e0b"}),
-                    html.Span(
-                        "L'excitation DOIT rester active pendant le couplage réseau. "
-                        "Désexciter en charge provoquerait un déclenchement protection. "
-                        "Découpler la machine avant de passer en mode OFF.",
-                        style={"color": "#f59e0b"},
-                    ),
-                ],
-                style={
-                    "fontSize": "9px", "fontFamily": "Share Tech Mono",
-                    "padding": "4px 8px", "marginBottom": "6px",
-                    "background": "rgba(245,158,11,0.08)",
-                    "border": "1px solid rgba(245,158,11,0.3)",
-                    "borderRadius": "4px", "display": "none",
-                },
-            ),
 
             # Consignes
             avr_input("V_set (kV)  :", "ctrl-avr-vset",       10.5, 9.0, 12.0, 0.1, "kV"),
@@ -689,9 +677,24 @@ def _avr_card():
 
             # Gains K_A / T_A
             html.Details([
-                html.Summary("Réglage avancé K_A / T_A", style={
+            html.Summary([
+                "Réglage avancé K_A / T_A",
+                _info_icon(
+                        "Réglages fins du régulateur d'excitation. "
+                        "K_A (gain) : plus il est élevé, plus la correction "
+                        "appliquée est forte pour un même écart de tension ou "
+                        "de cos φ. "
+                        "T_A (constante de temps) : vitesse de réaction du "
+                        "régulateur — une valeur plus petite rend la "
+                        "régulation plus rapide mais plus sensible aux à-coups. "
+                        "À ne modifier qu'en connaissance de cause : des "
+                        "valeurs mal réglées peuvent provoquer des oscillations "
+                        "de tension."
+                    ),          
+                ], style={
                     "fontSize": "11px", "color": "#a855f7",
                     "fontFamily": "Share Tech Mono", "cursor": "pointer",
+                    "display": "flex", "alignItems": "center", "gap": "6px",
                 }),
                 html.Div([
                     avr_input("K_A (gain) :", "ctrl-avr-ka", 2.0, 0, 1000, 0.1, ""),
@@ -716,12 +719,20 @@ def _avr_card():
         ),
     )
 
-
-
-
 def _attemperator_card():
     return _card(
-        _section_header("DÉSURCHAUFFEUR", "#22c55e"),
+        _section_header("DÉSURCHAUFFEUR", "#22c55e", info=(
+            "Régule la température de la vapeur HP avant son admission dans "
+            "la turbine, en y injectant de l'eau pulvérisée. "
+            "Si la température dépasse la consigne, l'injection s'ouvre et "
+            "refroidit la vapeur ; sinon elle reste fermée. "
+            "Ce dispositif protège la turbine contre les surchauffes et "
+            "stabilise la température d'admission malgré les variations de "
+            "la chaudière. "
+            "T° ACTUELLE : température de la vapeur après désurchauffe (°C). "
+            "INJECTION : débit d'eau de refroidissement injecté (%). "
+            "Consigne T° : température cible (300 à 520 °C)."
+        )),
         html.Div([
             html.Div([
                 _label("T° ACTUELLE"),
@@ -794,7 +805,17 @@ def _condenser_card():
         ], style={"display": "flex", "alignItems": "center", "gap": "8px", "marginBottom": "7px"})
 
     return _card(
-        _section_header("CONDENSEUR", "#22c55e"),
+        _section_header("CONDENSEUR", "#22c55e", info=(
+            "Le condenseur transforme la vapeur sortant de la turbine BP en "
+            "eau, ce qui referme le cycle. Deux régulations indépendantes : "
+            "Niveau hotwell : niveau d'eau condensée au fond du condenseur, "
+            "maintenu par une pompe d'extraction — trop bas risque de "
+            "désamorcer la pompe, trop haut risque de noyer le condenseur. "
+            "Vide condenseur : pression sous laquelle fonctionne le "
+            "condenseur, maintenue par un éjecteur — plus le vide est "
+            "poussé, plus la turbine BP extrait d'énergie de la vapeur. Un "
+            "vide dégradé pénalise directement le rendement de la machine."
+        )),
         html.Div([
             html.Div([
                 html.Span("Niveau hotwell : ", style={"fontSize": "10px", "color": "#94a3b8",
@@ -1000,7 +1021,6 @@ def layout():
                 html.Div([
                     _subsection_divider("THERMIQUE", "🔥", "#f59e0b", first=True),
                     _setpoints_card(),
-                    _regulation_target_card(),
                     _pid_card(),
 
                     _subsection_divider("ÉLECTRIQUE", "⚡", "#a855f7"),

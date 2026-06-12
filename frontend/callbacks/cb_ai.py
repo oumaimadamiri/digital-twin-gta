@@ -104,15 +104,13 @@ def register(app):
                    "fontSize": "12px", "fontWeight": "700"},
         )
 
-        # ── LSTM — précision RÉELLE (FIX: plus de valeur hardcodée) ───
-        # On affiche la précision si le modèle la fournit, sinon "N/A"
+        # ── LSTM — précision RÉELLE mesurée en continu ────────────────
         if lstm.get("ready"):
             raw_precision = lstm.get("precision_pct")
             if raw_precision is not None:
                 lstm_precision_text = f"{raw_precision:.0f}%"
             else:
-                # Modèle de fallback linéaire actif — pas de précision mesurable
-                lstm_precision_text = "Fallback linéaire"
+                lstm_precision_text = "Calcul en cours…"
         else:
             lstm_precision_text = "N/A"
 
@@ -129,11 +127,12 @@ def register(app):
                     y_pred = [s[i] if isinstance(s, list) else s for s in pred]
                     y_lo   = [s[i] if isinstance(s, list) else s for s in lo]
                     y_hi   = [s[i] if isinstance(s, list) else s for s in hi]
-                    color  = ["#00b4ff", "#00e676"][i % 2]
+                    color      = ["#00b4ff", "#00e676"][i % 2]
+                    fillcolor  = ["rgba(0,180,255,0.13)", "rgba(0,230,118,0.13)"][i % 2]
                     lstm_fig.add_trace(go.Scatter(x=x, y=y_pred, name=feat,
                                                   line={"color": color, "width": 2}))
                     lstm_fig.add_trace(go.Scatter(x=x + x[::-1], y=y_hi + y_lo[::-1],
-                                                  fill="toself", fillcolor=f"{color}22",
+                                                  fill="toself", fillcolor=fillcolor,
                                                   line={"color": "rgba(0,0,0,0)"},
                                                   showlegend=False))
 
@@ -216,7 +215,7 @@ def register(app):
             ]) for a in ai_alerts[:8]]
             tbl = html.Table([html.Thead(hdr), html.Tbody(rows)], className="data-table")
 
-        return (rul_label, ae_style, lstm_precision_text, rul_label,
+        return (f"{err:.4f}", ae_style, lstm_precision_text, rul_label,
                 ae_gauge, lstm_fig, ae_status, rul_progress, tbl)
 
     # ── Bouton analyse manuelle ────────────────────────────────────────
