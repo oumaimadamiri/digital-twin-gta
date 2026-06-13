@@ -113,7 +113,7 @@ class SimMachine:
 
     # ── Tick supervision (PID puissance + rampe vannes) ────────────
     def step(self, dt, current_power_mw):
-        if not self.tripped and self.machine_state == "GRID_CONNECTED":
+        if not self.tripped and self.machine_state == "GRID_CONNECTED" and self.mode == "AUTO":
             sp = self.setpoint_power_mw if self.setpoint_power_mw is not None else NOMINAL["active_power"]
             v1_target = self.pid.compute(sp, current_power_mw, dt)
             result = self.valves.set_valve("v1", v1_target)

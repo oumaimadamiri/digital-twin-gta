@@ -3,6 +3,7 @@ callbacks/cb_control.py — Callbacks page Contrôle Commande GTA (Cockpit 3 zon
 """
 import math
 import requests
+import json
 from dash import Input, Output, State, html, no_update, ctx, clientside_callback, ALL, MATCH
 from config import BACKEND
 from components.alert_banner import alert_item, alerts_panel
@@ -702,7 +703,7 @@ def register(app):
         State("store-operator-name", "data"),
         prevent_initial_call=True,
     )
-    def apply_setpoints(n, power, speed, pressure, operator):
+    def apply_setpoints(n, power, speed,operator):
         if not n:
             return no_update, no_update
         sp = {}
@@ -1515,10 +1516,11 @@ def register(app):
         Input("ctrl-btn-ack-all",  "n_clicks"),
         Input("ctrl-log-interval", "n_intervals"),
         Input("url",               "pathname"),
+        Input("store-alert-filter", "data"),
         State("store-operator-name", "data"),
         prevent_initial_call=False,
     )
-    def refresh_alarms(n_ack, n_int, pathname, operator):
+    def refresh_alarms(n_ack, n_int, pathname, alert_filter, operator):
         if pathname != "/control":
             return no_update
         if ctx.triggered_id == "ctrl-btn-ack-all" and n_ack:
@@ -1532,7 +1534,7 @@ def register(app):
             return html.Div("Aucune alarme récupérée.",
                             style={"fontSize": "11px", "color": "#64748b",
                                    "fontFamily": "Share Tech Mono"})
-        return alerts_panel(alarms_data)
+        return alerts_panel(alarms_data, alert_filter)
 
     # ── Journal des commandes ────────────────────────────────────────
     @app.callback(
@@ -1550,45 +1552,66 @@ def register(app):
                             style={"fontSize": "11px", "color": "#64748b",
                                    "fontFamily": "Share Tech Mono"})
 
-        _ACTION_COLOR = {
-            "MODE_CHANGE":        "#60a5fa",
-            "SETPOINT_CHANGE":    "#22c55e",
-            "VALVE_COMMAND":      "#f97316",
-            "EMERGENCY_TRIP":     "#ef4444",
-            "TRIP_RESET":         "#22c55e",
-            "SEQUENCE_START":     "#8b5cf6",
-            "SEQUENCE_CANCEL":    "#94a3b8",
-            "SEQUENCE_COMPLETED": "#22c55e",
-            "PID_TUNE":           "#f59e0b",
-            "ALERT_ACK":          "#64748b",
-            "AVR_MODE_CHANGE":    "#a855f7",
-            "AVR_SETPOINT_CHANGE":"#a855f7",
-            "AVR_GAINS_CHANGE":   "#a855f7",
-            "AVR_EFD_MANUAL":     "#a855f7",
-            "REGULATION_TARGET":  "#f59e0b",
-            "GRID_SYNCHRONIZE":   "#22c55e",
-            "GRID_DISCONNECT":    "#f97316",
-            "ATTEMP_ENABLE":      "#22c55e",
-            "ATTEMP_SETPOINT":    "#22c55e",
-            "COND_LEVEL_SP":      "#22c55e",
-            "COND_VACUUM_SP":     "#22c55e",
+        _ACTION_FR = {
+            "MODE_CHANGE":        ("Changement de mode",        "#60a5fa"),
+            "SETPOINT_CHANGE":    ("Modification consigne",     "#22c55e"),
+            "VALVE_COMMAND":      ("Commande vanne",            "#f97316"),
+            "EMERGENCY_TRIP":     ("Arrêt d'urgence (AU)",      "#ef4444"),
+            "TRIP_RESET":         ("Réarmement après trip",     "#22c55e"),
+            "SEQUENCE_START":     ("Démarrage séquence",        "#8b5cf6"),
+            "SEQUENCE_CANCEL":    ("Annulation séquence",       "#94a3b8"),
+            "SEQUENCE_COMPLETED": ("Séquence terminée",         "#22c55e"),
+            "PID_TUNE":           ("Réglage régulateur PID",    "#f59e0b"),
+            "ALERT_ACK":          ("Acquittement alarme",       "#64748b"),
+            "AVR_MODE_CHANGE":    ("Changement mode AVR",       "#a855f7"),
+            "AVR_SETPOINT_CHANGE":("Consigne AVR",              "#a855f7"),
+            "AVR_GAINS_CHANGE":   ("Réglage gains AVR",         "#a855f7"),
+            "AVR_EFD_MANUAL":     ("Excitation manuelle",       "#a855f7"),
+            "REGULATION_TARGET":  ("Cible de régulation",       "#f59e0b"),
+            "GRID_SYNCHRONIZE":   ("Synchronisation réseau",    "#22c55e"),
+            "GRID_DISCONNECT":    ("Découplage réseau",         "#f97316"),
+            "ATTEMP_ENABLE":      ("Désurchauffeur ON/OFF",     "#22c55e"),
+            "ATTEMP_SETPOINT":    ("Consigne désurchauffeur",   "#22c55e"),
+            "COND_LEVEL_SP":      ("Consigne niveau condenseur","#22c55e"),
+            "COND_VACUUM_SP":     ("Consigne vide condenseur",  "#22c55e"),
+            "SETTING_CHANGE":     ("Modification réglage",      "#94a3b8"),
         }
 
+        def _fmt_value(v):
+            """Tente de parser un JSON {clé: valeur} en texte lisible 'clé=valeur, ...'."""
+            if v is None:
+                return ""
+            try:
+                d = json.loads(v)
+                if isinstance(d, dict):
+                    return ", ".join(f"{k}={round(val,2) if isinstance(val,(int,float)) else val}"
+                                      for k, val in d.items())
+            except Exception:
+                pass
+            return str(v)
+        
         rows = []
         for a in data[:10]:
             ts    = (a.get("ts") or "")[:19].replace("T", " ")
             act   = a.get("action_type", "")
-            tgt   = a.get("target", "")
-            color = _ACTION_COLOR.get(act, "#94a3b8")
+            label, color = _ACTION_FR.get(act, (act, "#94a3b8"))
+            user  = a.get("user", "")
+            before = _fmt_value(a.get("value_before"))
+            after  = _fmt_value(a.get("value_after"))
+
+            detail = f"{before} → {after}" if (before or after) else ""
+
             rows.append(html.Div([
                 html.Span(ts, style={"color": "#64748b", "fontSize": "9px",
                                      "fontFamily": "Share Tech Mono", "marginRight": "8px",
                                      "minWidth": "120px"}),
-                html.Span(act, style={"color": color, "fontSize": "10px",
+                html.Span(label, style={"color": color, "fontSize": "10px",
                                       "fontFamily": "Share Tech Mono", "marginRight": "6px",
                                       "fontWeight": "600"}),
-                html.Span(tgt or "", style={"color": "#94a3b8", "fontSize": "10px",
-                                             "fontFamily": "Share Tech Mono"}),
+                html.Span(detail, style={"color": "#94a3b8", "fontSize": "10px",
+                                             "fontFamily": "Share Tech Mono", "flex": "1"}),
+                html.Span(user, style={"color": "#475569", "fontSize": "9px",
+                                       "fontFamily": "Share Tech Mono", "marginLeft": "8px"}),
             ], style={"display": "flex", "alignItems": "center",
                       "padding": "3px 0", "borderBottom": "1px solid #0f2744"}))
 

@@ -21,7 +21,7 @@ from simulation.protection import protection_system as _prot
 from simulation.degradation import degradation as _degradation
 from simulation.attemperator import attemperator as _attemp
 from simulation.condenser import condenser as _cond
-from core.config import DEGRADATION_ENABLED, ATTEMPERATOR_ENABLED, CONDENSER_ENABLED
+from core.config import DEGRADATION_ENABLED, ATTEMPERATOR_ENABLED, CONDENSER_ENABLED, AVR_VOLTAGE_SETPOINT, AVR_COSPHI_SETPOINT
 from simulation.sim_machine import SimMachine
 
 logger = logging.getLogger("gta.simulation")
@@ -138,6 +138,23 @@ class FakeAPI:
             return {"accepted": False, "message": "Aucun scénario actif — lancez un scénario pour piloter l'excitation simulée."}
         return self._sim.avr.set_e_fd_manual(e_fd_pu, operator=operator)
 
+    def reset_sim_controls(self, operator: str = "Opérateur") -> dict:
+        """Réinitialise ESV/AVR/lubrification du fork simulé à leurs valeurs nominales
+        — sandbox, ne touche pas aux vannes ni au scénario en cours."""
+        if self._sim is None:
+            return {"accepted": False, "message": "Aucun fork actif — activez le bac à sable ou un scénario."}
+        self._sim.valves.open_esv()
+        self._sim.avr.mode        = "VOLTAGE"
+        self._sim.avr.v_set_kv    = AVR_VOLTAGE_SETPOINT
+        self._sim.avr.cosphi_set  = AVR_COSPHI_SETPOINT
+        self._sim.avr.e_fd_pu     = 1.0
+        self._sim.avr.e_fd_manual = 1.0
+        self._sim.avr.oel_active  = self._sim.avr.uel_active = self._sim.avr.scl_active = False
+        self._sim.avr._oel_timer  = self._sim.avr._scl_timer = 0.0
+        self._sim.lube_press_offset = 0.0
+        self._sim.lube_temp_offset  = 0.0
+        return {"accepted": True}
+
     def trigger_scenario(self, scenario_id: int):
         """Active un scénario de perturbation."""
         scenario = get_scenario(scenario_id)
@@ -157,13 +174,23 @@ class FakeAPI:
                 self._scenario_history.pop(0)
 
     def stop_scenario(self):
-        """Arrête immédiatement le scénario en cours."""
+        """Arrête immédiatement le scénario en cours. Si la machine simulée a été
+        trippée par ce scénario et qu'aucun bac à sable manuel n'est actif, lève
+        le trip simulé pour permettre le retour automatique au mode miroir
+        (le fork est détruit au tick suivant, re-sync sur la machine réelle)."""
         self._active_scenario = None
         self._scenario_start_time = None
         self._power_factor_offset = 0.0
+        if self._sim is not None and self._sim.tripped and not self._sandbox_manual:
+            self._sim.tripped = False
+            self._sim.machine_state = _controller.machine_state
 
     def reset(self):
-        """Réinitialise l'état nominal complet."""
+        """Réinitialise les vannes du contrôleur ACTIF (fork bac à sable si actif,
+        sinon machine réelle) à leurs positions nominales — symétrique de
+        set_valves(). N'affecte ni le rotor réel, ni l'état du fork (trip simulé /
+        bac à sable) : pour lever un trip simulé, utiliser 'RESET MACHINE SIMULÉE'
+        (reset_sim_machine)."""
         self._state = {
             "pressure_hp":    NOMINAL["pressure_hp"],
             "temperature_hp": NOMINAL["temperature_hp"],
@@ -173,21 +200,14 @@ class FakeAPI:
             "valve_v3":       NOMINAL["valve_v3"],
             "valve_bp":       NOMINAL["valve_bp"],
         }
-        self._vc.reset_to_nominal()
-        self._active_scenario      = None
-        self._scenario_start_time  = None
-        self._power_factor_offset  = 0.0
-        self._oscillation_t        = 0.0
-        self._last_simulated_speed = 0.0
-        self._sim = None
-        self._sandbox_manual = False
-        _rotor.reset_to_stop()
+        target = self._sim.valves if self._sim is not None else self._vc
+        target.reset_to_nominal()
 
     def reset_sim_machine(self):
-        """Reset machine simulée : efface un trip simulé, désactive le bac à sable
-        et arrête le scénario → re-sync sur la réelle."""
+        """Reset machine simulée : efface un trip simulé et arrête le scénario en
+        cours. Le fork est détruit puis recréé au tick suivant depuis l'état réel
+        courant — le bac à sable manuel (s'il était actif) reste actif."""
         self._sim = None
-        self._sandbox_manual = False
         self.stop_scenario()
 
     def toggle_sandbox(self, active: bool, operator: str = "Opérateur") -> dict:
@@ -330,6 +350,8 @@ class FakeAPI:
         if (self._active_scenario is not None or self._sandbox_manual) and self._sim is None:
             self._sim = SimMachine()
             self._sim.fork_from(_controller, self._vc, _rotor, _avr)
+            if self._sandbox_manual:
+                self._sim.mode = "MANUAL"
         elif (self._active_scenario is None and not self._sandbox_manual
               and self._sim is not None and not self._sim.tripped):
             self._sim = None  # re-sync sur la machine réelle
@@ -398,6 +420,12 @@ class FakeAPI:
                 computed_sim["temp_bearing_aft"] = round(computed_sim.get("temp_bearing_aft", 76.0) + temp_penalty, 2)
                 computed_sim["vib_bearing_fwd"]  = round(computed_sim.get("vib_bearing_fwd", 2.1) + vib_penalty, 3)
                 computed_sim["vib_bearing_aft"]  = round(computed_sim.get("vib_bearing_aft", 1.8) + vib_penalty, 3)
+                # Huile froide (viscosité ↑) ou surpression → légère hausse ΔP filtre
+                # (effet mineur, niveau alarme uniquement — pas de trip direct)
+                filter_dp_penalty = max(0.0, -t_off) * 0.01 + max(0.0, p_off) * 0.02
+                computed_sim["lube_oil_filter_dp"] = round(
+                    computed_sim.get("lube_oil_filter_dp", 0.3) + filter_dp_penalty, 3
+                )
 
             # Deltas scénario sur champs auxiliaires (huile, paliers…)
             if self._active_scenario is not None and self._scenario_start_time is not None:
@@ -418,7 +446,24 @@ class FakeAPI:
                             computed_sim[param] = round(float(computed_sim[param]) + delta * aux_factor, 3)
                         except (TypeError, ValueError):
                             pass
-
+                # Scénario 7 — défaut d'excitation alternateur : injecte une perte
+                # d'E_fd proportionnelle au déficit cos φ → peut déclencher LOSS_OF_EXCIT
+                if forked:
+                    if self._active_scenario.id == 7:
+                        pf_delta = self._active_scenario.target_deltas.get("power_factor_offset", 0.0)
+                        self._sim.avr.excitation_fault_pu = abs(pf_delta) * aux_factor * 8.0
+                    else:
+                        self._sim.avr.excitation_fault_pu = 0.0
+                # Scénario 4 — perte de charge brutale → délestage réseau : le rotor
+                # se découple (perte de la raideur réseau) et accélère librement vers
+                # la vitesse algébrique forcée → franchit PROT_OVERSPEED_1_RPM
+                # → TRIP automatique via protection.check_all (emballement transitoire)
+                if self._active_scenario.id == 4 and forked and progress > 0.05:
+                    from core.config import PROT_OVERSPEED_1_RPM
+                    if self._sim.rotor._grid_locked:
+                        self._sim.rotor.unlock_from_grid()
+                    computed_sim["turbine_speed"] = PROT_OVERSPEED_1_RPM + 300.0
+                            
                 # Scénario 10 — pompe huile → trip de la machine SIMULÉE uniquement
                 if self._active_scenario.id == 10:
                     if progress > 0.7:
@@ -474,22 +519,54 @@ class FakeAPI:
                 computed_sim["machine_state"] = self._sim.machine_state
                 computed_sim["tripped"]       = self._sim.tripped
                 computed_sim["control_mode"]  = self._sim.mode
-                if self._sim.tripped:
+                # Alternateur découplé (trip OU machine non couplée réseau) : pas de
+                # courant, pas de puissance, pas de tension/cos φ côté réseau
+                _sim_disconnected = self._sim.tripped or self._sim.machine_state != "GRID_CONNECTED"
+                if _sim_disconnected:
                     computed_sim["voltage"]        = 0.0
                     computed_sim["current_a"]      = 0.0
                     computed_sim["active_power"]   = 0.0
                     computed_sim["reactive_power"] = 0.0
+                    computed_sim["power_factor"]   = 0.0
                 # AVR forké : excitation simulée indépendante de la machine réelle,
-                # nourrie par les mesures SIM du tick précédent (self._last_params)
-                self._sim.avr.update(
-                    dt,
-                    v_term_kv  = getattr(self._last_params, "voltage",       NOMINAL.get("voltage", 10.5)),
-                    cosphi     = getattr(self._last_params, "power_factor",  NOMINAL.get("power_factor", 0.85)),
-                    i_stator_a = getattr(self._last_params, "current_a",     0.0),
-                    q_mvar     = getattr(self._last_params, "reactive_power", 0.0),
-                    s_max_mva  = NOMINAL.get("apparent_power_max", 41.0),
-                )
+                # nourrie par les mesures SIM du tick précédent (self._last_params).
+                # Au trip simulé, coupe l'excitation (le contrôleur réel peut rester
+                # GRID_CONNECTED, donc le gate interne de AVRController ne suffit pas).
+                if self._sim.tripped:
+                    self._sim.avr.e_fd_pu    = 0.0
+                    self._sim.avr.saturated  = False
+                    self._sim.avr.oel_active = self._sim.avr.uel_active = self._sim.avr.scl_active = False
+                else:
+                    self._sim.avr.update(
+                        dt,
+                        v_term_kv  = getattr(self._last_params, "voltage",       NOMINAL.get("voltage", 10.5)),
+                        cosphi     = getattr(self._last_params, "power_factor",  NOMINAL.get("power_factor", 0.85)),
+                        i_stator_a = getattr(self._last_params, "current_a",     0.0),
+                        q_mvar     = getattr(self._last_params, "reactive_power", 0.0),
+                        s_max_mva  = NOMINAL.get("apparent_power_max", 41.0),
+                    )
                 computed_sim.update(self._sim.avr.snapshot())
+                # Couplage AVR → grandeurs électriques simulées : l'excitation
+                # pilotée en sandbox a maintenant un effet visible sur V, Q, cos φ, I
+                # (sur-excitation → V/Q montent ; sous-excitation → V/Q descendent)
+                if not _sim_disconnected:
+                    from core.config import AVR_Q_GAIN_MVAR_PER_PU
+                    p_mw       = computed_sim.get("active_power", NOMINAL["active_power"])
+                    v_kv       = computed_sim["avr_v_term"]
+                    s_max      = NOMINAL.get("apparent_power_max", 41.0)
+                    cosphi_nom = self._sim.avr.cosphi_set or NOMINAL.get("power_factor", 0.85)
+                    # Q nominal recalculé depuis P et cosφ_set (cohérent par construction,
+                    # contrairement à NOMINAL["reactive_power"] qui est une valeur fixe
+                    # incohérente avec P=24MW/cosφ=0.85)
+                    q_nominal  = p_mw * math.tan(math.acos(max(0.01, min(1.0, cosphi_nom))))
+                    q_mvar     = q_nominal + (self._sim.avr.e_fd_pu - 1.0) * AVR_Q_GAIN_MVAR_PER_PU
+                    q_max      = math.sqrt(max(s_max ** 2 - p_mw ** 2, 0.0))
+                    q_mvar     = max(-q_max, min(q_max, q_mvar))
+                    s_mva      = math.hypot(p_mw, q_mvar)
+                    computed_sim["voltage"]        = v_kv
+                    computed_sim["reactive_power"] = round(q_mvar, 2)
+                    computed_sim["power_factor"]   = round(p_mw / s_mva, 3) if s_mva > 0 else 1.0
+                    computed_sim["current_a"]      = round(s_mva * 1000.0 / (math.sqrt(3) * v_kv), 1) if v_kv > 0 else 0.0
 
             status_sim = self._compute_status(computed_sim)
             params_sim = GTAParameters(
@@ -580,7 +657,12 @@ class FakeAPI:
         if machine_st == "TRIPPED" or _controller.tripped:
             return StatusEnum.TRIPPED
         if machine_st == "STOPPED":
-            return StatusEnum.NORMAL
+            startup_phase = params.get("startup_phase", "PRE_CHECKS")
+            if startup_phase in ("BARRAGE_OPENED", "ESV_OPENED", "V1_OPENING"):
+                return StatusEnum.STARTING
+            return StatusEnum.STOPPED
+        if machine_st in ("ROLLING", "SYNCHRONIZING"):
+            return StatusEnum.STARTING
 
         critical_count = 0
         warning_count  = 0

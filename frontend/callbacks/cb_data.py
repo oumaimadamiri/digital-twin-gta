@@ -13,7 +13,7 @@ CORRECTIONS :
 """
 import json
 import requests
-from dash import Input, Output, State, no_update
+from dash import Input, Output, State, no_update, ctx, ALL
 from config import BACKEND
 
 _session = requests.Session()
@@ -35,6 +35,18 @@ _RT_FIELDS = frozenset([
 ])
 
 def register(app):
+
+    # ── Filtre du panneau d'alertes (Dashboard + Contrôle-Commande) ───
+    @app.callback(
+        Output("store-alert-filter", "data"),
+        Input({"type": "alert-filter-btn", "index": ALL}, "n_clicks"),
+        prevent_initial_call=True,
+    )
+    def set_alert_filter(n_clicks_list):
+        triggered = ctx.triggered_id
+        if not triggered or not ctx.triggered[0]["value"]:
+            return no_update
+        return triggered["index"]
 
     # ── Activation/désactivation de interval-fast selon la page ──────
     @app.callback(

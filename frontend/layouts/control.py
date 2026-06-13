@@ -1012,7 +1012,7 @@ def layout():
                     _mode_card(),
                     _startup_phase_card(),
                     _valves_card(),
-                ], style={"flex": "7 1 0", "minWidth": "0"}),
+                ], style={"flex": "9 1 0", "minWidth": "0"}),
 
                 # ── ZONE B — Régulation & Contrôle (~44%) ────────────
                 html.Div([
@@ -1026,7 +1026,7 @@ def layout():
                     _subsection_divider("AUXILIAIRES", "⚙", "#22c55e"),
                     _attemperator_card(),
                     _condenser_card(),
-                ], style={"flex": "11 1 0", "minWidth": "0"}),
+                ], style={"flex": "13 1 0", "minWidth": "0"}),
 
                 # ── ZONE C — Sécurité & Traçabilité (~28%) ───────────
                 html.Div([
@@ -1034,7 +1034,7 @@ def layout():
                     _interlocks_card(),
                     _protections_card(),
                     _alarms_card(),
-                ], style={"flex": "7 1 0", "minWidth": "0"}),
+                ], style={"flex": "10 1 0", "minWidth": "0"}),
 
             ], className="ctrl-3-zones",
                style={"display": "flex", "width": "100%", "gap": "16px", "alignItems": "flex-start"}),

@@ -164,7 +164,7 @@ window.patchGtaSynoptic = function(data) {
     }
 
     /* ── Couleurs statut ── */
-    const STATUS_COL = { NORMAL: "#10b981", DEGRADED: "#f59e0b", CRITICAL: "#ef4444", "TRIPPED": "#ef4444" };
+    const STATUS_COL = { NORMAL: "#10b981", DEGRADED: "#f59e0b", CRITICAL: "#ef4444", TRIPPED: "#ef4444", STOPPED: "#64748b" , STARTING: "#f59e0b"};
     const sc = STATUS_COL[status] || "#10b981";
 
     /* ── Alarmes ── */
@@ -444,8 +444,8 @@ window.patchGtaSynoptic = function(data) {
     _setFill("syn-tbl-dot",  sc);
     const dotEl = document.getElementById("syn-tbl-dot");
     if (dotEl) {
-        if (status !== "NORMAL") dotEl.classList.add("pulse");
-        else                     dotEl.classList.remove("pulse");
+        if (status !== "NORMAL" && status !== "STOPPED") dotEl.classList.add("pulse");
+        else                                              dotEl.classList.remove("pulse");
     }
 
     /* ── Table État Système — page 2 ──────────────────────────────────── */

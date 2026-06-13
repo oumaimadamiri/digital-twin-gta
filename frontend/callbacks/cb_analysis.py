@@ -13,11 +13,10 @@ MODIFICATIONS :
 """
 import requests
 import plotly.graph_objects as go
-from dash import Input, Output, State, html, no_update, ctx, Patch
+from dash import Input, Output, State, html, no_update, ctx
 import pandas as pd
 from datetime import datetime, timedelta
 from config import BACKEND, TIMEZONE_OFFSET
-from components.gauges import make_gauge, get_gauge_color, GAUGE_CONFIGS
 
 _session = requests.Session()
 
@@ -65,15 +64,12 @@ _DARK_LAYOUT_LIVE = {
     },
 }
 
-_GAUGES_FAST = ["pressure_hp", "temperature_hp", "active_power",
-                "turbine_speed", "efficiency"]
-_GAUGES_SLOW = ["reactive_power", "apparent_power", "power_factor",
-                "current_a", "voltage",
-                "steam_flow_hp", "pressure_bp_in",
-                "pressure_bp_barillet", "steam_flow_condenser"]
-
 _ALL_FILTER_IDS = ["qf-live", "qf-1h", "qf-6h", "qf-24h", "qf-7j", "qf-all"]
 
+_STATUS_LABEL_FR = {
+    "NORMAL": "NORMAL", "DEGRADED": "DÉGRADÉ", "CRITICAL": "CRITIQUE",
+    "TRIPPED": "TRIPPÉ", "STOPPED": "ARRÊTÉ", "STARTING": "DÉMARRAGE",
+}
 
 def register(app):
 
@@ -263,57 +259,6 @@ def register(app):
         return fig
 
     # ══════════════════════════════════════════════════════════════════
-    # Jauges CRITIQUES (Fast) — live sur push WS
-    # ══════════════════════════════════════════════════════════════════
-
-    @app.callback(
-        [Output(f"gauge-{k}", "figure") for k in _GAUGES_FAST],
-        Input("store-current-data", "data"),
-        State("url", "pathname"),
-        prevent_initial_call=True,
-    )
-    def update_gauges_fast(d, pathname):
-        if pathname != "/analysis" or not d:
-            return [no_update] * len(_GAUGES_FAST)
-        patches = []
-        for k in _GAUGES_FAST:
-            v = d.get(k)
-            if v is None:
-                patches.append(no_update)
-            else:
-                p = Patch()
-                color = get_gauge_color(v, GAUGE_CONFIGS[k])
-                p["data"][0]["value"] = v
-                p["data"][0]["number"]["font"]["color"] = color
-                p["data"][0]["gauge"]["bar"]["color"] = color
-                patches.append(p)
-        return patches
-
-    # ── Jauges SECONDAIRES (Slow) ────────────────────────────────────
-    @app.callback(
-        [Output(f"gauge-{k}", "figure") for k in _GAUGES_SLOW],
-        Input("store-current-data", "data"),
-        State("url", "pathname"),
-        prevent_initial_call=True,
-    )
-    def update_gauges_slow(d, pathname):
-        if pathname != "/analysis" or not d:
-            return [no_update] * len(_GAUGES_SLOW)
-        patches = []
-        for k in _GAUGES_SLOW:
-            v = d.get(k)
-            if v is None:
-                patches.append(no_update)
-            else:
-                p = Patch()
-                color = get_gauge_color(v, GAUGE_CONFIGS[k])
-                p["data"][0]["value"] = v
-                p["data"][0]["number"]["font"]["color"] = color
-                p["data"][0]["gauge"]["bar"]["color"] = color
-                patches.append(p)
-        return patches
-
-    # ══════════════════════════════════════════════════════════════════
     # KPIs & Analyse HISTORIQUE
     # Court-circuité si mode == "live" pour ne pas écraser le graphe live.
     # ══════════════════════════════════════════════════════════════════
@@ -460,9 +405,13 @@ def register(app):
         # ── Pie statuts ───────────────────────────────────────────────
         pie_labels = list(dist.keys())
         pie_values = [v["count"] for v in dist.values()]
+        _PIE_COLORS = {
+            "NORMAL": "#10b981", "DEGRADED": "#f59e0b", "CRITICAL": "#ef4444",
+            "TRIPPED": "#fca5a5", "STOPPED": "#64748b","STARTING": "#fbbf24",
+        }
         pie = go.Figure(go.Pie(
             labels=pie_labels, values=pie_values, hole=0.6,
-            marker={"colors": ["#10b981", "#f59e0b", "#ef4444"]},
+            marker={"colors": [_PIE_COLORS.get(l, "#64748b") for l in pie_labels]},
             textfont={"family": "Inter, sans-serif", "size": 11, "color": "#f8fafc"},
         ))
         pie.update_layout(
@@ -483,7 +432,7 @@ def register(app):
             html.Td(f"{d.get('active_power', 0):.2f}"),
             html.Td(f"{d.get('power_factor', 0):.3f}"),
             html.Td(html.Span(
-                d.get("status", "NORMAL"),
+                _STATUS_LABEL_FR.get(d.get("status"), d.get("status", "NORMAL")),
                 className=f"status-pill {d.get('status','NORMAL').lower()}"
                           if isinstance(d.get("status"), str) else "status-pill normal",
             )),

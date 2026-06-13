@@ -10,7 +10,7 @@ MODIFICATIONS :
 """
 from dash import html, dcc
 from components.sidebar import create_sidebar
-from components.gauges import gauge_card, make_gauge, create_empty_fig, GAUGE_CONFIGS
+from components.gauges import create_empty_fig
 from config import BACKEND
 from datetime import date
 
@@ -24,45 +24,11 @@ _VIEW_PARAM_OPTIONS = [
     {"label": "Débit vapeur HP (T/h)", "value": "steam_flow_hp"},
     {"label": "Courant (A)", "value": "current_a"},
 ]
-
-
-_GAUGES_FAST = ["pressure_hp", "temperature_hp", "active_power",
-                "turbine_speed", "efficiency"]
-
-_GAUGES_SLOW_ELEC = ["reactive_power", "apparent_power", "power_factor",
-                     "current_a", "voltage"]
-
-_GAUGES_SLOW_BP   = ["steam_flow_hp", "pressure_bp_in", "pressure_bp_barillet",
-                     "steam_flow_condenser"]
-
-
-def _gauge_section(title, gauge_keys, color):
-    return html.Div([
-        html.Div([
-            html.Span(style={
-                "display": "inline-block", "width": "8px", "height": "8px",
-                "borderRadius": "50%", "background": color,
-                "marginRight": "8px", "verticalAlign": "middle",
-            }),
-            html.Span(title, style={
-                "color": "#64748b", "fontSize": "10px",
-                "fontFamily": "Share Tech Mono", "letterSpacing": "1.5px",
-                "textTransform": "uppercase",
-            }),
-        ], style={"marginBottom": "8px", "paddingLeft": "4px"}),
-        html.Div(
-            [gauge_card(f"gauge-{k}", make_gauge(
-                 GAUGE_CONFIGS[k]["min"] + (GAUGE_CONFIGS[k]["max"] - GAUGE_CONFIGS[k]["min"]) * 0.5,
-                 GAUGE_CONFIGS[k]
-             )) for k in gauge_keys],
-            style={
-                "display": "grid",
-                "gridTemplateColumns": f"repeat({len(gauge_keys)}, 1fr)",
-                "gap": "8px",
-            },
-        ),
-    ], style={"marginBottom": "16px"})
-
+def _info_icon(text):
+    return html.Span([
+        "i",
+        html.Div(text, className="info-tooltip"),
+    ], className="info-icon")
 
 def _kpi_badge(badge_id, label, value_id, unit, color, sub_id=None, sub_label=""):
     return html.Div([
@@ -94,9 +60,16 @@ def layout():
                 # BANDE KPI
                 # ══════════════════════════════════════════════════════════
                 html.Div([
-                    html.Div("Indicateurs sur la période sélectionnée",
-                             className="card-title",
-                             style={"marginBottom": "12px"}),
+                    html.Div([
+                        html.Span("Indicateurs sur la période sélectionnée",
+                                  className="card-title", style={"marginBottom": "0"}),
+                        _info_icon(
+                            "Statistiques agrégées sur la période choisie via les filtres "
+                            "rapides ou la plage de dates : puissance moyenne, rendement, "
+                            "vitesse, alertes générées, temps passé en état dégradé et "
+                            "nombre de points enregistrés."
+                        ),
+                    ],style={"display": "flex", "alignItems": "center", "gap": "6px", "marginBottom": "12px"}),
                     html.Div([
                         _kpi_badge("kpi-power-avg",  "Puissance moyenne",
                                    "kpi-power-avg-val",  "MW",   "#10b981",
@@ -118,41 +91,6 @@ def layout():
                                    sub_id="kpi-period-sub"),
                     ], className="kpi-row"),
                 ], className="card", style={"marginBottom": "16px"}),
-
-                # ══════════════════════════════════════════════════════════
-                # JAUGES TEMPS RÉEL
-                # ══════════════════════════════════════════════════════════
-                html.Details([
-                    html.Summary([
-                        html.Span("⚡", style={"marginRight": "8px"}),
-                        html.Span("Jauges temps réel", style={
-                            "fontFamily": "Share Tech Mono", "fontSize": "11px",
-                            "letterSpacing": "1.5px", "textTransform": "uppercase",
-                            "color": "#64748b", "cursor": "pointer",
-                        }),
-                    ], style={"listStyle": "none", "display": "flex",
-                              "alignItems": "center", "padding": "12px 20px",
-                              "background": "var(--bg-card-alt)",
-                              "borderRadius": "8px", "cursor": "pointer",
-                              "border": "1px solid var(--border)",
-                              "marginBottom": "8px",
-                              "userSelect": "none"}),
-
-                    html.Div([
-                        _gauge_section(
-                            "Paramètres critiques — vapeur HP / turbine / puissance",
-                            _GAUGES_FAST, "#f97316",
-                        ),
-                        _gauge_section(
-                            "Électrique — alternateur",
-                            _GAUGES_SLOW_ELEC, "#10b981",
-                        ),
-                        _gauge_section(
-                            "Vapeur BP — condenseur / barillet",
-                            _GAUGES_SLOW_BP, "#38bdf8",
-                        ),
-                    ], style={"paddingTop": "12px"}),
-                ], style={"marginBottom": "16px"}),
 
                 # ══════════════════════════════════════════════════════════
                 # FILTRES DATE & PARAMÈTRES
@@ -304,7 +242,14 @@ def layout():
                     ], className="card", style={"flex": "3"}),
 
                     html.Div([
-                        html.Div("Répartition des états", className="card-title"),
+                        html.Div([
+                            html.Span("Répartition des états", className="card-title", style={"marginBottom": "0"}),
+                            _info_icon(
+                                "Pourcentage du temps passé par la machine dans chaque statut "
+                                "(NORMAL / DÉGRADÉ / CRITIQUE) sur la période sélectionnée "
+                                "ci-dessus (plage de dates ou filtre rapide 1h/6h/24h/7j/Tout)."
+                            ),
+                        ], style={"display": "flex", "alignItems": "center", "gap": "6px", "marginBottom": "8px"}),
                         dcc.Graph(id="status-pie",
                                   figure=create_empty_fig(220, "Calcul des statuts..."),
                                   config={"displayModeBar": False},

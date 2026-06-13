@@ -318,19 +318,20 @@ def register(app):
     @app.callback(
         Output("alerts-panel", "children"),
         Input("interval-slow", "n_intervals"),
+        Input("store-alert-filter", "data"),
         State("url", "pathname"),
         prevent_initial_call=True,
     )
-    def update_alerts(_, pathname):
+    def update_alerts(_, alert_filter, pathname):
         if pathname != "/":
             return no_update
         try:
             r = _session.get(
                 f"{BACKEND}/settings/alerts?limit=10&only_active=true", timeout=1
             )
-            return alerts_panel(r.json())
+            return alerts_panel(r.json(), alert_filter)
         except Exception:
-            return alerts_panel([])
+            return alerts_panel([], alert_filter)
 
     # ── Acquittement alertes ─────────────────────────────────────────────
     from dash import MATCH

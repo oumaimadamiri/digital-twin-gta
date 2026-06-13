@@ -91,43 +91,29 @@ def alert_item(a):
 
     return html.Div(content, className=f"alert-banner {css}")
 
-
-def _severity_badge(label, count, color, pulse_class=""):
-    return html.Div([
-        html.Span("●", style={"color": color, "fontSize": "14px", "marginRight": "5px"}),
-        html.Span(f"{count}", style={"fontWeight": "700", "fontSize": "15px", "color": color}),
+def _filter_badge(label, count, color, key, active, pulse_class=""):
+    is_active = (key == active)
+    return html.Button([
+        html.Span("●", style={"color": color, "fontSize": "12px", "marginRight": "5px"}),
+        html.Span(f"{count}", style={"fontWeight": "700", "fontSize": "13px", "color": color}),
         html.Span(f" {label}", style={
-            "fontSize": "10px", "color": "#94a3b8",
+            "fontSize": "9px", "color": "#94a3b8", "fontWeight": "700",
             "fontFamily": "Share Tech Mono", "marginLeft": "3px",
         }),
-    ], className=pulse_class, style={
-        "display": "flex", "alignItems": "center",
+    ], id={"type": "alert-filter-btn", "index": key},
+       n_clicks=0,
+       className=pulse_class,
+       style={
+        "display": "flex", "alignItems": "center", "cursor": "pointer",
         "padding": "5px 10px",
-        "background": "rgba(15,39,68,0.6)",
+        "background": "rgba(15,39,68,0.9)" if is_active else "rgba(15,39,68,0.6)",
         "borderRadius": "6px",
-        "border": f"1px solid {color}44",
+        "border": f"1px solid {color}" if is_active else f"1px solid {color}44",
+        "flex": "0 0 auto",
     })
 
 
-def _section(label, color, items):
-    if not items:
-        return None
-    is_open = color == "#ef4444"
-    return html.Details([
-        html.Summary(f"{label}  ({len(items)})", style={
-            "fontSize": "11px", "fontFamily": "Share Tech Mono",
-            "color": color, "fontWeight": "700", "cursor": "pointer",
-            "letterSpacing": "1px", "padding": "6px 0",
-            "userSelect": "none",
-        }),
-        html.Div(
-            [alert_item(a) for a in items],
-            style={"maxHeight": "220px", "overflowY": "auto", "paddingRight": "4px"},
-        ),
-    ], open=is_open, className="alert-section")
-
-
-def alerts_panel(alerts):
+def alerts_panel(alerts, active_filter="critical"):
     if not alerts:
         return html.Div(
             "✅  Aucune alerte active — système nominal",
@@ -135,21 +121,34 @@ def alerts_panel(alerts):
                    "fontSize": "12px", "padding": "10px"},
         )
 
-    critical = [a for a in alerts if a.get("severity", "").upper() == "CRITICAL"]
-    warning  = [a for a in alerts if a.get("severity", "").upper() == "WARNING"]
-    info     = [a for a in alerts if a.get("severity", "").upper() == "INFO"]
-    n_crit   = len(critical)
+    groups = {
+        "critical": [a for a in alerts if a.get("severity", "").upper() == "CRITICAL"],
+        "warning":  [a for a in alerts if a.get("severity", "").upper() == "WARNING"],
+        "info":     [a for a in alerts if a.get("severity", "").upper() == "INFO"],
+    }
+    n_crit = len(groups["critical"])
 
-    header = html.Div([
-        _severity_badge("Critique",      n_crit,       "#ef4444", "alert-pulse-red" if n_crit > 0 else ""),
-        _severity_badge("Avertissement", len(warning), "#f59e0b"),
-        _severity_badge("Info",          len(info),    "#60a5fa"),
-    ], style={"display": "flex", "gap": "8px", "marginBottom": "12px", "flexWrap": "wrap"})
+    if active_filter not in groups:
+        active_filter = "critical"
 
-    sections = [s for s in [
-        _section("🔴 ALARMES CRITIQUES", "#ef4444", critical),
-        _section("⚠  AVERTISSEMENTS",   "#f59e0b", warning),
-        _section("ℹ  INFORMATIONS",      "#60a5fa", info),
-    ] if s is not None]
+    badges_row = html.Div([
+        _filter_badge("Critique",      n_crit,             "#ef4444", "critical", active_filter,
+                       pulse_class="alert-pulse-red" if n_crit > 0 else ""),
+        _filter_badge("Avertissement", len(groups["warning"]), "#f59e0b", "warning", active_filter),
+        _filter_badge("Info",          len(groups["info"]),    "#60a5fa", "info",    active_filter),
+    ], style={"display": "flex", "flexDirection": "row", "flexWrap": "wrap", "gap": "8px",
+              "marginBottom": "10px"})
 
-    return html.Div([header] + sections)
+    items = groups[active_filter]
+    if items:
+        content = html.Div(
+            [alert_item(a) for a in items],
+            style={"maxHeight": "320px", "overflowY": "auto", "paddingRight": "4px"},
+        )
+    else:
+        content = html.Div("Aucune alerte dans cette catégorie", style={
+            "color": "#64748b", "fontSize": "10px",
+            "fontFamily": "Share Tech Mono", "padding": "10px 0",
+        })
+
+    return html.Div([badges_row, content])

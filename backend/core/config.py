@@ -265,6 +265,7 @@ PROT_VIB_TRIP_MMS        = float(os.getenv("PROT_VIB_TRIP_MMS",          7.1))  
 PROT_AXIAL_DISP_MM       = float(os.getenv("PROT_AXIAL_DISP_MM",         0.8))  # mm
 PROT_BEARING_TEMP_TRIP_C = float(os.getenv("PROT_BEARING_TEMP_TRIP_C", 110.0))  # °C
 PROT_PRESSURE_HP_MAX_BAR = float(os.getenv("PROT_PRESSURE_HP_MAX_BAR",  70.0))  # bar
+PROT_PRESSURE_HP_MIN_BAR = float(os.getenv("PROT_PRESSURE_HP_MIN_BAR", 49.0))  # bar — perte source vapeur
 PROT_TEMP_HP_MAX_C       = float(os.getenv("PROT_TEMP_HP_MAX_C",       510.0))  # °C
 PROT_VOLTAGE_MAX_KV      = float(os.getenv("PROT_VOLTAGE_MAX_KV",      11.55))  # kV  (110%)
 PROT_CURRENT_MAX_A       = float(os.getenv("PROT_CURRENT_MAX_A",       3500.0))  # A
@@ -294,6 +295,7 @@ AVR_E_FD_MIN         = 0.5           # Saturation basse (p.u.) — évite déexc
 AVR_E_FD_MAX         = 2.5           # Saturation haute (p.u.)
 AVR_VOLTAGE_SETPOINT = float(os.getenv("AVR_VOLTAGE_SETPOINT", 10.5))   # kV
 AVR_COSPHI_SETPOINT  = float(os.getenv("AVR_COSPHI_SETPOINT",  0.85))   # cos φ cible
+AVR_Q_GAIN_MVAR_PER_PU = float(os.getenv("AVR_Q_GAIN_MVAR_PER_PU", 15.0))  # MVAR par p.u. d'écart e_fd
 AVR_Q_SENSITIVITY    = float(os.getenv("AVR_Q_SENSITIVITY",    10.0))   # MVAR par p.u. E_fd (déviation / 1.0)
 
 # ─────────────────────────────────────────────

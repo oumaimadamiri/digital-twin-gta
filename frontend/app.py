@@ -75,6 +75,8 @@ app.layout = html.Div([
     dcc.Store(id="store-dash-panel-tab", data=0),
     # Nom de l'opérateur courant (sélectionnable dans Settings)
     dcc.Store(id="store-operator-name", data="Opérateur"),
+    # Filtre actif du panneau d'alertes : "critical" / "warning" / "info"
+    dcc.Store(id="store-alert-filter", data="critical"),
     # Bootstrap page Contrôle — peuplé une fois au load, relit /control/bootstrap
     dcc.Store(id="store-control-bootstrap", data={}),
 

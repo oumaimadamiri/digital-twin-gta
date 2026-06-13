@@ -16,6 +16,8 @@ class StatusEnum(str, Enum):
     DEGRADED = "DEGRADED"
     CRITICAL = "CRITICAL"
     TRIPPED  = "TRIPPED"
+    STOPPED  = "STOPPED"
+    STARTING = "STARTING"
 
 
 class GTAParameters(BaseModel):

@@ -7,6 +7,8 @@ STATUS_COLORS = {
     "DEGRADED": {"stroke": "#f59e0b", "glow": "rgba(245,158,11,0.25)",  "label": "#f59e0b"},
     "CRITICAL": {"stroke": "#ef4444", "glow": "rgba(239,68,68,0.3)",    "label": "#ef4444"},
     "TRIPPED":  {"stroke": "#ef4444", "glow": "rgba(239,68,68,0.45)",   "label": "#fca5a5"},
+    "STOPPED":  {"stroke": "#64748b", "glow": "rgba(100,116,139,0.25)", "label": "#94a3b8"},
+    "STARTING": {"stroke": "#f59e0b", "glow": "rgba(245,158,11,0.25)",  "label": "#fbbf24"},
 }
 
 _DEFAULTS = {
@@ -246,8 +248,9 @@ def _build_synoptic_div(data: dict, static_ids: bool, show_table: bool = True, i
     c_tbl_pbar = "#ef4444" if p_bar_bp > 5.0 else "#a78bfa"
     c_tbl_vib  = "#ef4444" if vib_fwd > 4.5 else "#fbbf24"
     c_tbl_oilt = "#ef4444" if oil_t > 60 else "#60a5fa"
-    c_tbl_dot  = {"NORMAL": "#10b981", "DEGRADED": "#f59e0b", "CRITICAL": "#ef4444", "TRIPPED": "#ef4444"}.get(status, "#10b981")
-    tbl_pulse  = "pulse" if status != "NORMAL" else ""
+    c_tbl_dot  = {"NORMAL": "#10b981", "DEGRADED": "#f59e0b", "CRITICAL": "#ef4444",
+                   "TRIPPED": "#ef4444", "STOPPED": "#64748b","STARTING": "#f59e0b"}.get(status, "#10b981")
+    tbl_pulse  = "pulse" if status not in ("NORMAL", "STOPPED") else ""
     # Page 2 — couleurs initiales
     c_tbl3_qbpin  = "#38bdf8" if q_bp_src > 0.5 else "#475569"
     c_tbl2_pbpin  = "#38bdf8"

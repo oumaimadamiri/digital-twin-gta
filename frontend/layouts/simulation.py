@@ -25,6 +25,11 @@ _CRITICITE = {
     6:  ("MODÉRÉ",   "#818cf8"),
     5:  ("MODÉRÉ",   "#818cf8"),
 }
+def _info_icon(text):
+    return html.Span([
+        "i",
+        html.Div(text, className="info-tooltip"),
+    ], className="info-icon")
 
 def _slider_row(valve_id, label, default, color, description):
     return html.Div([
@@ -66,8 +71,12 @@ def scenario_card(s):
             html.Span(icon, className="scenario-icon",
                       style={"fontSize": "18px", "marginRight": "8px"}),
             html.Div([
-                html.Div(s.get("name", "N/A"), className="scenario-name",
-                         style={"fontSize": "12px", "fontWeight": "600"}),
+                html.Div([
+                    s.get("name", "N/A"),
+                    _info_icon(s.get("description", "")),
+                ], className="scenario-name",
+                   style={"fontSize": "12px", "fontWeight": "600",
+                          "display": "flex", "alignItems": "center", "gap": "6px"}),
                 html.Div([
                     html.Span(f"#{s.get('id', 0)}", style={"color": "#334155",
                                                       "marginRight": "8px",
@@ -164,6 +173,36 @@ def layout():
                 ],
             ),
             dcc.Store(id="syn-sim-patch-tick", data=0),
+            dcc.Store(id="sim-toast-store"),
+            html.Span(id="sim-toast-dummy", style={"display": "none"}),
+
+            # ── Bandeau Mode (Lecture / Bac à sable) ────────────────────────
+            html.Div([
+                html.Div([
+                    html.Span("MODE : ", style={
+                        "color": "#475569", "fontSize": "11px",
+                        "fontFamily": "Share Tech Mono", "letterSpacing": "1px",
+                    }),
+                    html.Span(id="sandbox-mode-label", children="Lecture (données réelles)",
+                              style={"fontWeight": "700", "fontSize": "12px",
+                                     "color": "#64748b", "marginRight": "12px"}),
+                    html.Span(
+                        "Activez le bac à sable pour piloter les vannes et tester des "
+                        "scénarios sans perturber la machine réelle.",
+                        id="sandbox-mode-hint",
+                        style={"fontSize": "10.5px", "color": "#475569",
+                               "fontFamily": "Share Tech Mono"},
+                    ),
+                ], style={"flex": "1", "minWidth": "0"}),
+                html.Button("🧪 Activer bac à sable", id="btn-sandbox-toggle",
+                            className="btn btn-outline"),
+            ], id="sandbox-banner", style={
+                "display": "flex", "alignItems": "center", "justifyContent": "space-between",
+                "gap": "16px", "padding": "10px 16px", "marginBottom": "14px",
+                "background": "rgba(10,16,26,0.6)", "border": "1px solid #1e3a5f",
+                "borderRadius": "8px", "flexWrap": "wrap",
+            }),
+
             # ── Accordéon horizontal : 3 sections dans la même ligne ───────────
             html.Div([
 
@@ -206,31 +245,34 @@ def layout():
                                 _slider_row("bp", "Vanne BP — Condenseur", 80, "#38bdf8",
                                             "Sortie BP vers condenseur · min 5% sécurité"),
                             ]),
-                            html.Hr(style={"borderColor": "#0f2744", "margin": "10px 0"}),
                             html.Div([
-                                html.Div("BAC À SABLE MANUEL", style={
-                                    "fontSize": "9px", "color": "#334155",
-                                    "letterSpacing": "1.5px", "marginBottom": "6px",
-                                    "fontFamily": "Share Tech Mono",
-                                }),
-                                html.Div("Active une copie isolée de la machine (sans scénario) "
-                                         "pour piloter ESV / AVR / lubrification sans perturber le flux nominal / IA.",
-                                         style={"fontSize": "9.5px", "color": "#475569",
-                                                "fontFamily": "Share Tech Mono", "marginBottom": "6px"}),
-                                html.Button("🧪 Activer bac à sable", id="btn-sandbox-toggle",
-                                            className="btn btn-outline"),
-                                html.Div(id="sandbox-feedback", style={
-                                    "marginTop": "6px", "fontFamily": "Share Tech Mono",
-                                    "fontSize": "10.5px", "color": "#64748b", "minHeight": "18px",
-                                }),
-                            ]),
-                            html.Hr(style={"borderColor": "#0f2744", "margin": "10px 0"}),
+                                html.Button("✔ Appliquer", id="btn-apply-valves",
+                                            className="btn btn-success"),
+                                html.Button("↺ Reset nominal", id="btn-reset",
+                                            className="btn btn-danger",
+                                            style={"marginLeft": "10px"}),
+                            ], style={"marginTop": "14px"}),
+                        ]),
+                    ], className="card section-card"),
+                ], id="section-valves-wrap", className="accordion-section"),
+
+                # ── ESV / AVR / Lubrification (bac à sable) ──────────────────────
+                html.Div([
+                    html.Div([
+                        _collapsible_header("ESV / AVR / Lubrification", "toggle-sandbox-ctrl",
+                                           accent_color="var(--green)", is_open=False),
+                        html.Div(id="collapse-sandbox-ctrl", className="collapse-body",
+                                 style={"display": "none"}, children=[
+
                             html.Div([
                                 html.Div("ESV — SOUPAPE D'ARRÊT HP", style={
                                     "fontSize": "9px", "color": "#334155",
                                     "letterSpacing": "1.5px", "marginBottom": "6px",
                                     "fontFamily": "Share Tech Mono",
                                 }),
+                                html.Div("Disponible pendant un scénario ou le bac à sable manuel.",
+                                         style={"fontSize": "9.5px", "color": "#475569",
+                                                "fontFamily": "Share Tech Mono", "marginBottom": "6px"}),
                                 html.Div([
                                     html.Button("Ouvrir ESV", id="btn-esv-open",
                                                  className="btn btn-success",
@@ -238,12 +280,7 @@ def layout():
                                     html.Button("Fermer ESV", id="btn-esv-close",
                                                  className="btn btn-danger"),
                                 ]),
-                                html.Div(id="esv-feedback", style={
-                                    "marginTop": "6px", "fontFamily": "Share Tech Mono",
-                                    "fontSize": "10.5px", "color": "#64748b", "minHeight": "18px",
-                                }),
                             ]),
-
                             html.Hr(style={"borderColor": "#0f2744", "margin": "10px 0"}),
                             html.Div([
                                 html.Div("EXCITATION ALTERNATEUR (AVR) — SANDBOX SCÉNARIO", style={
@@ -289,10 +326,6 @@ def layout():
                                 ], style={"marginBottom": "8px"}),
                                 html.Button("✔ Appliquer AVR", id="btn-apply-avr",
                                             className="btn btn-success"),
-                                html.Div(id="avr-feedback", style={
-                                    "marginTop": "6px", "fontFamily": "Share Tech Mono",
-                                    "fontSize": "10.5px", "color": "#64748b", "minHeight": "18px",
-                                }),
                             ]),
                             html.Hr(style={"borderColor": "#0f2744", "margin": "10px 0"}),
                             html.Div([
@@ -322,25 +355,12 @@ def layout():
                                 ], style={"marginBottom": "8px"}),
                                 html.Button("✔ Appliquer Lubrification", id="btn-apply-lube",
                                             className="btn btn-success"),
-                                html.Div(id="lube-feedback", style={
-                                    "marginTop": "6px", "fontFamily": "Share Tech Mono",
-                                    "fontSize": "10.5px", "color": "#64748b", "minHeight": "18px",
-                                }),
                             ]),
-                            html.Div([
-                                html.Button("✔ Appliquer", id="btn-apply-valves",
-                                            className="btn btn-success"),
-                                html.Button("↺ Reset nominal", id="btn-reset",
-                                            className="btn btn-danger",
-                                            style={"marginLeft": "10px"}),
-                            ], style={"marginTop": "14px"}),
-                            html.Div(id="valve-feedback", style={
-                                "marginTop": "10px", "fontFamily": "Share Tech Mono",
-                                "fontSize": "10.5px", "color": "#64748b", "minHeight": "20px",
-                            }),
+                        html.Button("↺ Réinitialiser ESV/AVR/Lubrification", id="btn-reset-controls",
+                             n_clicks=0, className="btn btn-secondary", style={"marginTop": "8px"}),
                         ]),
                     ], className="card section-card"),
-                ], id="section-valves-wrap", className="accordion-section"),
+                ], id="section-sandbox-ctrl-wrap", className="accordion-section"),
 
                 # ── Scénarios ────────────────────────────────────────────────────
                 html.Div([
@@ -357,10 +377,6 @@ def layout():
                                           style={"color": "#64748b", "fontFamily": "Share Tech Mono",
                                                  "padding": "20px"})],
                             ),
-                            html.Div(id="scenario-feedback", style={
-                                "marginTop": "10px", "fontFamily": "Share Tech Mono",
-                                "fontSize": "10.5px", "color": "#f97316", "minHeight": "18px",
-                            }),
                         ]),
                     ], className="card section-card"),
                 ], id="section-scenarios-wrap", className="accordion-section"),

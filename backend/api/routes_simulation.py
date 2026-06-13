@@ -34,10 +34,14 @@ def trigger_scenario(body: ScenarioTrigger, operator: str = "Opérateur"):
         logger.error(f"Tentative de déclenchement d'un scénario invalide : {body.scenario_id}")
         raise HTTPException(status_code=404, detail=f"Scénario {body.scenario_id} introuvable")
 
-    if controller.tripped or controller.machine_state == "STOPPED":
+    current     = fake_api.get_current()
+    sim_state   = current.machine_state if current else controller.machine_state
+    sim_tripped = current.tripped if current else controller.tripped
+
+    if sim_tripped or sim_state != "GRID_CONNECTED":
         raise HTTPException(
             status_code=400,
-            detail="Scénario indisponible — la machine doit être en marche (hors STOPPED) et hors AU pour déclencher un scénario.",
+            detail="Scénario indisponible — la machine doit être en marche (GRID_CONNECTED) et hors AU pour déclencher un scénario.",
         )
 
     fake_api.trigger_scenario(body.scenario_id)
@@ -138,6 +142,18 @@ def set_sim_avr_setpoint(body: AVRSetpointCommand):
 def set_sim_avr_efd(body: AVRManualCommand):
     """E_fd manuel AVR de la machine simulée — sandbox, scénario actif requis."""
     return fake_api.set_avr_efd_manual(body.e_fd_pu, operator=body.operator)
+
+@router.post("/reset-controls")
+def reset_sim_controls(operator: str = "Opérateur"):
+    """Réinitialise ESV/AVR/lubrification du fork simulé (sandbox) à leurs valeurs nominales."""
+    result = fake_api.reset_sim_controls(operator=operator)
+    if result.get("accepted"):
+        data_manager.log_operator_action(
+            user=operator, action_type="SIM_CONTROLS_RESET",
+            target="esv_avr_lube_sim", value_before="modifié", value_after="nominal",
+        )
+        logger.info(f"ACTION OPÉRATEUR [{operator}]: Reset ESV/AVR/Lubrification (sandbox) → nominal")
+    return result
 
 @router.get("/history")
 def get_scenario_history():

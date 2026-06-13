@@ -55,6 +55,9 @@ class AVRController:
         self._scl_timer = 0.0
         self._last_i_stator = 0.0
 
+        # Défaut d'excitation injecté par un scénario (sandbox) — soustrait de E_fd avant limiteurs
+        self.excitation_fault_pu = 0.0
+
     # ──────────────────────────────────────────────────────
     # TICK — appelée depuis fake_api._generate_dual()
     # ──────────────────────────────────────────────────────
@@ -83,7 +86,7 @@ class AVRController:
 
         if self.mode == "MANUAL":
             # Les limiteurs s'appliquent aussi en MANUAL (protection machine maintenue)
-            e_fd = max(AVR_E_FD_MIN, min(AVR_E_FD_MAX, self.e_fd_manual))
+            e_fd = max(AVR_E_FD_MIN, min(AVR_E_FD_MAX, self.e_fd_manual)) - self.excitation_fault_pu
             e_fd = self._apply_limiters(e_fd, dt, i_stator_a, q_mvar, s_max_mva)
             clamped = max(AVR_E_FD_MIN, min(AVR_E_FD_MAX, e_fd))
             self.saturated = (clamped != self.e_fd_manual)
@@ -106,7 +109,7 @@ class AVRController:
 
         # ZOH analytique : α = exp(−dt / T_A)
         alpha    = math.exp(-dt / max(self.t_a, 1e-3))
-        e_fd_new = self.e_fd_pu * alpha + target * (1.0 - alpha)
+        e_fd_new = self.e_fd_pu * alpha + target * (1.0 - alpha) - self.excitation_fault_pu
 
         # Limiteurs OEL / UEL / SCL — appliqués avant le hard clamp
         e_fd_new = self._apply_limiters(e_fd_new, dt, i_stator_a, q_mvar, s_max_mva)
