@@ -305,7 +305,9 @@ def _make_table(rows: list) -> html.Div:
         bg    = "rgba(255,255,255,0.02)" if i % 2 == 0 else "transparent"
 
         is_auto = user in _AUTO_USERS
-        actor   = ("🤖 Automate" if is_auto else f"👤 {user}")
+        actor   = ("⚙ Automate" if is_auto else f"👤 {user}")
+        actor_title = ("Action exécutée automatiquement par le séquenceur AUTO "
+                        "ou la logique de supervision (hors module IA)") if is_auto else None
         actor_color = "#94a3b8" if is_auto else "#e2e8f0"
 
         raw_tooltip = (f"action={atype} | cible={row.get('target')} | "
@@ -330,7 +332,7 @@ def _make_table(rows: list) -> html.Div:
 
         data_rows.append(html.Tr([
             cell(row.get("ts", "")[:19], mono=True),
-            cell(actor, color=actor_color),
+            cell(actor, color=actor_color, title=actor_title),
             cell(_ACTION_LABELS.get(atype, atype), color=_TYPE_COLORS.get(atype, "#94a3b8")),
             cell(_describe(row), wrap=True, title=raw_tooltip),
             cell(row.get("notes"), color="#f59e0b", wrap=True),

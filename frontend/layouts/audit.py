@@ -4,21 +4,7 @@ ISA-95 niveau 1-2 : traçabilité de toutes les actions opérateur
 """
 from dash import html, dcc
 from components.sidebar import create_sidebar
-
-_ACTION_LABELS = {
-    "VALVE_COMMAND":    "Commande vanne",
-    "SCENARIO_TRIGGER": "Déclenchement scénario",
-    "SCENARIO_STOP":    "Arrêt scénario",
-    "RESET":            "Réinitialisation",
-    "THRESHOLD_UPDATE": "Modification seuils",
-    "ALERT_ACK":        "Acquittement alarme",
-}
-
-_SOURCE_COLORS = {
-    "OPERATOR": "#818cf8",
-    "SYSTEM":   "#ef4444",
-    "INTERLOCK": "#f59e0b",
-}
+from callbacks.cb_audit import _ACTION_LABELS
 
 
 def layout():
@@ -28,7 +14,7 @@ def layout():
 
             # ── Titre ────────────────────────────────────────────────────
             html.Div([
-                html.Div("Journal Opérateur", className="card-title",
+                html.Div("📋 Journal Opérateur", className="card-title blue-accent",
                          style={"fontSize": "18px", "marginBottom": "4px"}),
                 html.Div("Traçabilité ISA-95 — toutes les actions sont horodatées",
                          style={"color": "var(--text3)", "fontSize": "11px",
@@ -50,13 +36,15 @@ def layout():
                     ),
                 ], style={"flex": "1"}),
                 html.Div([
-                    html.Div("Source", className="filter-label"),
+                    html.Div("Acteur", className="filter-label",
+                             title="Automate = actions exécutées automatiquement par le "
+                                    "séquenceur AUTO ou la supervision (hors module IA)"),
                     dcc.Dropdown(
                         id="journal-filter-source",
                         options=[
-                            {"label": "Toutes", "value": "ALL"},
-                            {"label": "Opérateur", "value": "OPERATOR"},
-                            {"label": "Système (auto)", "value": "SYSTEM"},
+                            {"label": "Tous", "value": "ALL"},
+                            {"label": "👤 Opérateur", "value": "OPERATOR"},
+                            {"label": "⚙ Automate", "value": "AUTO"},
                         ],
                         value="ALL",
                         clearable=False,
@@ -77,22 +65,22 @@ def layout():
                 ], style={"flex": "0"}),
                 html.Div([
                     html.Div(" ", className="filter-label"),
-                    html.Button("Rafraîchir", id="journal-refresh-btn",
-                                className="btn btn-primary",
-                                style={"height": "36px", "padding": "0 16px"}),
-                ], style={"flex": "0"}),
-                html.Div([
-                    html.Div(" ", className="filter-label"),
-                    html.A("⬇ Export CSV",
-                           id="journal-export-link",
-                           href="#",
-                           className="btn btn-warn",
-                           style={"height": "36px", "padding": "0 16px",
-                                  "display": "flex", "alignItems": "center",
-                                  "textDecoration": "none"}),
-                ], style={"flex": "0"}),
-            ], style={"display": "flex", "gap": "16px", "alignItems": "flex-end",
-                      "flexWrap": "wrap", "marginBottom": "16px"}),
+                    html.Div([
+                        html.Button("⟳ Rafraîchir", id="journal-refresh-btn",
+                                    className="btn btn-primary",
+                                    style={"height": "36px", "padding": "0 16px",
+                                           "whiteSpace": "nowrap"}),
+                        html.A("⬇ Export CSV",
+                               id="journal-export-link",
+                               href="#",
+                               className="btn btn-warn",
+                               style={"height": "36px", "padding": "0 16px",
+                                      "display": "inline-flex", "alignItems": "center",
+                                      "textDecoration": "none", "whiteSpace": "nowrap"}),
+                    ], style={"display": "flex", "gap": "8px"}),
+                ], style={"flex": "0 0 auto"}),
+            ], className="card", style={"display": "flex", "gap": "16px", "alignItems": "flex-end",
+                      "flexWrap": "wrap", "marginBottom": "16px", "padding": "16px"}),
 
             # ── Compteur ──────────────────────────────────────────────────
             html.Div(id="journal-count",
